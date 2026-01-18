@@ -54,6 +54,15 @@ export interface TransactionItem {
   total: number;
 }
 
+export interface ExpenseCategory {
+  id: number;
+  expense_id: number;
+  category_id: number;
+  subcategory_id?: number;
+  category?: Category;
+  subcategory?: Subcategory;
+}
+
 export interface Transaction {
   id: number;
   type: TransactionType;
@@ -65,13 +74,17 @@ export interface Transaction {
   subcategory_id?: number;
   account_id?: number;
   to_account_id?: number;
+  payment_method?: number; // API uses this for account
+  transfer_to?: number;
   notes?: string;
   receipt_path?: string;
+  receipt_file?: string;
   items?: TransactionItem[];
   category?: Category;
   subcategory?: Subcategory;
   account?: Account;
   to_account?: Account;
+  expense_categories?: ExpenseCategory[]; // API returns categories in this array
   created_at?: string;
   updated_at?: string;
 }

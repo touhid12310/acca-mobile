@@ -86,18 +86,37 @@ export default function TransactionFormContent({
   const { colors } = useTheme();
   const { currencySymbol } = useCurrency();
 
-  const [formData, setFormData] = useState<TransactionFormData>({
-    type: 'expense',
-    amount: '',
-    date: new Date(),
-    merchant_name: '',
-    description: '',
-    category_id: null,
-    subcategory_id: null,
-    account_id: null,
-    to_account_id: null,
-    notes: '',
-    receipt: null,
+  // Initialize with initialData values if available to avoid unnecessary refetches
+  const [formData, setFormData] = useState<TransactionFormData>(() => {
+    if (initialData) {
+      const normalizedType = (initialData.type?.toLowerCase() || 'expense') as TransactionType;
+      return {
+        type: normalizedType,
+        amount: initialData.amount?.toString() || '',
+        date: initialData.date ? new Date(initialData.date) : new Date(),
+        merchant_name: initialData.merchant_name || '',
+        description: initialData.description || '',
+        category_id: initialData.category_id || null,
+        subcategory_id: initialData.subcategory_id || null,
+        account_id: initialData.account_id || null,
+        to_account_id: initialData.to_account_id || null,
+        notes: initialData.notes || '',
+        receipt: null,
+      };
+    }
+    return {
+      type: 'expense',
+      amount: '',
+      date: new Date(),
+      merchant_name: '',
+      description: '',
+      category_id: null,
+      subcategory_id: null,
+      account_id: null,
+      to_account_id: null,
+      notes: '',
+      receipt: null,
+    };
   });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -107,6 +126,7 @@ export default function TransactionFormContent({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Fetch categories based on transaction type
+  // Pass the actual type to the API (asset, liability, income, expense)
   const { data: categoriesData } = useQuery({
     queryKey: ['categories', formData.type],
     queryFn: async () => {
@@ -141,6 +161,18 @@ export default function TransactionFormContent({
   const categories: Category[] = categoriesData || [];
   const accounts: Account[] = accountsData || [];
 
+  // Debug logging
+  console.log('TransactionFormContent:', {
+    initialData,
+    'formData.type': formData.type,
+    'formData.category_id': formData.category_id,
+    'formData.account_id': formData.account_id,
+    categoriesCount: categories.length,
+    categoryIds: categories.map(c => c.id),
+    accountsCount: accounts.length,
+    accountIds: accounts.map(a => a.id),
+  });
+
   // Initialize form with initial data
   useEffect(() => {
     if (initialData) {
@@ -173,8 +205,9 @@ export default function TransactionFormContent({
     }
   };
 
-  const handleTypeChange = (type: string) => {
-    updateField('type', type as TransactionType);
+  const handleTypeChange = (newType: string) => {
+    updateField('type', newType as TransactionType);
+    // Clear category when changing type since different types have different categories
     updateField('category_id', null);
     updateField('subcategory_id', null);
   };
@@ -255,8 +288,18 @@ export default function TransactionFormContent({
   };
 
   const getSelectedCategory = () => {
-    if (!formData.category_id) return null;
-    return categories.find((c) => c.id === formData.category_id);
+    if (!formData.category_id) {
+      console.log('getSelectedCategory: No category_id in formData');
+      return null;
+    }
+    const found = categories.find((c) => c.id === formData.category_id);
+    console.log('getSelectedCategory:', {
+      'formData.category_id': formData.category_id,
+      categoriesCount: categories.length,
+      categoryIds: categories.map(c => ({ id: c.id, name: c.name })),
+      found: found ? { id: found.id, name: found.name } : null,
+    });
+    return found;
   };
 
   const getSelectedSubcategory = () => {

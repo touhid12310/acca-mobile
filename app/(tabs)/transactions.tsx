@@ -207,6 +207,31 @@ export default function TransactionsScreen() {
     <TouchableOpacity
       style={styles.transactionItem}
       onPress={() => {
+        // Handle API structure: payment_method for account, expense_categories for category
+        // Category: check expense_categories array first, then fallback to category_id/category
+        let categoryId: number | undefined = item.category_id || item.category?.id;
+        let subcategoryId: number | undefined = item.subcategory_id || item.subcategory?.id;
+
+        if (item.expense_categories && item.expense_categories.length > 0) {
+          const primaryCategory = item.expense_categories[0];
+          categoryId = primaryCategory.category_id;
+          subcategoryId = primaryCategory.subcategory_id;
+        }
+
+        // Account: check payment_method first, then account_id/account
+        const accountId = item.payment_method || item.account_id || item.account?.id;
+
+        // Debug logging
+        console.log('Edit transaction:', {
+          id: item.id,
+          type: item.type,
+          payment_method: item.payment_method,
+          expense_categories: item.expense_categories,
+          categoryId,
+          subcategoryId,
+          accountId,
+        });
+
         router.push({
           pathname: '/transaction-modal',
           params: {
@@ -215,7 +240,10 @@ export default function TransactionsScreen() {
             amount: item.amount.toString(),
             merchant_name: item.merchant_name || '',
             description: item.description || '',
-            category_id: item.category_id?.toString() || '',
+            category_id: categoryId?.toString() || '',
+            subcategory_id: subcategoryId?.toString() || '',
+            account_id: accountId?.toString() || '',
+            notes: item.notes || '',
             date: item.date,
           },
         });
