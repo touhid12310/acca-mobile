@@ -12,7 +12,7 @@ type IconNames = {
 
 const TAB_ICONS: Record<string, IconNames> = {
   dashboard: { focused: 'view-dashboard', unfocused: 'view-dashboard-outline' },
-  transactions: { focused: 'receipt', unfocused: 'receipt-text-outline' },
+  transactions: { focused: 'format-list-bulleted-square', unfocused: 'format-list-bulleted' },
   chat: { focused: 'chat', unfocused: 'chat-outline' },
   reports: { focused: 'chart-bar', unfocused: 'chart-bar' },
   more: { focused: 'menu', unfocused: 'menu' },
@@ -95,7 +95,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="transactions"
         options={{
-          title: 'Transactions',
+          title: 'Activity',
           tabBarIcon: ({ focused, color }) =>
             getTabBarIcon('transactions', focused, color),
         }}
