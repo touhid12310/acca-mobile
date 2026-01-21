@@ -396,25 +396,25 @@ export default function CategoriesScreen() {
                     />
                   </View>
                   <View style={styles.categoryInfo}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text variant="titleMedium" style={{ color: colors.onSurface, flex: 1 }}>
-                        {category.name}
-                      </Text>
-                      {category.is_default && (
-                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
-                          Default
-                        </Text>
-                      )}
-                    </View>
+                    <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+                      {category.name}
+                    </Text>
                     <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
                       {category.subcategories && category.subcategories.length > 0
                         ? `${category.subcategories.length} subcategories`
                         : 'No subcategories'}
                     </Text>
                   </View>
+                  {category.is_default && (
+                    <View style={[styles.defaultBadge, { backgroundColor: colors.surfaceVariant }]}>
+                      <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Default
+                      </Text>
+                    </View>
+                  )}
                   <View style={styles.categoryActions}>
                     <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: `${colors.primary}15`, borderRadius: 16 }]}
+                      style={[styles.actionButton, { backgroundColor: `${colors.primary}15` }]}
                       onPress={() => openSubcategoryModal(category)}
                     >
                       <MaterialCommunityIcons name="plus" size={18} color={colors.primary} />
@@ -723,6 +723,12 @@ const styles = StyleSheet.create({
   },
   categoryInfo: {
     flex: 1,
+  },
+  defaultBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
   },
   categoryActions: {
     flexDirection: 'row',
