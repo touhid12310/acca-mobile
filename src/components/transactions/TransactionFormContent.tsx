@@ -7,6 +7,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  Linking,
+  Alert,
 } from 'react-native';
 import {
   Text,
@@ -77,6 +79,8 @@ export type TransactionFormData = {
     name: string;
   } | null;
   receipt_path?: string; // URL of existing receipt (from chat or API)
+  receipt_type?: string; // 'image', 'pdf', 'csv', etc
+  receipt_name?: string; // Filename for display
 };
 
 type Props = {
@@ -126,7 +130,9 @@ export default function TransactionFormContent({
         notes: initialData.notes || '',
         items: convertApiItemsToFormItems(initialData.items),
         receipt: null,
-        receipt_path: (initialData as any).receipt_path || initialData.receipt_file || initialData.receipt_path || undefined,
+        receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
+        receipt_type: (initialData as any).receipt_type || 'image',
+        receipt_name: (initialData as any).receipt_name || 'receipt',
       };
     }
     return {
@@ -205,6 +211,10 @@ export default function TransactionFormContent({
         notes: initialData.notes || '',
         items: convertApiItemsToFormItems(initialData.items),
         receipt: null,
+        // Preserve receipt fields from initialData
+        receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
+        receipt_type: (initialData as any).receipt_type || 'image',
+        receipt_name: (initialData as any).receipt_name || 'receipt',
       });
     }
     setErrors({});
@@ -396,6 +406,78 @@ export default function TransactionFormContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Receipt Preview from Chat - Show at top when available */}
+          {formData.receipt_path && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
+                Attached Receipt
+              </Text>
+              <Surface
+                style={[styles.receiptImageContainer, { backgroundColor: colors.surfaceVariant }]}
+                elevation={1}
+              >
+                {/* Show image preview for image types */}
+                {formData.receipt_type === 'image' && (
+                  <Image
+                    source={{ uri: formData.receipt_path }}
+                    style={styles.receiptImage}
+                    resizeMode="cover"
+                  />
+                )}
+
+                {/* Show file info for non-image types (PDF, CSV, etc) */}
+                {formData.receipt_type !== 'image' && (
+                  <View style={styles.receiptFileInfo}>
+                    <MaterialCommunityIcons
+                      name={formData.receipt_type === 'pdf' ? 'file-pdf-box' : 'file-document'}
+                      size={48}
+                      color={colors.primary}
+                    />
+                    <Text style={{ color: colors.onSurface, marginTop: 8 }} numberOfLines={1}>
+                      {formData.receipt_name}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Preview File Button */}
+                <TouchableOpacity
+                  style={[styles.previewFileButton, { backgroundColor: colors.primary }]}
+                  onPress={async () => {
+                    if (formData.receipt_path) {
+                      try {
+                        const canOpen = await Linking.canOpenURL(formData.receipt_path);
+                        if (canOpen) {
+                          await Linking.openURL(formData.receipt_path);
+                        } else {
+                          Alert.alert('Cannot Open', 'Unable to open this file.');
+                        }
+                      } catch (error) {
+                        Alert.alert('Error', 'Failed to open file.');
+                      }
+                    }
+                  }}
+                >
+                  <MaterialCommunityIcons name="eye" size={20} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
+                    Preview {formData.receipt_type === 'pdf' ? 'PDF' : formData.receipt_type === 'csv' ? 'CSV' : 'Image'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Remove button */}
+                <IconButton
+                  icon="close"
+                  size={20}
+                  style={styles.receiptRemoveButton}
+                  onPress={() => {
+                    updateField('receipt_path', undefined as any);
+                    updateField('receipt_type', undefined as any);
+                    updateField('receipt_name', undefined as any);
+                  }}
+                />
+              </Surface>
+            </View>
+          )}
+
           {/* Transaction Type */}
           <View style={styles.section}>
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
@@ -717,51 +799,35 @@ export default function TransactionFormContent({
             />
           </View>
 
-          {/* Receipt */}
-          <View style={styles.section}>
-            <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-              Receipt (Optional)
-            </Text>
-            {formData.receipt ? (
-              <Surface
-                style={[styles.receiptPreview, { backgroundColor: colors.surfaceVariant }]}
-                elevation={1}
-              >
-                <MaterialCommunityIcons name="file-image" size={24} color={colors.primary} />
-                <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }} numberOfLines={1}>
-                  {formData.receipt.name}
-                </Text>
-                <IconButton icon="close" size={20} onPress={() => updateField('receipt', null)} />
-              </Surface>
-            ) : formData.receipt_path ? (
-              // Show receipt image preview from URL (from chat or API)
-              <Surface
-                style={[styles.receiptImageContainer, { backgroundColor: colors.surfaceVariant }]}
-                elevation={1}
-              >
-                <Image
-                  source={{ uri: formData.receipt_path }}
-                  style={styles.receiptImage}
-                  resizeMode="cover"
-                />
-                <IconButton
-                  icon="close"
-                  size={20}
-                  style={styles.receiptRemoveButton}
-                  onPress={() => updateField('receipt_path', undefined)}
-                />
-              </Surface>
-            ) : (
-              <View style={styles.receiptButtons}>
-                <Button mode="outlined" icon="image" onPress={handlePickReceipt} style={styles.receiptButton}>
-                  Gallery
-                </Button>
-                <Button mode="outlined" icon="camera" onPress={handleTakePhoto} style={styles.receiptButton}>
-                  Camera
-                </Button>
-              </View>
-            )}
-          </View>
+          {/* Receipt Upload - Only show when no receipt attached from chat */}
+          {!formData.receipt_path && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
+                Receipt (Optional)
+              </Text>
+              {formData.receipt ? (
+                <Surface
+                  style={[styles.receiptPreview, { backgroundColor: colors.surfaceVariant }]}
+                  elevation={1}
+                >
+                  <MaterialCommunityIcons name="file-image" size={24} color={colors.primary} />
+                  <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }} numberOfLines={1}>
+                    {formData.receipt.name}
+                  </Text>
+                  <IconButton icon="close" size={20} onPress={() => updateField('receipt', null)} />
+                </Surface>
+              ) : (
+                <View style={styles.receiptButtons}>
+                  <Button mode="outlined" icon="image" onPress={handlePickReceipt} style={styles.receiptButton}>
+                    Gallery
+                  </Button>
+                  <Button mode="outlined" icon="camera" onPress={handleTakePhoto} style={styles.receiptButton}>
+                    Camera
+                  </Button>
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
 
         {/* Submit Button */}
@@ -1020,6 +1086,21 @@ const styles = StyleSheet.create({
     top: 4,
     right: 4,
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  receiptFileInfo: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  previewFileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    marginHorizontal: 8,
+    marginBottom: 8,
   },
   receiptButtons: {
     flexDirection: 'row',

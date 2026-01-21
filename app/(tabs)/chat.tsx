@@ -39,12 +39,26 @@ import { formatDate, todayDateInputValue } from '../../src/utils/date';
 
 const API_BASE_URL = 'https://acca-api.autoaiassistant.com/';
 
-// Helper to ensure absolute URL for images
+// Helper to ensure absolute URL for images - converts localhost to CDN URL
 const ensureAbsoluteUrl = (value?: string): string | null => {
   if (!value || typeof value !== 'string') return null;
-  if (value.startsWith('blob:') || value.startsWith('data:') || value.startsWith('file:')) {
+  // Return local URIs as-is (file://, content://, blob:, data:)
+  if (value.startsWith('blob:') || value.startsWith('data:') ||
+      value.startsWith('file:') || value.startsWith('content:') ||
+      value.startsWith('ph://') || value.startsWith('assets-library:')) {
     return value;
   }
+
+  // Convert localhost URLs to CDN URL
+  if (value.includes('localhost') || value.includes('127.0.0.1')) {
+    // Extract the path part after localhost
+    const match = value.match(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(\/.*)/i);
+    if (match && match[1]) {
+      const path = match[1].replace(/^\/+/, '');
+      return `${API_BASE_URL}${path}`;
+    }
+  }
+
   if (/^https?:\/\//i.test(value)) {
     return value;
   }
@@ -77,7 +91,7 @@ const getMessageAttachment = (message: ChatMessage): { url: string; name: string
   return null;
 };
 
-// Helper to find related attachment for an assistant message (looks at preceding user message)
+// Helper to find related attachment for an assistant message (looks at preceding user messages)
 const findRelatedAttachment = (
   targetMessage: ChatMessage,
   allMessages: ChatMessage[]
@@ -90,13 +104,20 @@ const findRelatedAttachment = (
   const targetIndex = allMessages.findIndex((m) => m.id === targetMessage.id);
   if (targetIndex === -1) return null;
 
-  // Look backwards for the most recent user message with an attachment
+  // Look backwards for user messages with attachments (like web version)
+  let encounteredUser = false;
   for (let i = targetIndex - 1; i >= 0; i--) {
     const msg = allMessages[i];
     if (msg.is_user) {
+      encounteredUser = true;
       const attachment = getMessageAttachment(msg);
       if (attachment) return attachment;
-      break; // Stop at the first user message
+      // Continue looking at older messages (don't break)
+      continue;
+    }
+    // If we've seen a user message and now hit an assistant message, stop
+    if (encounteredUser) {
+      break;
     }
   }
 
@@ -211,6 +232,26 @@ export default function ChatScreen() {
       }];
     }
 
+    // Determine file type from URI
+    let receiptType = '';
+    let receiptName = 'receipt';
+    if (receiptUri) {
+      const lowerUri = receiptUri.toLowerCase();
+      if (lowerUri.includes('.pdf')) {
+        receiptType = 'pdf';
+        receiptName = 'receipt.pdf';
+      } else if (lowerUri.includes('.csv')) {
+        receiptType = 'csv';
+        receiptName = 'receipt.csv';
+      } else if (lowerUri.match(/\.(jpg|jpeg|png|gif|webp|heic)/)) {
+        receiptType = 'image';
+        receiptName = 'receipt.jpg';
+      } else {
+        receiptType = 'image'; // Default to image for most cases
+        receiptName = 'receipt.jpg';
+      }
+    }
+
     return {
       type: transactionType,
       amount: amount.toString(),
@@ -223,6 +264,8 @@ export default function ChatScreen() {
       notes: notes,
       items: JSON.stringify(itemsToSend),
       receipt_uri: receiptUri || '',
+      receipt_type: receiptType,
+      receipt_name: receiptName,
     };
   };
 
@@ -348,14 +391,22 @@ export default function ChatScreen() {
     const messageText = inputText.trim();
     const file = selectedFile;
 
+    // Track uploaded file URI for receipt (any file type)
+    if (file) {
+      setLastUploadedFileUri(file.uri);
+    }
+
     setInputText('');
     setSelectedFile(null);
 
-    // Add optimistic user message
+    // Add optimistic user message with file info
     const tempUserMessage: ChatMessage = {
       id: `temp-${Date.now()}`,
       is_user: true,
       message: messageText,
+      file_url: file?.uri,
+      file_name: file?.name,
+      file_mime: file?.type,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, tempUserMessage]);
@@ -509,6 +560,9 @@ export default function ChatScreen() {
   // Track receipt for preview modal
   const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | undefined>();
 
+  // Track the last uploaded file URI (to use as fallback for receipt)
+  const [lastUploadedFileUri, setLastUploadedFileUri] = useState<string | undefined>();
+
   // Handle preview candidate
   const openPreview = (candidate: ExpenseCandidate, receiptUrl?: string) => {
     setPreviewCandidate(candidate);
@@ -642,9 +696,56 @@ export default function ChatScreen() {
                     mode="contained"
                     compact
                     onPress={() => {
-                      // Pass receipt URI if there's a related attachment
-                      const receiptUri = relatedAttachment?.url || attachment?.url;
+                      // Find receipt from the immediate previous user message
+                      console.log('=== Preview & Save clicked ===');
+                      console.log('Current message id:', message.id);
+                      console.log('Total messages:', messages.length);
+                      console.log('lastUploadedFileUri:', lastUploadedFileUri);
+
+                      let receiptUri: string | undefined;
+                      const msgIndex = messages.findIndex((m) => m.id === message.id);
+                      console.log('Message index:', msgIndex);
+
+                      if (msgIndex > 0) {
+                        // Look backwards for user message with file
+                        for (let i = msgIndex - 1; i >= 0; i--) {
+                          const prevMsg = messages[i];
+                          console.log(`Checking message ${i}:`, {
+                            id: prevMsg.id,
+                            is_user: prevMsg.is_user,
+                            file_url: prevMsg.file_url,
+                            image_path: prevMsg.image_path,
+                            metadata: prevMsg.metadata,
+                          });
+
+                          if (prevMsg.is_user) {
+                            // Check all possible file fields
+                            const fileUrl = prevMsg.file_url ||
+                                           prevMsg.image_path ||
+                                           (prevMsg.metadata as any)?.receipt_path ||
+                                           (prevMsg.metadata as any)?.receipt_url ||
+                                           (prevMsg.metadata as any)?.image_url ||
+                                           (prevMsg as any).image ||
+                                           (prevMsg as any).attachment_url;
+                            console.log('Found fileUrl:', fileUrl);
+                            if (fileUrl) {
+                              receiptUri = ensureAbsoluteUrl(fileUrl) || fileUrl;
+                              console.log('Using receiptUri:', receiptUri);
+                              break;
+                            }
+                          }
+                        }
+                      }
+                      // Fallback to lastUploadedFileUri
+                      if (!receiptUri) {
+                        console.log('No receipt found in messages, using lastUploadedFileUri');
+                        receiptUri = lastUploadedFileUri;
+                      }
+                      console.log('Final receiptUri:', receiptUri);
+
                       const params = prepareTransactionParams(candidate, receiptUri);
+                      console.log('Navigation params:', params);
+
                       router.push({
                         pathname: '/transaction-modal',
                         params,
@@ -981,7 +1082,9 @@ export default function ChatScreen() {
                   onPress={() => {
                     setPreviewVisible(false);
                     if (previewCandidate) {
-                      const params = prepareTransactionParams(previewCandidate, previewReceiptUrl);
+                      // Use previewReceiptUrl or fallback to lastUploadedFileUri
+                      const receiptUri = previewReceiptUrl || lastUploadedFileUri;
+                      const params = prepareTransactionParams(previewCandidate, receiptUri);
                       router.push({
                         pathname: '/transaction-modal',
                         params,

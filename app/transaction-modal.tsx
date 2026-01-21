@@ -26,7 +26,9 @@ export default function TransactionModalScreen() {
     notes?: string;
     date?: string;
     items?: string; // JSON stringified items from chat
-    receipt_uri?: string; // Receipt image URI from chat
+    receipt_uri?: string; // Receipt file URI from chat
+    receipt_type?: string; // 'image', 'pdf', 'csv', etc
+    receipt_name?: string; // Filename
   }>();
 
   // Fetch full transaction data when editing (to get expense_categories and payment_method)
@@ -92,16 +94,6 @@ export default function TransactionModalScreen() {
         }
       }
 
-      // Build receipt object if URI provided
-      let receipt = undefined;
-      if (params.receipt_uri) {
-        receipt = {
-          uri: params.receipt_uri,
-          type: 'image/jpeg',
-          name: 'receipt.jpg',
-        };
-      }
-
       return {
         type: (params.type?.toLowerCase() as TransactionType) || 'expense',
         amount: params.amount ? parseFloat(params.amount) : undefined,
@@ -114,6 +106,8 @@ export default function TransactionModalScreen() {
         date: params.date || new Date().toISOString(),
         items: parsedItems,
         receipt_path: params.receipt_uri, // Pass as receipt_path for display
+        receipt_type: params.receipt_type || 'image',
+        receipt_name: params.receipt_name || 'receipt',
       };
     }
 
