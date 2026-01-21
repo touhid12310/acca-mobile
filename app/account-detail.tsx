@@ -356,7 +356,7 @@ export default function AccountDetailScreen() {
             <FlatList
               data={transactionsList}
               keyExtractor={(item: Transaction) => String(item.id)}
-              contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 32 }}
               refreshControl={
                 <RefreshControl
                   refreshing={isRefetching}
@@ -657,7 +657,6 @@ const styles = StyleSheet.create({
   },
   txAmount: {
     alignItems: 'flex-end',
-    marginLeft: 4,
   },
   reconcileCard: {
     padding: 24,
@@ -706,6 +705,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   categoryBadge: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
