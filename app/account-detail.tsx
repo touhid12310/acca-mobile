@@ -447,6 +447,11 @@ export default function AccountDetailScreen() {
                           <Text style={{ color: iconColor, fontSize: 10 }}>{categoryName}</Text>
                         </View>
                       ) : null}
+                      {item.notes ? (
+                        <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
+                          {item.notes}
+                        </Text>
+                      ) : null}
                     </View>
                     <View style={styles.txAmount}>
                       <Text
