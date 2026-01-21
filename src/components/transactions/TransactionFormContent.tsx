@@ -27,6 +27,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery } from '@tanstack/react-query';
+import { WebView } from 'react-native-webview';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -406,78 +407,6 @@ export default function TransactionFormContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Receipt Preview from Chat - Show at top when available */}
-          {formData.receipt_path && (
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-                Attached Receipt
-              </Text>
-              <Surface
-                style={[styles.receiptImageContainer, { backgroundColor: colors.surfaceVariant }]}
-                elevation={1}
-              >
-                {/* Show image preview for image types */}
-                {formData.receipt_type === 'image' && (
-                  <Image
-                    source={{ uri: formData.receipt_path }}
-                    style={styles.receiptImage}
-                    resizeMode="cover"
-                  />
-                )}
-
-                {/* Show file info for non-image types (PDF, CSV, etc) */}
-                {formData.receipt_type !== 'image' && (
-                  <View style={styles.receiptFileInfo}>
-                    <MaterialCommunityIcons
-                      name={formData.receipt_type === 'pdf' ? 'file-pdf-box' : 'file-document'}
-                      size={48}
-                      color={colors.primary}
-                    />
-                    <Text style={{ color: colors.onSurface, marginTop: 8 }} numberOfLines={1}>
-                      {formData.receipt_name}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Preview File Button */}
-                <TouchableOpacity
-                  style={[styles.previewFileButton, { backgroundColor: colors.primary }]}
-                  onPress={async () => {
-                    if (formData.receipt_path) {
-                      try {
-                        const canOpen = await Linking.canOpenURL(formData.receipt_path);
-                        if (canOpen) {
-                          await Linking.openURL(formData.receipt_path);
-                        } else {
-                          Alert.alert('Cannot Open', 'Unable to open this file.');
-                        }
-                      } catch (error) {
-                        Alert.alert('Error', 'Failed to open file.');
-                      }
-                    }
-                  }}
-                >
-                  <MaterialCommunityIcons name="eye" size={20} color="#fff" />
-                  <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
-                    Preview {formData.receipt_type === 'pdf' ? 'PDF' : formData.receipt_type === 'csv' ? 'CSV' : 'Image'}
-                  </Text>
-                </TouchableOpacity>
-
-                {/* Remove button */}
-                <IconButton
-                  icon="close"
-                  size={20}
-                  style={styles.receiptRemoveButton}
-                  onPress={() => {
-                    updateField('receipt_path', undefined as any);
-                    updateField('receipt_type', undefined as any);
-                    updateField('receipt_name', undefined as any);
-                  }}
-                />
-              </Surface>
-            </View>
-          )}
-
           {/* Transaction Type */}
           <View style={styles.section}>
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
@@ -538,6 +467,93 @@ export default function TransactionFormContent({
               </View>
             </ScrollView>
           </View>
+
+          {/* Receipt Preview from Chat - Show after type when available */}
+          {formData.receipt_path && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
+                Attached Receipt
+              </Text>
+              {/* Open in Browser Button - above file */}
+              <TouchableOpacity
+                style={[styles.openBrowserButtonTop, { backgroundColor: colors.primary }]}
+                onPress={async () => {
+                  if (formData.receipt_path) {
+                    try {
+                      const canOpen = await Linking.canOpenURL(formData.receipt_path);
+                      if (canOpen) {
+                        await Linking.openURL(formData.receipt_path);
+                      } else {
+                        Alert.alert('Cannot Open', 'Unable to open this file.');
+                      }
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to open file.');
+                    }
+                  }
+                }}
+              >
+                <MaterialCommunityIcons name="open-in-new" size={20} color="#fff" />
+                <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
+                  Open in Browser
+                </Text>
+              </TouchableOpacity>
+
+              <Surface
+                style={[styles.receiptImageContainer, { backgroundColor: colors.surfaceVariant }]}
+                elevation={1}
+              >
+                {/* Show image preview for image types */}
+                {formData.receipt_type === 'image' && (
+                  <Image
+                    source={{ uri: formData.receipt_path }}
+                    style={styles.receiptImage}
+                    resizeMode="cover"
+                  />
+                )}
+
+                {/* Show PDF inline using WebView with Google Docs viewer */}
+                {formData.receipt_type === 'pdf' && (
+                  <View style={styles.pdfContainer}>
+                    <WebView
+                      source={{
+                        uri: `https://docs.google.com/viewer?url=${encodeURIComponent(formData.receipt_path)}&embedded=true`,
+                      }}
+                      style={styles.pdfWebView}
+                      startInLoadingState={true}
+                      scalesPageToFit={true}
+                    />
+                  </View>
+                )}
+
+                {/* Show file info for CSV and other non-image/non-pdf types */}
+                {formData.receipt_type !== 'image' && formData.receipt_type !== 'pdf' && (
+                  <View style={styles.receiptFileInfo}>
+                    <MaterialCommunityIcons
+                      name="file-document"
+                      size={48}
+                      color={colors.primary}
+                    />
+                    <Text style={{ color: colors.onSurface, marginTop: 8 }} numberOfLines={1}>
+                      {formData.receipt_name}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Remove button - top right corner */}
+                <IconButton
+                  icon="close-circle"
+                  size={28}
+                  iconColor="#fff"
+                  style={styles.receiptRemoveButton}
+                  onPress={() => {
+                    updateField('receipt_path', undefined as any);
+                    updateField('receipt_type', undefined as any);
+                    updateField('receipt_name', undefined as any);
+                  }}
+                />
+              </Surface>
+            </View>
+          )}
 
           {/* Items Section - First like web app */}
           <View style={styles.section}>
@@ -1081,11 +1097,49 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 8,
   },
+  pdfContainer: {
+    width: '100%',
+    height: 300,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  pdfWebView: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  receiptTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  openBrowserButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  openBrowserButtonTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  receiptRemoveButtonInline: {
+    margin: 0,
+  },
   receiptRemoveButton: {
     position: 'absolute',
     top: 4,
     right: 4,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    margin: 0,
   },
   receiptFileInfo: {
     alignItems: 'center',
@@ -1101,6 +1155,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginHorizontal: 8,
     marginBottom: 8,
+  },
+  previewFileButtonTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    marginHorizontal: 8,
+    marginBottom: 12,
   },
   receiptButtons: {
     flexDirection: 'row',
