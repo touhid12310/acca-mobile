@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Keyboard,
 } from 'react-native';
 import {
   Text,
@@ -160,6 +161,32 @@ export default function ChatScreen() {
   const [previewCandidate, setPreviewCandidate] = useState<ExpenseCandidate | null>(
     null
   );
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  // Handle keyboard show/hide for Android
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        // Scroll to bottom when keyboard shows
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
 
   // Helper function to prepare transaction params for navigation (like web app)
   const prepareTransactionParams = (candidate: ExpenseCandidate, receiptUri?: string) => {
@@ -888,7 +915,11 @@ export default function ChatScreen() {
 
         {/* Input area */}
         <Surface
-          style={[styles.inputContainer, { backgroundColor: colors.surface }]}
+          style={[
+            styles.inputContainer,
+            { backgroundColor: colors.surface },
+            Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: keyboardHeight - 50 },
+          ]}
           elevation={2}
         >
           {/* Quick actions */}
