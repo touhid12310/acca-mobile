@@ -16,7 +16,6 @@ import {
   Modal,
   TextInput,
   Button,
-  Chip,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,17 +30,28 @@ import { Bill } from '../src/types';
 
 const frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Yearly'];
 
+// Helper to unwrap API response
+const unwrap = (response: any): any[] => {
+  if (!response) return [];
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data?.data?.data)) return response.data.data.data;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
 export default function BillsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [formData, setFormData] = useState({
     vendor: '',
     amount: '',
     frequency: 'Monthly' as string,
-    next_due_date: '',
+    next_due_date: new Date().toISOString().split('T')[0],
     notes: '',
     category_id: '',
   });
@@ -51,15 +61,47 @@ export default function BillsScreen() {
     isLoading,
     refetch,
     isRefetching,
+    error,
   } = useQuery({
     queryKey: ['bills'],
     queryFn: async () => {
-      const result = await billService.getAll();
-      if (result.success && result.data) {
-        const responseData = result.data as any;
-        return responseData?.data || responseData || [];
+      try {
+        const result = await billService.getAll();
+
+        if (result.success && result.data) {
+          const responseData = result.data as any;
+
+          // Laravel returns paginated data: { data: { current_page, data: [...], ... } }
+          // The actual bills array is at responseData.data.data (pagination)
+          // Or responseData.data if not paginated
+
+          let billsArray: any[] = [];
+
+          // Check if it's paginated (has current_page)
+          if (responseData?.data?.current_page !== undefined) {
+            // Paginated response: bills are at responseData.data.data
+            billsArray = responseData.data.data || [];
+          } else if (Array.isArray(responseData?.data)) {
+            // Non-paginated: bills are at responseData.data
+            billsArray = responseData.data;
+          } else if (Array.isArray(responseData)) {
+            // Direct array
+            billsArray = responseData;
+          }
+
+          console.log('Bills loaded:', billsArray.length, 'items');
+          if (billsArray.length > 0) {
+            console.log('First bill sample:', JSON.stringify(billsArray[0], null, 2));
+          }
+          return billsArray;
+        }
+
+        console.log('Bills API failed:', result.error);
+        return [];
+      } catch (err) {
+        console.error('Bills fetch error:', err);
+        return [];
       }
-      return [];
     },
   });
 
@@ -69,9 +111,7 @@ export default function BillsScreen() {
     queryFn: async () => {
       const result = await categoryService.getForTransaction('expense');
       if (result.success && result.data) {
-        const responseData = result.data as any;
-        const payload = responseData?.data || responseData || [];
-        return Array.isArray(payload) ? payload : [];
+        return unwrap(result.data);
       }
       return [];
     },
@@ -80,13 +120,11 @@ export default function BillsScreen() {
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const result = await billService.create({
-        name: data.vendor, // Use vendor as name
         vendor: data.vendor,
         contact_name: data.vendor,
         amount: parseFloat(data.amount) || 0,
         frequency: data.frequency,
         next_due_date: data.next_due_date || new Date().toISOString().split('T')[0],
-        due_date: data.next_due_date || new Date().toISOString().split('T')[0],
         notes: data.notes,
         category_id: data.category_id ? parseInt(data.category_id) : undefined,
         status: 'scheduled',
@@ -122,11 +160,13 @@ export default function BillsScreen() {
       notes: '',
       category_id: '',
     });
+    setShowCategoryPicker(false);
     setModalVisible(true);
   };
 
   const closeModal = () => {
     setModalVisible(false);
+    setShowCategoryPicker(false);
   };
 
   const handleSave = () => {
@@ -142,7 +182,7 @@ export default function BillsScreen() {
   };
 
   const handleDelete = (bill: Bill) => {
-    const billName = bill.name || bill.contact_name || bill.vendor || 'this bill';
+    const billName = bill.contact_name || bill.vendor || 'this bill';
     Alert.alert(
       'Delete Repeating Expense',
       `Are you sure you want to delete "${billName}"?`,
@@ -157,7 +197,7 @@ export default function BillsScreen() {
     );
   };
 
-  const getDaysUntilDue = (dueDate: string) => {
+  const getDaysUntilDue = (dueDate?: string) => {
     if (!dueDate) return null;
     const today = new Date();
     const due = new Date(dueDate);
@@ -184,20 +224,35 @@ export default function BillsScreen() {
 
   const getCategoryName = (categoryId?: number | string) => {
     if (!categoryId || !categories) return null;
-    const category = categories.find((c: any) => c.id === Number(categoryId));
+    const viewCategories = Array.isArray(categories) ? categories : [];
+    const category = viewCategories.find((c: any) => c.id === Number(categoryId));
     return category?.name || null;
+  };
+
+  const getSelectedCategoryName = () => {
+    if (!formData.category_id || !categories) return '';
+    const viewCategories = Array.isArray(categories) ? categories : [];
+    const cat = viewCategories.find((c: any) => String(c.id) === String(formData.category_id));
+    return cat?.name || '';
+  };
+
+  const formatDisplayDate = (value?: string) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   };
 
   // Calculate stats
   const viewBills = Array.isArray(bills) ? bills : [];
-  const totalMonthlyBills = viewBills
-    .filter((b: Bill) => b.frequency?.toLowerCase() === 'monthly')
-    .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
-  const totalWeeklyBills = viewBills
-    .filter((b: Bill) => b.frequency?.toLowerCase() === 'weekly')
-    .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
-  const totalYearlyBills = viewBills
-    .filter((b: Bill) => b.frequency?.toLowerCase() === 'yearly')
+  const viewCategories = Array.isArray(categories) ? categories : [];
+
+  // Total of all repeating bills (same as web version)
+  const totalRepeatingBills = viewBills
     .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
 
   if (isLoading) {
@@ -234,41 +289,33 @@ export default function BillsScreen() {
         }
       >
         {/* Stats Section */}
-        {viewBills.length > 0 && (
-          <View style={styles.statsContainer}>
-            <Surface style={[styles.statCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
-              <MaterialCommunityIcons name="calendar-month" size={20} color={colors.primary} />
-              <Text variant="labelSmall" style={{ color: colors.primary }}>Monthly</Text>
-              <Text variant="titleSmall" style={{ color: colors.primary, fontWeight: 'bold' }}>
-                {formatAmount(totalMonthlyBills)}
+        <Surface style={[styles.statsCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
+          <View style={styles.statsContent}>
+            <View style={[styles.statsIcon, { backgroundColor: `${colors.primary}20` }]}>
+              <MaterialCommunityIcons name="repeat" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.statsText}>
+              <Text variant="labelMedium" style={{ color: colors.primary }}>Monthly Repeats</Text>
+              <Text variant="headlineSmall" style={{ color: colors.primary, fontWeight: 'bold' }}>
+                {formatAmount(totalRepeatingBills)}
               </Text>
-            </Surface>
-            <Surface style={[styles.statCard, { backgroundColor: colors.tertiaryContainer }]} elevation={1}>
-              <MaterialCommunityIcons name="calendar-week" size={20} color={colors.tertiary} />
-              <Text variant="labelSmall" style={{ color: colors.tertiary }}>Weekly</Text>
-              <Text variant="titleSmall" style={{ color: colors.tertiary, fontWeight: 'bold' }}>
-                {formatAmount(totalWeeklyBills)}
+              <Text variant="bodySmall" style={{ color: colors.primary }}>
+                {viewBills.length} schedules
               </Text>
-            </Surface>
-            <Surface style={[styles.statCard, { backgroundColor: colors.secondaryContainer }]} elevation={1}>
-              <MaterialCommunityIcons name="calendar" size={20} color={colors.secondary} />
-              <Text variant="labelSmall" style={{ color: colors.secondary }}>Yearly</Text>
-              <Text variant="titleSmall" style={{ color: colors.secondary, fontWeight: 'bold' }}>
-                {formatAmount(totalYearlyBills)}
-              </Text>
-            </Surface>
+            </View>
           </View>
-        )}
+        </Surface>
 
+        {/* Bills List */}
         {viewBills.length > 0 ? (
           viewBills.map((bill: Bill) => {
-            const dueDate = bill.next_due_date || bill.due_date;
+            const dueDate = bill.next_due_date;
             const daysUntil = getDaysUntilDue(dueDate);
             const statusColor = getDueStatusColor(daysUntil);
-            const billName = bill.name || bill.contact_name || bill.vendor || 'Unnamed Bill';
+            const billName = bill.contact_name || bill.vendor || 'Unnamed Bill';
             const categoryName = getCategoryName(bill.category_id);
             const status = bill.status || 'scheduled';
-            const isPaid = bill.is_paid || status.toLowerCase() === 'paid';
+            const billAmount = parseFloat(String(bill.amount)) || 0;
 
             return (
               <Surface
@@ -280,7 +327,7 @@ export default function BillsScreen() {
                   <View style={styles.billHeader}>
                     <View style={[styles.billIcon, { backgroundColor: `${statusColor}15` }]}>
                       <MaterialCommunityIcons
-                        name={isPaid ? 'check-circle' : 'repeat'}
+                        name="repeat"
                         size={24}
                         color={statusColor}
                       />
@@ -289,35 +336,29 @@ export default function BillsScreen() {
                       <Text variant="titleMedium" style={{ color: colors.onSurface }}>
                         {billName}
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <Chip
-                          compact
-                          style={{ backgroundColor: colors.surfaceVariant, height: 22 }}
-                          textStyle={{ color: colors.onSurfaceVariant, fontSize: 10 }}
-                        >
-                          {bill.frequency || 'Monthly'}
-                        </Chip>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                        <View style={[styles.badge, { backgroundColor: colors.surfaceVariant }]}>
+                          <Text style={{ color: colors.onSurfaceVariant, fontSize: 11 }}>
+                            {bill.frequency || 'Monthly'}
+                          </Text>
+                        </View>
                         {categoryName && (
-                          <Chip
-                            compact
-                            style={{ backgroundColor: colors.primaryContainer, height: 22 }}
-                            textStyle={{ color: colors.primary, fontSize: 10 }}
-                          >
-                            {categoryName}
-                          </Chip>
+                          <View style={[styles.badge, { backgroundColor: colors.primaryContainer }]}>
+                            <Text style={{ color: colors.primary, fontSize: 11 }}>
+                              {categoryName}
+                            </Text>
+                          </View>
                         )}
-                        <Chip
-                          compact
-                          style={{ backgroundColor: `${getStatusColor(status)}20`, height: 22 }}
-                          textStyle={{ color: getStatusColor(status), fontSize: 10 }}
-                        >
-                          {status}
-                        </Chip>
+                        <View style={[styles.badge, { backgroundColor: `${getStatusColor(status)}20` }]}>
+                          <Text style={{ color: getStatusColor(status), fontSize: 11 }}>
+                            {status}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                     <View style={styles.billAmount}>
                       <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
-                        {formatAmount(bill.amount)}
+                        {formatAmount(billAmount)}
                       </Text>
                     </View>
                   </View>
@@ -331,9 +372,9 @@ export default function BillsScreen() {
                   <View style={[styles.dueInfo, { borderTopColor: colors.surfaceVariant }]}>
                     <MaterialCommunityIcons name="calendar" size={16} color={colors.onSurfaceVariant} />
                     <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginLeft: 4 }}>
-                      Next Due: {dueDate ? new Date(dueDate).toLocaleDateString() : 'Not set'}
+                      Next Due: {formatDisplayDate(dueDate)}
                     </Text>
-                    {!isPaid && daysUntil !== null && (
+                    {daysUntil !== null && (
                       <Text
                         variant="labelSmall"
                         style={{
@@ -363,6 +404,15 @@ export default function BillsScreen() {
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
               Track your recurring expenses and never miss a payment
             </Text>
+            <TouchableOpacity
+              style={[styles.createFirstButton, { backgroundColor: colors.primary }]}
+              onPress={openModal}
+            >
+              <MaterialCommunityIcons name="plus" size={20} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 8 }}>
+                Create Your First Repeating Expense
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -433,57 +483,64 @@ export default function BillsScreen() {
               ))}
             </View>
 
-            {categories && categories.length > 0 && (
-              <>
-                <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 8 }}>
-                  Category
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TouchableOpacity
-                      style={[
-                        styles.categoryChip,
-                        {
-                          backgroundColor: !formData.category_id ? colors.primaryContainer : colors.surfaceVariant,
-                          borderColor: !formData.category_id ? colors.primary : 'transparent',
-                        },
-                      ]}
-                      onPress={() => setFormData({ ...formData, category_id: '' })}
-                    >
-                      <Text
-                        style={{
-                          color: !formData.category_id ? colors.primary : colors.onSurfaceVariant,
-                          fontSize: 12,
-                        }}
-                      >
-                        None
-                      </Text>
-                    </TouchableOpacity>
-                    {categories.map((cat: any) => (
+            {/* Category Selection */}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 8 }}>
+              Category
+            </Text>
+            <TouchableOpacity
+              style={[styles.pickerButton, { borderColor: colors.outline, backgroundColor: colors.surfaceVariant }]}
+              onPress={() => setShowCategoryPicker(!showCategoryPicker)}
+            >
+              <Text style={{ color: formData.category_id ? colors.onSurface : colors.onSurfaceVariant }}>
+                {formData.category_id ? getSelectedCategoryName() : 'Select category...'}
+              </Text>
+              <MaterialCommunityIcons
+                name={showCategoryPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {showCategoryPicker && (
+              <Surface style={[styles.dropdownList, { backgroundColor: colors.surface }]} elevation={2}>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  <TouchableOpacity
+                    style={[
+                      styles.dropdownItem,
+                      !formData.category_id && { backgroundColor: `${colors.primary}15` }
+                    ]}
+                    onPress={() => {
+                      setFormData({ ...formData, category_id: '' });
+                      setShowCategoryPicker(false);
+                    }}
+                  >
+                    <Text style={{ color: colors.onSurfaceVariant }}>None</Text>
+                  </TouchableOpacity>
+                  {viewCategories.length === 0 ? (
+                    <Text style={{ padding: 12, color: colors.onSurfaceVariant, textAlign: 'center' }}>
+                      No categories available
+                    </Text>
+                  ) : (
+                    viewCategories.map((cat: any) => (
                       <TouchableOpacity
                         key={cat.id}
                         style={[
-                          styles.categoryChip,
-                          {
-                            backgroundColor: formData.category_id === String(cat.id) ? colors.primaryContainer : colors.surfaceVariant,
-                            borderColor: formData.category_id === String(cat.id) ? colors.primary : 'transparent',
-                          },
+                          styles.dropdownItem,
+                          String(formData.category_id) === String(cat.id) && { backgroundColor: `${colors.primary}15` }
                         ]}
-                        onPress={() => setFormData({ ...formData, category_id: String(cat.id) })}
+                        onPress={() => {
+                          setFormData({ ...formData, category_id: String(cat.id) });
+                          setShowCategoryPicker(false);
+                        }}
                       >
-                        <Text
-                          style={{
-                            color: formData.category_id === String(cat.id) ? colors.primary : colors.onSurfaceVariant,
-                            fontSize: 12,
-                          }}
-                        >
-                          {cat.name}
-                        </Text>
+                        <Text style={{ color: colors.onSurface }}>{cat.name}</Text>
+                        {String(formData.category_id) === String(cat.id) && (
+                          <MaterialCommunityIcons name="check" size={18} color={colors.primary} />
+                        )}
                       </TouchableOpacity>
-                    ))}
-                  </View>
+                    ))
+                  )}
                 </ScrollView>
-              </>
+              </Surface>
             )}
 
             <TextInput
@@ -492,7 +549,7 @@ export default function BillsScreen() {
               onChangeText={(text) => setFormData({ ...formData, next_due_date: text })}
               mode="outlined"
               placeholder="YYYY-MM-DD"
-              style={styles.input}
+              style={[styles.input, { marginTop: 12 }]}
             />
 
             <TextInput
@@ -550,17 +607,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  statsCard: {
+    padding: 16,
+    borderRadius: 12,
     marginBottom: 20,
   },
-  statCard: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
+  statsContent: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+  },
+  statsIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  statsText: {
+    flex: 1,
   },
   billCard: {
     borderRadius: 12,
@@ -569,7 +634,7 @@ const styles = StyleSheet.create({
   },
   billHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   billIcon: {
     width: 48,
@@ -585,6 +650,11 @@ const styles = StyleSheet.create({
   billAmount: {
     alignItems: 'flex-end',
   },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
   dueInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -595,6 +665,14 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     paddingVertical: 64,
+  },
+  createFirstButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 20,
   },
   fab: {
     position: 'absolute',
@@ -622,11 +700,26 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
-  categoryChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  pickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
     borderRadius: 8,
     borderWidth: 1,
+  },
+  dropdownList: {
+    borderRadius: 8,
+    marginTop: 4,
+    marginBottom: 8,
+    padding: 4,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 6,
   },
   modalButtons: {
     flexDirection: 'row',
