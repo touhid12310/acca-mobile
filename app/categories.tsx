@@ -55,6 +55,35 @@ const typeConfig: Record<CategoryType, { label: string; icon: string; color: str
   liability: { label: 'Liability', icon: 'credit-card', color: '#F59E0B' },
 };
 
+// Map invalid icon names to valid MaterialCommunityIcons
+const iconMapping: Record<string, string> = {
+  building: 'office-building',
+  award: 'trophy-award',
+  test: 'test-tube',
+  home: 'home',
+  car: 'car',
+  food: 'food',
+  shopping: 'shopping',
+  health: 'hospital-box',
+  education: 'school',
+  entertainment: 'movie',
+  travel: 'airplane',
+  utilities: 'flash',
+  salary: 'cash',
+  investment: 'chart-line',
+  gift: 'gift',
+  other: 'dots-horizontal',
+};
+
+const getValidIcon = (icon?: string): string => {
+  if (!icon) return 'folder';
+  // Check if it needs mapping
+  if (iconMapping[icon.toLowerCase()]) {
+    return iconMapping[icon.toLowerCase()];
+  }
+  return icon;
+};
+
 export default function CategoriesScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
@@ -390,7 +419,7 @@ export default function CategoriesScreen() {
                   />
                   <View style={[styles.categoryIcon, { backgroundColor: `${category.color || getTypeColor(category.type)}15` }]}>
                     <MaterialCommunityIcons
-                      name={(category.icon || 'folder') as any}
+                      name={getValidIcon(category.icon) as any}
                       size={20}
                       color={category.color || getTypeColor(category.type)}
                     />

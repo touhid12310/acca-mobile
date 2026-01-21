@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -29,12 +29,8 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import loanService from '../src/services/loanService';
 import accountService from '../src/services/accountService';
+import categoryService from '../src/services/categoryService';
 import { Loan } from '../src/types';
-
-const loanTypeOptions = [
-  { value: 'Borrowed', label: 'Borrowed' },
-  { value: 'Lent', label: 'Lent' },
-];
 
 const termPeriodOptions = [
   { value: 'months', label: 'Months' },
@@ -49,7 +45,12 @@ export default function LoansScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [categories, setCategories] = useState<any[]>([]);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [showPaymentAccountPicker, setShowPaymentAccountPicker] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
   const [formData, setFormData] = useState({
     loan_name: '',
     original_amount: '',
@@ -60,6 +61,17 @@ export default function LoansScreen() {
     start_date: '',
     next_payment_date: '',
     loan_type: 'Borrowed' as 'Borrowed' | 'Lent',
+    account_id: '',
+    category_id: '',
+    notes: '',
+  });
+
+  const [paymentData, setPaymentData] = useState({
+    payment_amount: '',
+    account_id: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    next_payment: '',
+    next_payment_date: '',
     notes: '',
   });
 
@@ -92,9 +104,30 @@ export default function LoansScreen() {
     },
   });
 
+  // Load categories based on loan type
+  useEffect(() => {
+    const loadCategories = async () => {
+      if (!modalVisible) return;
+
+      const categoryType = formData.loan_type === 'Lent' ? 'asset' : 'liability';
+      try {
+        const result = await categoryService.getAll({ type: categoryType });
+        if (result.success && result.data) {
+          const data = (result.data as any)?.data || result.data;
+          setCategories(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error);
+        setCategories([]);
+      }
+    };
+
+    loadCategories();
+  }, [formData.loan_type, modalVisible]);
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const result = await loanService.create({
+      const payload = {
         loan_name: data.loan_name,
         original_amount: parseFloat(data.original_amount) || 0,
         interest_rate: parseFloat(data.interest_rate) || 0,
@@ -104,26 +137,39 @@ export default function LoansScreen() {
         start_date: data.start_date || new Date().toISOString().split('T')[0],
         next_payment_date: data.next_payment_date || undefined,
         loan_type: data.loan_type,
+        account_id: parseInt(data.account_id) || undefined,
+        category_id: parseInt(data.category_id) || undefined,
         notes: data.notes || undefined,
-      });
+      };
+      const result = await loanService.create(payload);
       if (!result.success) throw new Error(result.error);
       return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
       closeModal();
     },
     onError: (error: Error) => Alert.alert('Error', error.message),
   });
 
   const paymentMutation = useMutation({
-    mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
-      const result = await loanService.makePayment(id, { payment_amount: amount });
+    mutationFn: async ({ id, data }: { id: number; data: typeof paymentData }) => {
+      const payload = {
+        payment_amount: parseFloat(data.payment_amount) || 0,
+        account_id: parseInt(data.account_id) || undefined,
+        payment_date: data.payment_date || new Date().toISOString().split('T')[0],
+        next_payment: data.next_payment ? parseFloat(data.next_payment) : undefined,
+        next_payment_date: data.next_payment_date || undefined,
+        notes: data.notes || undefined,
+      };
+      const result = await loanService.makePayment(id, payload);
       if (!result.success) throw new Error(result.error);
       return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
       closePaymentModal();
     },
     onError: (error: Error) => Alert.alert('Error', error.message),
@@ -152,25 +198,39 @@ export default function LoansScreen() {
       start_date: new Date().toISOString().split('T')[0],
       next_payment_date: '',
       loan_type: 'Borrowed',
+      account_id: '',
+      category_id: '',
       notes: '',
     });
+    setShowCategoryPicker(false);
+    setShowAccountPicker(false);
     setModalVisible(true);
   };
 
   const closeModal = () => {
     setModalVisible(false);
+    setShowCategoryPicker(false);
+    setShowAccountPicker(false);
   };
 
   const openPaymentModal = (loan: Loan) => {
     setSelectedLoan(loan);
-    setPaymentAmount('');
+    setPaymentData({
+      payment_amount: String(loan.next_payment || ''),
+      account_id: '',
+      payment_date: new Date().toISOString().split('T')[0],
+      next_payment: '',
+      next_payment_date: '',
+      notes: '',
+    });
+    setShowPaymentAccountPicker(false);
     setPaymentModalVisible(true);
   };
 
   const closePaymentModal = () => {
     setPaymentModalVisible(false);
     setSelectedLoan(null);
-    setPaymentAmount('');
+    setShowPaymentAccountPicker(false);
   };
 
   const handleSave = () => {
@@ -182,12 +242,20 @@ export default function LoansScreen() {
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
+    if (!formData.category_id) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
+    if (!formData.account_id) {
+      Alert.alert('Error', 'Please select an account');
+      return;
+    }
     createMutation.mutate(formData);
   };
 
   const handleMakePayment = () => {
     if (!selectedLoan) return;
-    const amount = parseFloat(paymentAmount);
+    const amount = parseFloat(paymentData.payment_amount);
     if (!amount || amount <= 0) {
       Alert.alert('Error', 'Please enter a valid payment amount');
       return;
@@ -196,7 +264,11 @@ export default function LoansScreen() {
       Alert.alert('Error', 'Payment amount exceeds remaining balance');
       return;
     }
-    paymentMutation.mutate({ id: selectedLoan.id, amount });
+    if (!paymentData.account_id) {
+      Alert.alert('Error', 'Please select an account');
+      return;
+    }
+    paymentMutation.mutate({ id: selectedLoan.id, data: paymentData });
   };
 
   const handleDelete = (loan: Loan) => {
@@ -214,8 +286,19 @@ export default function LoansScreen() {
     );
   };
 
+  const getSelectedCategoryName = () => {
+    const cat = categories.find(c => String(c.id) === String(formData.category_id));
+    return cat?.name || '';
+  };
+
+  const getSelectedAccountName = (accountId: string) => {
+    const acc = (accounts || []).find((a: any) => String(a.id) === String(accountId));
+    return acc?.account_name || '';
+  };
+
   // Calculate stats
   const viewLoans = loans || [];
+  const viewAccounts = accounts || [];
   const activeLoans = viewLoans.filter((loan: Loan) =>
     loan.status === 'Active' || !loan.status
   );
@@ -305,7 +388,7 @@ export default function LoansScreen() {
           <Surface style={[styles.statCard, { backgroundColor: colors.errorContainer }]} elevation={1}>
             <MaterialCommunityIcons name="hand-coin" size={24} color={colors.error} />
             <Text variant="labelSmall" style={{ color: colors.error }}>To Pay</Text>
-            <Text variant="titleMedium" style={{ color: colors.error, fontWeight: 'bold' }}>
+            <Text variant="titleSmall" style={{ color: colors.error, fontWeight: 'bold' }} numberOfLines={1} adjustsFontSizeToFit>
               {formatAmount(totalLoansToPay)}
             </Text>
             <Text variant="labelSmall" style={{ color: colors.error }}>{borrowedLoans.length} loans</Text>
@@ -313,7 +396,7 @@ export default function LoansScreen() {
           <Surface style={[styles.statCard, { backgroundColor: colors.tertiaryContainer }]} elevation={1}>
             <MaterialCommunityIcons name="cash-plus" size={24} color={colors.tertiary} />
             <Text variant="labelSmall" style={{ color: colors.tertiary }}>To Receive</Text>
-            <Text variant="titleMedium" style={{ color: colors.tertiary, fontWeight: 'bold' }}>
+            <Text variant="titleSmall" style={{ color: colors.tertiary, fontWeight: 'bold' }} numberOfLines={1} adjustsFontSizeToFit>
               {formatAmount(totalLoansToReceive)}
             </Text>
             <Text variant="labelSmall" style={{ color: colors.tertiary }}>{lentLoans.length} loans</Text>
@@ -321,7 +404,7 @@ export default function LoansScreen() {
           <Surface style={[styles.statCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
             <MaterialCommunityIcons name="calendar-clock" size={24} color={colors.primary} />
             <Text variant="labelSmall" style={{ color: colors.primary }}>Installments</Text>
-            <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
+            <Text variant="titleSmall" style={{ color: colors.primary, fontWeight: 'bold' }} numberOfLines={1} adjustsFontSizeToFit>
               {formatAmount(totalUpcomingInstallments)}
             </Text>
             <Text variant="labelSmall" style={{ color: colors.primary }}>upcoming</Text>
@@ -329,15 +412,38 @@ export default function LoansScreen() {
           <Surface style={[styles.statCard, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
             <MaterialCommunityIcons name="format-list-bulleted" size={24} color={colors.onSurfaceVariant} />
             <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Active</Text>
-            <Text variant="titleMedium" style={{ color: colors.onSurfaceVariant, fontWeight: 'bold' }}>
+            <Text variant="titleSmall" style={{ color: colors.onSurfaceVariant, fontWeight: 'bold' }}>
               {activeLoans.length}
             </Text>
             <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>total loans</Text>
           </Surface>
         </View>
 
-        {viewLoans.length > 0 ? (
-          viewLoans.map((loan: Loan) => {
+        {/* Archived Toggle */}
+        {viewLoans.length > activeLoans.length && (
+          <TouchableOpacity
+            style={[styles.archivedToggle, { backgroundColor: colors.surfaceVariant }]}
+            onPress={() => setShowArchived(!showArchived)}
+          >
+            <MaterialCommunityIcons
+              name={showArchived ? "archive-off" : "archive"}
+              size={18}
+              color={colors.onSurfaceVariant}
+            />
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginLeft: 8 }}>
+              {showArchived ? 'Hide' : 'Show'} Archived ({viewLoans.length - activeLoans.length})
+            </Text>
+            <MaterialCommunityIcons
+              name={showArchived ? "chevron-up" : "chevron-down"}
+              size={20}
+              color={colors.onSurfaceVariant}
+              style={{ marginLeft: 'auto' }}
+            />
+          </TouchableOpacity>
+        )}
+
+        {(showArchived ? viewLoans : activeLoans).length > 0 ? (
+          (showArchived ? viewLoans : activeLoans).map((loan: Loan) => {
             const progress = calculateProgress(loan);
             const loanName = loan.loan_name || loan.name || 'Unnamed Loan';
             const originalAmount = parseFloat(String(loan.original_amount || loan.principal || 0));
@@ -369,30 +475,31 @@ export default function LoansScreen() {
                       <Text variant="titleMedium" style={{ color: colors.onSurface }}>
                         {loanName}
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Chip
-                          compact
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <View
                           style={{
                             backgroundColor: isLent ? colors.tertiaryContainer : colors.errorContainer,
-                            height: 22,
-                          }}
-                          textStyle={{
-                            color: isLent ? colors.tertiary : colors.error,
-                            fontSize: 10
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 12,
                           }}
                         >
-                          {loanType}
-                        </Chip>
-                        <Chip
-                          compact
+                          <Text style={{ color: isLent ? colors.tertiary : colors.error, fontSize: 11, fontWeight: '500' }}>
+                            {loanType}
+                          </Text>
+                        </View>
+                        <View
                           style={{
                             backgroundColor: `${statusColor}20`,
-                            height: 22,
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 12,
                           }}
-                          textStyle={{ color: statusColor, fontSize: 10 }}
                         >
-                          {status}
-                        </Chip>
+                          <Text style={{ color: statusColor, fontSize: 11, fontWeight: '500' }}>
+                            {status}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                     <View style={styles.loanAmount}>
@@ -408,19 +515,19 @@ export default function LoansScreen() {
                   <View style={styles.loanDetails}>
                     <View style={styles.loanDetailItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Original</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
                         {formatAmount(originalAmount)}
                       </Text>
                     </View>
                     <View style={styles.loanDetailItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Interest</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
                         {interestRate}%
                       </Text>
                     </View>
                     <View style={styles.loanDetailItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Payment</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
                         {formatAmount(nextPayment)}
                       </Text>
                     </View>
@@ -473,10 +580,12 @@ export default function LoansScreen() {
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="hand-coin-outline" size={64} color={colors.onSurfaceVariant} />
             <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
-              No loans yet
+              No active loans
             </Text>
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
-              Track your loans and payments here
+              {viewLoans.length > 0
+                ? `${viewLoans.length} loan(s) archived/paid off`
+                : 'Track your loans and payments here'}
             </Text>
           </View>
         )}
@@ -510,11 +619,11 @@ export default function LoansScreen() {
             />
 
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
-              Loan Type
+              Loan Type *
             </Text>
             <SegmentedButtons
               value={formData.loan_type}
-              onValueChange={(value) => setFormData({ ...formData, loan_type: value as 'Borrowed' | 'Lent' })}
+              onValueChange={(value) => setFormData({ ...formData, loan_type: value as 'Borrowed' | 'Lent', category_id: '' })}
               buttons={[
                 {
                   value: 'Borrowed',
@@ -527,13 +636,132 @@ export default function LoansScreen() {
                   icon: 'cash-plus',
                 },
               ]}
-              style={{ marginBottom: 12 }}
+              style={{ marginBottom: 4 }}
             />
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginBottom: 12, marginTop: -4 }}>
+            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}>
               {formData.loan_type === 'Borrowed'
                 ? 'Money you received (Liability)'
                 : 'Money you gave (Asset)'}
             </Text>
+
+            {/* Category Selection */}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Category *
+            </Text>
+            {formData.category_id && (
+              <Chip
+                onClose={() => setFormData({ ...formData, category_id: '' })}
+                style={{ alignSelf: 'flex-start', marginBottom: 8, backgroundColor: colors.primaryContainer }}
+                textStyle={{ color: colors.primary }}
+              >
+                {getSelectedCategoryName()}
+              </Chip>
+            )}
+            <TouchableOpacity
+              style={[styles.pickerButton, { borderColor: colors.outline, backgroundColor: colors.surfaceVariant }]}
+              onPress={() => setShowCategoryPicker(!showCategoryPicker)}
+            >
+              <Text style={{ color: colors.onSurfaceVariant }}>
+                {formData.category_id ? getSelectedCategoryName() : 'Select category...'}
+              </Text>
+              <MaterialCommunityIcons
+                name={showCategoryPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {showCategoryPicker && (
+              <Surface style={[styles.dropdownList, { backgroundColor: colors.surface }]} elevation={2}>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  {categories.length === 0 ? (
+                    <Text style={{ padding: 12, color: colors.onSurfaceVariant, textAlign: 'center' }}>
+                      No {formData.loan_type === 'Lent' ? 'asset' : 'liability'} categories
+                    </Text>
+                  ) : (
+                    categories.map((cat) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.dropdownItem,
+                          String(formData.category_id) === String(cat.id) && { backgroundColor: `${colors.primary}15` }
+                        ]}
+                        onPress={() => {
+                          setFormData({ ...formData, category_id: String(cat.id) });
+                          setShowCategoryPicker(false);
+                        }}
+                      >
+                        <Text style={{ color: colors.onSurface }}>{cat.name}</Text>
+                        {String(formData.category_id) === String(cat.id) && (
+                          <MaterialCommunityIcons name="check" size={18} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+              </Surface>
+            )}
+
+            {/* Account Selection */}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 12, marginBottom: 8 }}>
+              Account *
+            </Text>
+            {formData.account_id && (
+              <Chip
+                onClose={() => setFormData({ ...formData, account_id: '' })}
+                style={{ alignSelf: 'flex-start', marginBottom: 8, backgroundColor: colors.primaryContainer }}
+                textStyle={{ color: colors.primary }}
+              >
+                {getSelectedAccountName(formData.account_id)}
+              </Chip>
+            )}
+            <TouchableOpacity
+              style={[styles.pickerButton, { borderColor: colors.outline, backgroundColor: colors.surfaceVariant }]}
+              onPress={() => setShowAccountPicker(!showAccountPicker)}
+            >
+              <Text style={{ color: colors.onSurfaceVariant }}>
+                {formData.account_id ? getSelectedAccountName(formData.account_id) : 'Select account...'}
+              </Text>
+              <MaterialCommunityIcons
+                name={showAccountPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {showAccountPicker && (
+              <Surface style={[styles.dropdownList, { backgroundColor: colors.surface }]} elevation={2}>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  {viewAccounts.length === 0 ? (
+                    <Text style={{ padding: 12, color: colors.onSurfaceVariant, textAlign: 'center' }}>
+                      No accounts available
+                    </Text>
+                  ) : (
+                    viewAccounts.map((acc: any) => (
+                      <TouchableOpacity
+                        key={acc.id}
+                        style={[
+                          styles.dropdownItem,
+                          String(formData.account_id) === String(acc.id) && { backgroundColor: `${colors.primary}15` }
+                        ]}
+                        onPress={() => {
+                          setFormData({ ...formData, account_id: String(acc.id) });
+                          setShowAccountPicker(false);
+                        }}
+                      >
+                        <View>
+                          <Text style={{ color: colors.onSurface }}>{acc.account_name}</Text>
+                          <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                            {formatAmount(acc.current_balance || acc.balance || 0)}
+                          </Text>
+                        </View>
+                        {String(formData.account_id) === String(acc.id) && (
+                          <MaterialCommunityIcons name="check" size={18} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+              </Surface>
+            )}
 
             <TextInput
               label="Original Amount *"
@@ -541,7 +769,7 @@ export default function LoansScreen() {
               onChangeText={(text) => setFormData({ ...formData, original_amount: text })}
               mode="outlined"
               keyboardType="decimal-pad"
-              style={styles.input}
+              style={[styles.input, { marginTop: 12 }]}
             />
 
             <TextInput
@@ -585,7 +813,7 @@ export default function LoansScreen() {
             </View>
 
             <TextInput
-              label="Start Date"
+              label="Start Date *"
               value={formData.start_date}
               onChangeText={(text) => setFormData({ ...formData, start_date: text })}
               mode="outlined"
@@ -633,51 +861,139 @@ export default function LoansScreen() {
           onDismiss={closePaymentModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 8 }}>
-            Make Payment
-          </Text>
-          {selectedLoan && (
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
-              {selectedLoan.loan_name || selectedLoan.name}
-            </Text>
-          )}
-
-          {selectedLoan && (
-            <Surface style={[styles.loanInfoCard, { backgroundColor: colors.surfaceVariant }]} elevation={0}>
-              <View style={styles.loanInfoRow}>
-                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Remaining Balance:</Text>
-                <Text variant="bodyMedium" style={{ color: colors.error }}>
-                  {formatAmount(selectedLoan.remaining_balance || 0)}
-                </Text>
-              </View>
-              <View style={styles.loanInfoRow}>
-                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Next Payment:</Text>
-                <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                  {formatAmount(selectedLoan.next_payment || selectedLoan.monthly_payment || 0)}
-                </Text>
-              </View>
-            </Surface>
-          )}
-
-          <TextInput
-            label="Payment Amount *"
-            value={paymentAmount}
-            onChangeText={setPaymentAmount}
-            mode="outlined"
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
-
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closePaymentModal}>Cancel</Button>
-            <Button
-              mode="contained"
-              onPress={handleMakePayment}
-              loading={paymentMutation.isPending}
-            >
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 8 }}>
               Make Payment
-            </Button>
-          </View>
+            </Text>
+            {selectedLoan && (
+              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
+                {selectedLoan.loan_name || selectedLoan.name}
+              </Text>
+            )}
+
+            {selectedLoan && (
+              <Surface style={[styles.loanInfoCard, { backgroundColor: colors.surfaceVariant }]} elevation={0}>
+                <View style={styles.loanInfoRow}>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Remaining Balance:</Text>
+                  <Text variant="bodyMedium" style={{ color: colors.error, fontWeight: '600' }}>
+                    {formatAmount(selectedLoan.remaining_balance || 0)}
+                  </Text>
+                </View>
+                <View style={styles.loanInfoRow}>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Suggested Payment:</Text>
+                  <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                    {formatAmount(selectedLoan.next_payment || selectedLoan.monthly_payment || 0)}
+                  </Text>
+                </View>
+              </Surface>
+            )}
+
+            <TextInput
+              label="Payment Amount *"
+              value={paymentData.payment_amount}
+              onChangeText={(text) => setPaymentData({ ...paymentData, payment_amount: text })}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            {/* Account Selection for Payment */}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              From Account *
+            </Text>
+            <TouchableOpacity
+              style={[styles.pickerButton, { borderColor: colors.outline, backgroundColor: colors.surfaceVariant }]}
+              onPress={() => setShowPaymentAccountPicker(!showPaymentAccountPicker)}
+            >
+              <Text style={{ color: colors.onSurfaceVariant }}>
+                {paymentData.account_id ? getSelectedAccountName(paymentData.account_id) : 'Select account...'}
+              </Text>
+              <MaterialCommunityIcons
+                name={showPaymentAccountPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {showPaymentAccountPicker && (
+              <Surface style={[styles.dropdownList, { backgroundColor: colors.surface }]} elevation={2}>
+                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                  {viewAccounts.map((acc: any) => (
+                    <TouchableOpacity
+                      key={acc.id}
+                      style={[
+                        styles.dropdownItem,
+                        String(paymentData.account_id) === String(acc.id) && { backgroundColor: `${colors.primary}15` }
+                      ]}
+                      onPress={() => {
+                        setPaymentData({ ...paymentData, account_id: String(acc.id) });
+                        setShowPaymentAccountPicker(false);
+                      }}
+                    >
+                      <View>
+                        <Text style={{ color: colors.onSurface }}>{acc.account_name}</Text>
+                        <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                          {formatAmount(acc.current_balance || acc.balance || 0)}
+                        </Text>
+                      </View>
+                      {String(paymentData.account_id) === String(acc.id) && (
+                        <MaterialCommunityIcons name="check" size={18} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Surface>
+            )}
+
+            <TextInput
+              label="Payment Date *"
+              value={paymentData.payment_date}
+              onChangeText={(text) => setPaymentData({ ...paymentData, payment_date: text })}
+              mode="outlined"
+              placeholder="YYYY-MM-DD"
+              style={[styles.input, { marginTop: 12 }]}
+            />
+
+            <TextInput
+              label="Next Payment Amount"
+              value={paymentData.next_payment}
+              onChangeText={(text) => setPaymentData({ ...paymentData, next_payment: text })}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              placeholder="Optional"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Next Payment Date"
+              value={paymentData.next_payment_date}
+              onChangeText={(text) => setPaymentData({ ...paymentData, next_payment_date: text })}
+              mode="outlined"
+              placeholder="YYYY-MM-DD (Optional)"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Notes"
+              value={paymentData.notes}
+              onChangeText={(text) => setPaymentData({ ...paymentData, notes: text })}
+              mode="outlined"
+              multiline
+              numberOfLines={2}
+              placeholder="Optional"
+              style={styles.input}
+            />
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closePaymentModal}>Cancel</Button>
+              <Button
+                mode="contained"
+                onPress={handleMakePayment}
+                loading={paymentMutation.isPending}
+              >
+                Make Payment
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </SafeAreaView>
@@ -817,5 +1133,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 4,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dropdownList: {
+    borderRadius: 8,
+    marginTop: 4,
+    marginBottom: 8,
+    padding: 4,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 6,
+  },
+  archivedToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
   },
 });

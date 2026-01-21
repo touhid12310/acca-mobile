@@ -189,7 +189,7 @@ export default function BillsScreen() {
   };
 
   // Calculate stats
-  const viewBills = bills || [];
+  const viewBills = Array.isArray(bills) ? bills : [];
   const totalMonthlyBills = viewBills
     .filter((b: Bill) => b.frequency?.toLowerCase() === 'monthly')
     .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);

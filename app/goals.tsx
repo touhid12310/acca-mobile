@@ -333,20 +333,21 @@ export default function GoalsScreen() {
                   <View style={styles.amountsContainer}>
                     <View style={styles.amountItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Target</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                        {formatAmount(goal.target_amount)}
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                        {formatAmount(parseFloat(String(goal.target_amount || (goal as any).amount || 0)))}
                       </Text>
                     </View>
                     <View style={styles.amountItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Saved</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.tertiary }}>
-                        {formatAmount(goal.current_amount || 0)}
+                      <Text variant="bodyMedium" style={{ color: colors.tertiary, fontWeight: '600' }}>
+                        {formatAmount(parseFloat(String(goal.current_amount || (goal as any).saved_amount || 0)))}
                       </Text>
                     </View>
                     <View style={styles.amountItem}>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Remaining</Text>
-                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                        {formatAmount((goal.target_amount || 0) - (goal.current_amount || 0))}
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                        {formatAmount(parseFloat(String((goal as any).remaining_amount ||
+                          ((goal.target_amount || 0) - (goal.current_amount || 0)))))}
                       </Text>
                     </View>
                   </View>
@@ -505,20 +506,21 @@ export default function GoalsScreen() {
             <Surface style={[styles.goalInfoCard, { backgroundColor: colors.surfaceVariant }]} elevation={0}>
               <View style={styles.goalInfoRow}>
                 <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Target:</Text>
-                <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                  {formatAmount(selectedGoal.target_amount)}
+                <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                  {formatAmount(parseFloat(String(selectedGoal.target_amount || (selectedGoal as any).amount || 0)))}
                 </Text>
               </View>
               <View style={styles.goalInfoRow}>
                 <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Saved:</Text>
-                <Text variant="bodyMedium" style={{ color: colors.tertiary }}>
-                  {formatAmount(selectedGoal.current_amount || 0)}
+                <Text variant="bodyMedium" style={{ color: colors.tertiary, fontWeight: '600' }}>
+                  {formatAmount(parseFloat(String(selectedGoal.current_amount || (selectedGoal as any).saved_amount || 0)))}
                 </Text>
               </View>
               <View style={styles.goalInfoRow}>
                 <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Remaining:</Text>
-                <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                  {formatAmount((selectedGoal.target_amount || 0) - (selectedGoal.current_amount || 0))}
+                <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                  {formatAmount(parseFloat(String((selectedGoal as any).remaining_amount ||
+                    ((selectedGoal.target_amount || 0) - (selectedGoal.current_amount || 0)))))}
                 </Text>
               </View>
             </Surface>

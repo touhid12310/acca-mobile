@@ -49,6 +49,7 @@ export default function BudgetsScreen() {
     name: '',
     budgeted_amount: '',
     period: 'monthly' as 'monthly' | 'weekly' | 'quarterly' | 'yearly',
+    start_date: new Date().toISOString().split('T')[0], // Today's date
     notes: '',
   });
   const [selectedCategories, setSelectedCategories] = useState<SelectedCategory[]>([]);
@@ -108,6 +109,7 @@ export default function BudgetsScreen() {
         name: data.name,
         budgeted_amount: parseFloat(data.budgeted_amount) || 0,
         period: data.period,
+        start_date: data.start_date || new Date().toISOString().split('T')[0],
         notes: data.notes || '',
         categories: data.categories.map(cat => ({
           category_id: cat.categoryId,
@@ -131,14 +133,28 @@ export default function BudgetsScreen() {
         name: data.name,
         budgeted_amount: parseFloat(data.budgeted_amount) || 0,
         period: data.period,
+        start_date: data.start_date || new Date().toISOString().split('T')[0],
         notes: data.notes || '',
         categories: data.categories.map(cat => ({
           category_id: cat.categoryId,
           subcategory_id: cat.subcategoryId,
         })),
       };
+      console.log('Update payload:', JSON.stringify(payload, null, 2));
       const result = await budgetService.update(id, payload);
-      if (!result.success) throw new Error(result.error);
+      console.log('Update result:', JSON.stringify(result, null, 2));
+      if (!result.success) {
+        const errorData = result.data as any;
+        const errorMsg = errorData?.message || result.error || 'Update failed';
+        const validationErrors = errorData?.errors;
+        if (validationErrors) {
+          const errorDetails = Object.entries(validationErrors)
+            .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(', ')}`)
+            .join('\n');
+          throw new Error(`${errorMsg}\n${errorDetails}`);
+        }
+        throw new Error(errorMsg);
+      }
       return result;
     },
     onSuccess: () => {
@@ -167,6 +183,9 @@ export default function BudgetsScreen() {
         name: budget.name,
         budgeted_amount: String((budget as any).budgeted_amount || (budget as any).amount || 0),
         period: budget.period || 'monthly',
+        start_date: (budget as any).start_date
+          ? (budget as any).start_date.split('T')[0]  // Handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm:ss' formats
+          : new Date().toISOString().split('T')[0],
         notes: (budget as any).notes || '',
       });
       // Set selected categories from budget
@@ -185,6 +204,7 @@ export default function BudgetsScreen() {
         name: '',
         budgeted_amount: '',
         period: 'monthly',
+        start_date: new Date().toISOString().split('T')[0],
         notes: '',
       });
       setSelectedCategories([]);
@@ -229,11 +249,22 @@ export default function BudgetsScreen() {
       Alert.alert('Error', 'Please enter a budget name');
       return;
     }
+    if (selectedCategories.length === 0) {
+      Alert.alert('Error', 'Please select at least one category');
+      return;
+    }
     if (!formData.budgeted_amount || parseFloat(formData.budgeted_amount) <= 0) {
       Alert.alert('Error', 'Please enter a valid amount');
       return;
     }
-    createMutation.mutate(formData);
+
+    const payload = { ...formData, categories: selectedCategories };
+
+    if (editingBudget) {
+      updateMutation.mutate({ id: editingBudget.id, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
   };
 
   const handleDelete = (budget: Budget) => {
@@ -479,66 +510,146 @@ export default function BudgetsScreen() {
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-            {editingBudget ? 'Edit Budget' : 'Add Budget'}
-          </Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              {editingBudget ? 'Edit Budget' : 'Add Budget'}
+            </Text>
 
-          <TextInput
-            label="Budget Name"
-            value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
-            mode="outlined"
-            style={styles.input}
-          />
+            <TextInput
+              label="Budget Name *"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              mode="outlined"
+              style={styles.input}
+            />
 
-          <TextInput
-            label="Budget Amount"
-            value={formData.budgeted_amount}
-            onChangeText={(text) => setFormData({ ...formData, budgeted_amount: text })}
-            mode="outlined"
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
+            {/* Categories Section */}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Categories *
+            </Text>
 
-          <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
-            Period
-          </Text>
-          <View style={styles.periodButtons}>
-            {['weekly', 'monthly', 'quarterly', 'yearly'].map((period) => (
-              <TouchableOpacity
-                key={period}
-                style={[
-                  styles.periodButton,
-                  {
-                    backgroundColor: formData.period === period ? colors.primaryContainer : colors.surfaceVariant,
-                    borderColor: formData.period === period ? colors.primary : 'transparent',
-                  },
-                ]}
-                onPress={() => setFormData({ ...formData, period: period as any })}
-              >
-                <Text
-                  style={{
-                    color: formData.period === period ? colors.primary : colors.onSurfaceVariant,
-                    fontWeight: formData.period === period ? '600' : '400',
-                    fontSize: 12,
-                  }}
-                >
-                  {period.charAt(0).toUpperCase() + period.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+            {/* Selected Categories */}
+            {selectedCategories.length > 0 && (
+              <View style={styles.selectedCategoriesContainer}>
+                {selectedCategories.map((cat, index) => (
+                  <Chip
+                    key={index}
+                    onClose={() => handleRemoveCategory(index)}
+                    style={[styles.selectedCategoryChip, { backgroundColor: colors.primaryContainer }]}
+                    textStyle={{ color: colors.primary, fontSize: 12 }}
+                  >
+                    {cat.displayName}
+                  </Chip>
+                ))}
+              </View>
+            )}
 
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeModal}>Cancel</Button>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              loading={createMutation.isPending}
+            {/* Category Picker Button */}
+            <TouchableOpacity
+              style={[styles.categoryPickerButton, { borderColor: colors.outline, backgroundColor: colors.surfaceVariant }]}
+              onPress={() => setShowCategoryPicker(!showCategoryPicker)}
             >
-              {editingBudget ? 'Update' : 'Add'}
-            </Button>
-          </View>
+              <Text style={{ color: colors.onSurfaceVariant }}>Select categories...</Text>
+              <MaterialCommunityIcons
+                name={showCategoryPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+
+            {/* Category Picker Dropdown */}
+            {showCategoryPicker && (
+              <Surface style={[styles.categoryDropdown, { backgroundColor: colors.surface }]} elevation={2}>
+                <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                  {availableCategories.map((category) => (
+                    <View key={category.id}>
+                      <TouchableOpacity
+                        style={styles.categoryOption}
+                        onPress={() => handleAddCategory(category)}
+                      >
+                        <Text style={{ color: colors.onSurface, fontWeight: '500' }}>{category.name}</Text>
+                      </TouchableOpacity>
+                      {category.subcategories && category.subcategories.length > 0 && (
+                        <View style={styles.subcategoriesList}>
+                          {category.subcategories.map((sub: any) => (
+                            <TouchableOpacity
+                              key={sub.id}
+                              style={styles.subcategoryOption}
+                              onPress={() => handleAddCategory(category, sub)}
+                            >
+                              <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
+                                › {sub.name}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+              </Surface>
+            )}
+
+            <TextInput
+              label="Budget Amount *"
+              value={formData.budgeted_amount}
+              onChangeText={(text) => setFormData({ ...formData, budgeted_amount: text })}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={[styles.input, { marginTop: 12 }]}
+            />
+
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Period *
+            </Text>
+            <View style={styles.periodButtons}>
+              {['weekly', 'monthly', 'quarterly', 'yearly'].map((period) => (
+                <TouchableOpacity
+                  key={period}
+                  style={[
+                    styles.periodButton,
+                    {
+                      backgroundColor: formData.period === period ? colors.primaryContainer : colors.surfaceVariant,
+                      borderColor: formData.period === period ? colors.primary : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, period: period as any })}
+                >
+                  <Text
+                    style={{
+                      color: formData.period === period ? colors.primary : colors.onSurfaceVariant,
+                      fontWeight: formData.period === period ? '600' : '400',
+                      fontSize: 11,
+                    }}
+                  >
+                    {period.charAt(0).toUpperCase() + period.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              label="Notes"
+              value={formData.notes}
+              onChangeText={(text) => setFormData({ ...formData, notes: text })}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.input}
+              placeholder="Optional notes about this budget"
+            />
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button
+                mode="contained"
+                onPress={handleSave}
+                loading={createMutation.isPending || updateMutation.isPending}
+              >
+                {editingBudget ? 'Update' : 'Add'}
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </SafeAreaView>
@@ -690,5 +801,39 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
     marginTop: 8,
+  },
+  selectedCategoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  selectedCategoryChip: {
+    marginBottom: 4,
+  },
+  categoryPickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  categoryDropdown: {
+    borderRadius: 8,
+    marginTop: 4,
+    padding: 8,
+    maxHeight: 220,
+  },
+  categoryOption: {
+    padding: 10,
+    borderRadius: 6,
+  },
+  subcategoriesList: {
+    paddingLeft: 16,
+  },
+  subcategoryOption: {
+    padding: 8,
+    borderRadius: 6,
   },
 });
