@@ -221,17 +221,6 @@ export default function TransactionsScreen() {
         // Account: check payment_method first, then account_id/account
         const accountId = item.payment_method || item.account_id || item.account?.id;
 
-        // Debug logging
-        console.log('Edit transaction:', {
-          id: item.id,
-          type: item.type,
-          payment_method: item.payment_method,
-          expense_categories: item.expense_categories,
-          categoryId,
-          subcategoryId,
-          accountId,
-        });
-
         router.push({
           pathname: '/transaction-modal',
           params: {

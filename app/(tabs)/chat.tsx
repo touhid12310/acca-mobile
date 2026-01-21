@@ -37,6 +37,72 @@ import accountService from '../../src/services/accountService';
 import { ChatMessage, ExpenseCandidate, Category, Account } from '../../src/types';
 import { formatDate, todayDateInputValue } from '../../src/utils/date';
 
+const API_BASE_URL = 'https://acca-api.autoaiassistant.com/';
+
+// Helper to ensure absolute URL for images
+const ensureAbsoluteUrl = (value?: string): string | null => {
+  if (!value || typeof value !== 'string') return null;
+  if (value.startsWith('blob:') || value.startsWith('data:') || value.startsWith('file:')) {
+    return value;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return value;
+  }
+  const normalizedBase = API_BASE_URL.replace(/\/$/, '');
+  const normalizedPath = value.replace(/^\/+/, '');
+  return `${normalizedBase}/${normalizedPath}`;
+};
+
+// Helper to extract attachment from a message
+const getMessageAttachment = (message: ChatMessage): { url: string; name: string; isImage: boolean } | null => {
+  const metadata = message.metadata || {};
+
+  // Try different paths for image/file URL
+  const candidates = [
+    message.image_path,
+    (metadata as any).receipt_path,
+    message.file_url,
+    (metadata as any).receipt_url,
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const url = ensureAbsoluteUrl(candidate);
+    if (url) {
+      const fileName = message.file_name || (metadata as any).receipt_name || 'attachment';
+      const mimeType = (message.file_mime || (metadata as any).receipt_mime || '').toLowerCase();
+      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fileName);
+      return { url, name: fileName, isImage };
+    }
+  }
+  return null;
+};
+
+// Helper to find related attachment for an assistant message (looks at preceding user message)
+const findRelatedAttachment = (
+  targetMessage: ChatMessage,
+  allMessages: ChatMessage[]
+): { url: string; name: string; isImage: boolean } | null => {
+  // First check if the target message itself has an attachment
+  const directAttachment = getMessageAttachment(targetMessage);
+  if (directAttachment) return directAttachment;
+
+  // Find the index of the target message
+  const targetIndex = allMessages.findIndex((m) => m.id === targetMessage.id);
+  if (targetIndex === -1) return null;
+
+  // Look backwards for the most recent user message with an attachment
+  for (let i = targetIndex - 1; i >= 0; i--) {
+    const msg = allMessages[i];
+    if (msg.is_user) {
+      const attachment = getMessageAttachment(msg);
+      if (attachment) return attachment;
+      break; // Stop at the first user message
+    }
+  }
+
+  return null;
+};
+
 const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
   is_user: false,
@@ -73,6 +139,92 @@ export default function ChatScreen() {
   const [previewCandidate, setPreviewCandidate] = useState<ExpenseCandidate | null>(
     null
   );
+
+  // Helper function to prepare transaction params for navigation (like web app)
+  const prepareTransactionParams = (candidate: ExpenseCandidate, receiptUri?: string) => {
+    const merchantName = candidate.merchant_name || 'Unknown';
+    const amount = candidate.amount || 0;
+    const transactionType = candidate.type || 'expense';
+    const date = candidate.date || new Date().toISOString().split('T')[0];
+    const notes = candidate.notes || '';
+
+    // Get IDs directly from candidate if available
+    let categoryId = candidate.category_id;
+    let subcategoryId = candidate.subcategory_id;
+    let accountId = candidate.payment_method_id;
+
+    // If category_id not provided but category name is, try to match from loaded categories
+    if (!categoryId && candidate.category && categoriesData) {
+      const categoryName = candidate.category.toLowerCase().trim();
+      for (const cat of categoriesData) {
+        if (cat.name.toLowerCase().trim() === categoryName) {
+          categoryId = cat.id;
+          break;
+        }
+        // Also check subcategories
+        if (cat.subcategories) {
+          for (const sub of cat.subcategories) {
+            if (sub.name.toLowerCase().trim() === categoryName) {
+              categoryId = cat.id;
+              subcategoryId = sub.id;
+              break;
+            }
+          }
+        }
+        if (categoryId) break;
+      }
+    }
+
+    // If payment_method_id not provided but payment_method name is, try to match from loaded accounts
+    if (!accountId && candidate.payment_method && paymentMethodsData) {
+      const paymentName = (candidate.payment_method as string).toLowerCase().trim();
+      for (const acc of paymentMethodsData) {
+        if (acc.account_name.toLowerCase().trim() === paymentName) {
+          accountId = acc.id;
+          break;
+        }
+      }
+    }
+
+    // Prepare items - if candidate has items, use them; otherwise create a default item
+    let itemsToSend: Array<{ name: string; quantity: number; price: number; total: number }> = [];
+
+    if (Array.isArray(candidate.items) && candidate.items.length > 0) {
+      itemsToSend = candidate.items.map((item, index) => {
+        const quantity = item.quantity || 1;
+        const price = item.price || 0;
+        const total = item.total || quantity * price;
+        return {
+          name: item.name || merchantName || `Item ${index + 1}`,
+          quantity,
+          price,
+          total,
+        };
+      });
+    } else {
+      // Create a single default item for simple transactions (like web app)
+      itemsToSend = [{
+        name: merchantName,
+        quantity: 1,
+        price: amount,
+        total: amount,
+      }];
+    }
+
+    return {
+      type: transactionType,
+      amount: amount.toString(),
+      merchant_name: merchantName,
+      description: '',
+      date: date,
+      category_id: categoryId?.toString() || '',
+      subcategory_id: subcategoryId?.toString() || '',
+      account_id: accountId?.toString() || '',
+      notes: notes,
+      items: JSON.stringify(itemsToSend),
+      receipt_uri: receiptUri || '',
+    };
+  };
 
   // Fetch categories for context
   const { data: categoriesData } = useQuery({
@@ -354,9 +506,13 @@ export default function ChatScreen() {
     inputRef.current?.focus();
   };
 
+  // Track receipt for preview modal
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | undefined>();
+
   // Handle preview candidate
-  const openPreview = (candidate: ExpenseCandidate) => {
+  const openPreview = (candidate: ExpenseCandidate, receiptUrl?: string) => {
     setPreviewCandidate(candidate);
+    setPreviewReceiptUrl(receiptUrl);
     setPreviewVisible(true);
   };
 
@@ -373,6 +529,11 @@ export default function ChatScreen() {
     const isUser = message.is_user;
     const candidates = getExpenseCandidates(message);
     const suggestedActions = message.metadata?.suggested_actions || [];
+    const attachment = getMessageAttachment(message);
+    // For assistant messages with candidates, find the related user attachment
+    const relatedAttachment = !isUser && candidates.length > 0
+      ? findRelatedAttachment(message, messages)
+      : null;
 
     return (
       <View
@@ -405,6 +566,32 @@ export default function ChatScreen() {
               : [styles.assistantBubble, { backgroundColor: colors.surfaceVariant }],
           ]}
         >
+          {/* Attachment preview (for user messages with images) */}
+          {attachment && attachment.isImage && (
+            <Image
+              source={{ uri: attachment.url }}
+              style={styles.messageImage}
+              resizeMode="cover"
+            />
+          )}
+
+          {/* Non-image attachment */}
+          {attachment && !attachment.isImage && (
+            <View style={[styles.fileAttachment, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : colors.surface }]}>
+              <MaterialCommunityIcons
+                name="file-document"
+                size={20}
+                color={isUser ? '#ffffff' : colors.primary}
+              />
+              <Text
+                style={{ color: isUser ? '#ffffff' : colors.onSurface, marginLeft: 8, flex: 1 }}
+                numberOfLines={1}
+              >
+                {attachment.name}
+              </Text>
+            </View>
+          )}
+
           {/* Message text */}
           {message.message && (
             <Text
@@ -455,15 +642,12 @@ export default function ChatScreen() {
                     mode="contained"
                     compact
                     onPress={() => {
+                      // Pass receipt URI if there's a related attachment
+                      const receiptUri = relatedAttachment?.url || attachment?.url;
+                      const params = prepareTransactionParams(candidate, receiptUri);
                       router.push({
                         pathname: '/transaction-modal',
-                        params: {
-                          type: candidate.type || 'expense',
-                          amount: (candidate.amount || 0).toString(),
-                          merchant_name: candidate.merchant_name || '',
-                          description: candidate.notes || '',
-                          date: candidate.date || new Date().toISOString().split('T')[0],
-                        },
+                        params,
                       });
                     }}
                     style={styles.previewButton}
@@ -796,16 +980,13 @@ export default function ChatScreen() {
                   mode="contained"
                   onPress={() => {
                     setPreviewVisible(false);
-                    router.push({
-                      pathname: '/transaction-modal',
-                      params: {
-                        type: previewCandidate?.type || 'expense',
-                        amount: (previewCandidate?.amount || 0).toString(),
-                        merchant_name: previewCandidate?.merchant_name || '',
-                        description: previewCandidate?.notes || '',
-                        date: previewCandidate?.date || new Date().toISOString().split('T')[0],
-                      },
-                    });
+                    if (previewCandidate) {
+                      const params = prepareTransactionParams(previewCandidate, previewReceiptUrl);
+                      router.push({
+                        pathname: '/transaction-modal',
+                        params,
+                      });
+                    }
                   }}
                   style={{ flex: 1 }}
                 >
@@ -894,6 +1075,19 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  messageImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  fileAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 8,
   },
   candidatesContainer: {
     marginTop: 12,

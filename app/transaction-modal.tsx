@@ -25,6 +25,8 @@ export default function TransactionModalScreen() {
     account_id?: string;
     notes?: string;
     date?: string;
+    items?: string; // JSON stringified items from chat
+    receipt_uri?: string; // Receipt image URI from chat
   }>();
 
   // Fetch full transaction data when editing (to get expense_categories and payment_method)
@@ -43,9 +45,6 @@ export default function TransactionModalScreen() {
     enabled: !!params.id, // Only fetch when editing
   });
 
-  // Debug logging
-  console.log('Transaction modal params:', params);
-  console.log('Fetched transaction:', fetchedTransaction);
 
   // Prepare initial data - prefer fetched data when editing
   const initialData: Partial<Transaction> | undefined = React.useMemo(() => {
@@ -66,14 +65,6 @@ export default function TransactionModalScreen() {
       // Account is stored as payment_method in the API
       const accountId = tx.payment_method || tx.account_id;
 
-      console.log('Extracted from fetched transaction:', {
-        categoryId,
-        subcategoryId,
-        accountId,
-        expense_categories: tx.expense_categories,
-        payment_method: tx.payment_method,
-      });
-
       return {
         id: tx.id,
         type: (tx.type?.toLowerCase() as TransactionType) || 'expense',
@@ -85,11 +76,32 @@ export default function TransactionModalScreen() {
         account_id: accountId,
         notes: tx.notes,
         date: tx.date,
+        items: tx.items, // Include items from API
       };
     }
 
     // Fall back to params for new transactions or pre-filling from chat
     if (params.type || params.amount) {
+      // Parse items from JSON string if provided
+      let parsedItems = undefined;
+      if (params.items) {
+        try {
+          parsedItems = JSON.parse(params.items);
+        } catch (e) {
+          console.warn('Failed to parse items JSON:', e);
+        }
+      }
+
+      // Build receipt object if URI provided
+      let receipt = undefined;
+      if (params.receipt_uri) {
+        receipt = {
+          uri: params.receipt_uri,
+          type: 'image/jpeg',
+          name: 'receipt.jpg',
+        };
+      }
+
       return {
         type: (params.type?.toLowerCase() as TransactionType) || 'expense',
         amount: params.amount ? parseFloat(params.amount) : undefined,
@@ -100,13 +112,13 @@ export default function TransactionModalScreen() {
         account_id: params.account_id ? parseInt(params.account_id) : undefined,
         notes: params.notes,
         date: params.date || new Date().toISOString(),
+        items: parsedItems,
+        receipt_path: params.receipt_uri, // Pass as receipt_path for display
       };
     }
 
     return undefined;
   }, [fetchedTransaction, params]);
-
-  console.log('Transaction modal initialData:', initialData);
 
   const createMutation = useMutation({
     mutationFn: async (data: TransactionFormData) => {
