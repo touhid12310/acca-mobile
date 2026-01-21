@@ -15,16 +15,34 @@ import {
   TextInput,
   Button,
   Divider,
+  IconButton,
+  Menu,
+  Chip,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import accountService from '../src/services/accountService';
+import transactionService from '../src/services/transactionService';
+import categoryService from '../src/services/categoryService';
 import { Account, Transaction } from '../src/types';
+
+interface ReconcileTransaction {
+  date: string;
+  merchant_name: string;
+  description?: string;
+  amount: number;
+  type: 'income' | 'expense' | 'transfer';
+  category_id?: number;
+  notes?: string;
+  isMatched?: boolean;
+  matchedData?: Transaction;
+}
 
 const accountTypeOptions = [
   { value: 'Cash', label: 'Cash' },
@@ -52,6 +70,15 @@ export default function AccountDetailScreen() {
     account_type: 'Bank Account',
     balance: '',
   });
+
+  // Reconcile state
+  const [isProcessingCsv, setIsProcessingCsv] = useState(false);
+  const [reconcileData, setReconcileData] = useState<ReconcileTransaction[]>([]);
+  const [matchedCount, setMatchedCount] = useState(0);
+  const [unmatchedCount, setUnmatchedCount] = useState(0);
+  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
 
   // Fetch account details
   const {
@@ -209,6 +236,223 @@ export default function AccountDetailScreen() {
       month: 'short',
       day: 'numeric',
     });
+  };
+
+  // Reconcile functions
+  const loadCategories = async (type: string) => {
+    try {
+      const result = await categoryService.getForTransaction({ type });
+      if (result.success && result.data) {
+        const data = (result.data as any)?.data || result.data;
+        setCategories(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const handlePickCsv = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+
+      const file = result.assets[0];
+      setIsProcessingCsv(true);
+
+      const response = await transactionService.processCsv({
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || 'text/csv',
+      });
+
+      if (response.success && response.data) {
+        const csvData = (response.data as any)?.data || response.data;
+        const bankTransactions: ReconcileTransaction[] = (Array.isArray(csvData) ? csvData : []).map((tx: any) => ({
+          date: tx.date || '',
+          merchant_name: tx.merchant_name || tx.description || tx.payee || '',
+          description: tx.description || '',
+          amount: parseFloat(tx.amount) || 0,
+          type: tx.type || 'expense',
+          notes: tx.notes || tx.reference || '',
+          isMatched: false,
+        }));
+
+        // Match with existing account transactions
+        const existingTx = transactionsList || [];
+        let matched = 0;
+        let unmatched = 0;
+
+        const matchedData = bankTransactions.map((bankTx) => {
+          const match = existingTx.find((accTx: Transaction) => {
+            const bankDate = bankTx.date?.split('T')[0];
+            const accDate = (accTx.date || '').split('T')[0];
+            const amountMatch = Math.abs(Number(accTx.amount) - bankTx.amount) < 0.01;
+            const dateMatch = bankDate === accDate;
+            const merchantMatch = bankTx.merchant_name?.toLowerCase() === accTx.merchant_name?.toLowerCase();
+            return dateMatch && amountMatch && merchantMatch;
+          });
+
+          if (match) {
+            matched++;
+            return { ...bankTx, isMatched: true, matchedData: match };
+          } else {
+            unmatched++;
+            return bankTx;
+          }
+        });
+
+        setReconcileData(matchedData);
+        setMatchedCount(matched);
+        setUnmatchedCount(unmatched);
+
+        // Load categories for expense type by default
+        await loadCategories('expense');
+
+        Alert.alert('Success', `Processed ${bankTransactions.length} transactions. ${matched} matched, ${unmatched} unmatched.`);
+      } else {
+        Alert.alert('Error', response.error || 'Failed to process CSV');
+      }
+    } catch (error) {
+      console.error('Error picking CSV:', error);
+      Alert.alert('Error', 'Failed to pick or process CSV file');
+    } finally {
+      setIsProcessingCsv(false);
+    }
+  };
+
+  const handleUpdateReconcileItem = (index: number, field: string, value: any) => {
+    setReconcileData(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+
+      // If type changes, reload categories
+      if (field === 'type' && value) {
+        loadCategories(value);
+        updated[index].category_id = undefined;
+      }
+
+      return updated;
+    });
+  };
+
+  const handleSaveSingle = async (index: number) => {
+    const tx = reconcileData[index];
+    if (!tx.merchant_name || !tx.amount || !tx.date || !tx.type) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (tx.type !== 'transfer' && !tx.category_id) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
+
+    setSavingIndex(index);
+    try {
+      const result = await transactionService.bulkCreate([{
+        merchant_name: tx.merchant_name,
+        description: tx.description || tx.merchant_name,
+        amount: tx.amount,
+        type: tx.type,
+        date: tx.date,
+        category_id: tx.category_id,
+        payment_method: accountId,
+        notes: tx.notes,
+      }]);
+
+      if (result.success) {
+        // Remove saved transaction from list
+        setReconcileData(prev => prev.filter((_, i) => i !== index));
+        setUnmatchedCount(prev => prev - 1);
+        queryClient.invalidateQueries({ queryKey: ['transactions', 'account', accountId] });
+        Alert.alert('Success', 'Transaction saved');
+      } else {
+        Alert.alert('Error', result.error || 'Failed to save transaction');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save transaction');
+    } finally {
+      setSavingIndex(null);
+    }
+  };
+
+  const handleSkipTransaction = (index: number) => {
+    setReconcileData(prev => prev.filter((_, i) => i !== index));
+    const tx = reconcileData[index];
+    if (tx.isMatched) {
+      setMatchedCount(prev => prev - 1);
+    } else {
+      setUnmatchedCount(prev => prev - 1);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    const unmatchedTx = reconcileData.filter(tx => !tx.isMatched);
+
+    // Validate all transactions
+    const invalidTx = unmatchedTx.find(tx =>
+      !tx.merchant_name || !tx.amount || !tx.date || !tx.type || (tx.type !== 'transfer' && !tx.category_id)
+    );
+
+    if (invalidTx) {
+      Alert.alert('Error', 'Please fill in all required fields for all transactions');
+      return;
+    }
+
+    setSavingAll(true);
+    try {
+      const transactions = unmatchedTx.map(tx => ({
+        merchant_name: tx.merchant_name,
+        description: tx.description || tx.merchant_name,
+        amount: tx.amount,
+        type: tx.type,
+        date: tx.date,
+        category_id: tx.category_id,
+        payment_method: accountId,
+        notes: tx.notes,
+      }));
+
+      const result = await transactionService.bulkCreate(transactions);
+
+      if (result.success) {
+        setReconcileData([]);
+        setMatchedCount(0);
+        setUnmatchedCount(0);
+        queryClient.invalidateQueries({ queryKey: ['transactions', 'account', accountId] });
+        Alert.alert('Success', `${transactions.length} transactions saved`);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to save transactions');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save transactions');
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+  const handleClearReconcile = () => {
+    Alert.alert(
+      'Clear All',
+      'Are you sure you want to clear all reconciliation data?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            setReconcileData([]);
+            setMatchedCount(0);
+            setUnmatchedCount(0);
+          },
+        },
+      ]
+    );
   };
 
   if (accountLoading) {
@@ -474,38 +718,273 @@ export default function AccountDetailScreen() {
       )}
 
       {activeTab === 'reconcile' && (
-        <ScrollView contentContainerStyle={styles.tabContent}>
-          <Surface style={[styles.reconcileCard, { backgroundColor: colors.surface }]} elevation={1}>
-            <MaterialCommunityIcons name="check-decagram" size={48} color={colors.primary} />
-            <Text variant="titleMedium" style={{ color: colors.onSurface, marginTop: 12 }}>
-              Bank Reconciliation
-            </Text>
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, textAlign: 'center', marginTop: 8 }}>
-              Compare your account balance with your bank statement to ensure accuracy
-            </Text>
+        <View style={{ flex: 1 }}>
+          {reconcileData.length === 0 ? (
+            <ScrollView contentContainerStyle={styles.tabContent}>
+              {/* Upload Section */}
+              <Surface style={[styles.reconcileCard, { backgroundColor: colors.surface }]} elevation={1}>
+                <MaterialCommunityIcons name="file-upload" size={48} color={colors.primary} />
+                <Text variant="titleMedium" style={{ color: colors.onSurface, marginTop: 12 }}>
+                  Upload Bank Statement
+                </Text>
+                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, textAlign: 'center', marginTop: 8 }}>
+                  Upload a CSV file from your bank to match transactions with your records
+                </Text>
 
-            <Divider style={{ marginVertical: 20, width: '100%' }} />
+                <Divider style={{ marginVertical: 20, width: '100%' }} />
 
-            <View style={styles.reconcileRow}>
-              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>Account Balance:</Text>
-              <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
-                {formatAmount(accountBalance)}
-              </Text>
-            </View>
+                <View style={styles.reconcileRow}>
+                  <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>Account Balance:</Text>
+                  <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                    {formatAmount(accountBalance)}
+                  </Text>
+                </View>
 
-            <TextInput
-              label="Bank Statement Balance"
-              mode="outlined"
-              keyboardType="decimal-pad"
-              placeholder="Enter bank statement balance"
-              style={{ width: '100%', marginTop: 16 }}
+                <Button
+                  mode="contained"
+                  icon="upload"
+                  onPress={handlePickCsv}
+                  loading={isProcessingCsv}
+                  disabled={isProcessingCsv}
+                  style={{ marginTop: 20, width: '100%' }}
+                >
+                  {isProcessingCsv ? 'Processing...' : 'Choose CSV File'}
+                </Button>
+
+                <View style={{ marginTop: 20, width: '100%' }}>
+                  <Text variant="labelMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+                    CSV Format Required:
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    • Date, Description, Amount, Type, Payee, Reference
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    • Date format: YYYY-MM-DD
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    • Type: income, expense, or transfer
+                  </Text>
+                </View>
+              </Surface>
+            </ScrollView>
+          ) : (
+            <FlatList
+              data={reconcileData}
+              keyExtractor={(_, index) => `reconcile-${index}`}
+              contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 100 }}
+              ListHeaderComponent={() => (
+                <View style={{ marginBottom: 16 }}>
+                  {/* Summary Cards */}
+                  <View style={styles.reconcileSummary}>
+                    <Surface style={[styles.reconcileSummaryCard, { backgroundColor: colors.tertiary }]} elevation={1}>
+                      <MaterialCommunityIcons name="check-circle" size={24} color="#fff" />
+                      <Text variant="titleLarge" style={{ color: '#fff', fontWeight: 'bold' }}>{matchedCount}</Text>
+                      <Text variant="labelSmall" style={{ color: '#fff' }}>Matched</Text>
+                    </Surface>
+                    <Surface style={[styles.reconcileSummaryCard, { backgroundColor: colors.error }]} elevation={1}>
+                      <MaterialCommunityIcons name="alert-circle" size={24} color="#fff" />
+                      <Text variant="titleLarge" style={{ color: '#fff', fontWeight: 'bold' }}>{unmatchedCount}</Text>
+                      <Text variant="labelSmall" style={{ color: '#fff' }}>Unmatched</Text>
+                    </Surface>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <View style={styles.reconcileActions}>
+                    <Button
+                      mode="contained"
+                      icon="content-save-all"
+                      onPress={handleSaveAll}
+                      loading={savingAll}
+                      disabled={savingAll || unmatchedCount === 0}
+                      style={{ flex: 1 }}
+                    >
+                      Save All ({unmatchedCount})
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      icon="close"
+                      onPress={handleClearReconcile}
+                      disabled={savingAll}
+                      style={{ marginLeft: 8 }}
+                    >
+                      Clear
+                    </Button>
+                  </View>
+
+                  <Button
+                    mode="text"
+                    icon="plus"
+                    onPress={handlePickCsv}
+                    disabled={isProcessingCsv}
+                    style={{ marginTop: 8 }}
+                  >
+                    Add More CSV Data
+                  </Button>
+                </View>
+              )}
+              renderItem={({ item, index }) => {
+                const txColor = getTransactionColor(item.type);
+                const isProcessing = savingIndex === index;
+
+                return (
+                  <Surface style={[styles.reconcileItem, { backgroundColor: colors.surface }]} elevation={1}>
+                    {/* Status Badge */}
+                    <View style={[
+                      styles.reconcileStatusBadge,
+                      { backgroundColor: item.isMatched ? `${colors.tertiary}15` : `${colors.error}15` }
+                    ]}>
+                      <MaterialCommunityIcons
+                        name={item.isMatched ? 'check-circle' : 'alert-circle'}
+                        size={16}
+                        color={item.isMatched ? colors.tertiary : colors.error}
+                      />
+                      <Text style={{ color: item.isMatched ? colors.tertiary : colors.error, fontSize: 10, marginLeft: 4 }}>
+                        {item.isMatched ? 'Matched' : 'Unmatched'}
+                      </Text>
+                    </View>
+
+                    {/* Transaction Info */}
+                    <View style={styles.reconcileItemHeader}>
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          label="Merchant"
+                          value={item.merchant_name}
+                          onChangeText={(text) => handleUpdateReconcileItem(index, 'merchant_name', text)}
+                          mode="outlined"
+                          dense
+                          style={styles.reconcileInput}
+                        />
+                      </View>
+                      <View style={{ width: 100, marginLeft: 8 }}>
+                        <TextInput
+                          label="Amount"
+                          value={String(item.amount)}
+                          onChangeText={(text) => handleUpdateReconcileItem(index, 'amount', parseFloat(text) || 0)}
+                          mode="outlined"
+                          dense
+                          keyboardType="decimal-pad"
+                          style={styles.reconcileInput}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.reconcileItemRow}>
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          label="Date"
+                          value={item.date?.split('T')[0] || ''}
+                          onChangeText={(text) => handleUpdateReconcileItem(index, 'date', text)}
+                          mode="outlined"
+                          dense
+                          style={styles.reconcileInput}
+                        />
+                      </View>
+                      <View style={{ width: 110, marginLeft: 8 }}>
+                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}>Type</Text>
+                        <View style={styles.typeSelector}>
+                          {['income', 'expense'].map((type) => (
+                            <TouchableOpacity
+                              key={type}
+                              style={[
+                                styles.typeSelectorBtn,
+                                {
+                                  backgroundColor: item.type === type
+                                    ? (type === 'income' ? colors.tertiary : colors.error)
+                                    : colors.surfaceVariant,
+                                },
+                              ]}
+                              onPress={() => handleUpdateReconcileItem(index, 'type', type)}
+                            >
+                              <Text style={{
+                                color: item.type === type ? '#fff' : colors.onSurfaceVariant,
+                                fontSize: 10,
+                              }}>
+                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Category Selector */}
+                    {item.type !== 'transfer' && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}>Category</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            {categories.map((cat) => (
+                              <TouchableOpacity
+                                key={cat.id}
+                                style={[
+                                  styles.categoryChip,
+                                  {
+                                    backgroundColor: item.category_id === cat.id ? colors.primary : colors.surfaceVariant,
+                                  },
+                                ]}
+                                onPress={() => handleUpdateReconcileItem(index, 'category_id', cat.id)}
+                              >
+                                <Text style={{
+                                  color: item.category_id === cat.id ? '#fff' : colors.onSurfaceVariant,
+                                  fontSize: 11,
+                                }}>
+                                  {cat.name}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        </ScrollView>
+                      </View>
+                    )}
+
+                    {/* Notes */}
+                    <TextInput
+                      label="Notes"
+                      value={item.notes || ''}
+                      onChangeText={(text) => handleUpdateReconcileItem(index, 'notes', text)}
+                      mode="outlined"
+                      dense
+                      style={[styles.reconcileInput, { marginTop: 8 }]}
+                    />
+
+                    {/* Action Buttons */}
+                    <View style={styles.reconcileItemActions}>
+                      <Button
+                        mode="contained"
+                        onPress={() => handleSaveSingle(index)}
+                        loading={isProcessing}
+                        disabled={isProcessing || savingAll}
+                        style={{ flex: 1 }}
+                        compact
+                      >
+                        Create
+                      </Button>
+                      <Button
+                        mode="outlined"
+                        onPress={() => handleSkipTransaction(index)}
+                        disabled={isProcessing || savingAll}
+                        style={{ marginLeft: 8 }}
+                        compact
+                      >
+                        {item.isMatched ? 'Confirm Match' : 'Skip'}
+                      </Button>
+                    </View>
+
+                    {/* Matched Transaction Info */}
+                    {item.isMatched && item.matchedData && (
+                      <View style={[styles.matchedInfo, { backgroundColor: `${colors.tertiary}10` }]}>
+                        <MaterialCommunityIcons name="check-circle" size={14} color={colors.tertiary} />
+                        <Text variant="bodySmall" style={{ color: colors.tertiary, marginLeft: 6, flex: 1 }}>
+                          Matched: {item.matchedData.merchant_name} - {formatAmount(Number(item.matchedData.amount))}
+                        </Text>
+                      </View>
+                    )}
+                  </Surface>
+                );
+              }}
             />
-
-            <Button mode="contained" style={{ marginTop: 20, width: '100%' }}>
-              Start Reconciliation
-            </Button>
-          </Surface>
-        </ScrollView>
+          )}
+        </View>
       )}
 
       {activeTab === 'edit' && (
@@ -714,5 +1193,72 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+  // Reconcile styles
+  reconcileSummary: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  reconcileSummaryCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  reconcileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reconcileItem: {
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  reconcileStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  reconcileItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  reconcileItemRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+  },
+  reconcileInput: {
+    backgroundColor: 'transparent',
+  },
+  typeSelector: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  typeSelectorBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  categoryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  reconcileItemActions: {
+    flexDirection: 'row',
+    marginTop: 12,
+  },
+  matchedInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
   },
 });

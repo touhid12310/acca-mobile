@@ -215,7 +215,10 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
         maximumFractionDigits = 2,
       } = options;
 
-      const formatted = amount.toLocaleString(undefined, {
+      // Ensure amount is a valid number
+      const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+
+      const formatted = safeAmount.toLocaleString(undefined, {
         minimumFractionDigits,
         maximumFractionDigits,
       });
