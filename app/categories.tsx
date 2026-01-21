@@ -282,7 +282,12 @@ export default function CategoriesScreen() {
       </View>
 
       {/* Tabs */}
-      <View style={[styles.tabsWrapper, { backgroundColor: colors.surfaceVariant }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabsScrollView}
+        contentContainerStyle={styles.tabsScrollContent}
+      >
         {(Object.keys(typeConfig) as CategoryType[]).map((type) => {
           const config = typeConfig[type];
           const count = viewCategories.filter((c) => c.type === type).length;
@@ -292,50 +297,42 @@ export default function CategoriesScreen() {
             <TouchableOpacity
               key={type}
               style={[
-                styles.tab,
-                isActive && {
-                  backgroundColor: colors.surface,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 1 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 2,
-                  elevation: 2,
+                styles.tabChip,
+                {
+                  backgroundColor: isActive ? config.color : colors.surface,
+                  borderColor: isActive ? config.color : colors.surfaceVariant,
                 },
               ]}
               onPress={() => setActiveTab(type)}
+              activeOpacity={0.7}
             >
-              <View style={[
-                styles.tabIconWrapper,
-                { backgroundColor: isActive ? `${config.color}20` : 'transparent' }
-              ]}>
-                <MaterialCommunityIcons
-                  name={config.icon as any}
-                  size={14}
-                  color={isActive ? config.color : colors.onSurfaceVariant}
-                />
-              </View>
+              <MaterialCommunityIcons
+                name={config.icon as any}
+                size={16}
+                color={isActive ? '#fff' : colors.onSurfaceVariant}
+              />
               <Text
                 style={{
-                  color: isActive ? colors.onSurface : colors.onSurfaceVariant,
-                  fontWeight: isActive ? '600' : '500',
-                  fontSize: 11,
+                  color: isActive ? '#fff' : colors.onSurface,
+                  fontWeight: '600',
+                  fontSize: 13,
+                  marginHorizontal: 6,
                 }}
-                numberOfLines={1}
               >
                 {config.label}
               </Text>
               <View
                 style={[
-                  styles.tabBadge,
+                  styles.tabCount,
                   {
-                    backgroundColor: isActive ? config.color : `${colors.onSurfaceVariant}30`,
+                    backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.surfaceVariant,
                   },
                 ]}
               >
                 <Text style={{
                   color: isActive ? '#fff' : colors.onSurfaceVariant,
-                  fontSize: 9,
-                  fontWeight: 'bold'
+                  fontSize: 11,
+                  fontWeight: '600'
                 }}>
                   {count}
                 </Text>
@@ -343,7 +340,7 @@ export default function CategoriesScreen() {
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -650,36 +647,31 @@ const styles = StyleSheet.create({
   statItem: {
     alignItems: 'center',
   },
-  tabsWrapper: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    padding: 4,
-    borderRadius: 12,
-    gap: 4,
+  tabsScrollView: {
+    flexGrow: 0,
   },
-  tab: {
-    flex: 1,
+  tabsScrollContent: {
+    paddingLeft: 16,
+    paddingRight: 32,
+    paddingTop: 8,
+    paddingBottom: 8,
+    gap: 10,
+    alignItems: 'center',
+  },
+  tabChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
+    height: 44,
+    paddingLeft: 14,
+    paddingRight: 8,
+    borderRadius: 22,
+    borderWidth: 1.5,
+  },
+  tabCount: {
+    minWidth: 26,
+    height: 26,
     paddingHorizontal: 6,
-    borderRadius: 10,
-    gap: 4,
-  },
-  tabIconWrapper: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabBadge: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 5,
-    borderRadius: 9,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
