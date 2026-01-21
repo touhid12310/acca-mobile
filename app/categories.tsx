@@ -16,8 +16,7 @@ import {
   Modal,
   TextInput,
   Button,
-  Chip,
-  Divider,
+  Switch,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,19 +25,54 @@ import { router } from 'expo-router';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import categoryService from '../src/services/categoryService';
-import { Category } from '../src/types';
+
+type CategoryType = 'income' | 'expense' | 'asset' | 'liability';
+
+interface Category {
+  id: number;
+  name: string;
+  type: CategoryType;
+  color?: string;
+  icon?: string;
+  is_active?: boolean;
+  is_default?: boolean;
+  subcategories?: Subcategory[];
+}
+
+interface Subcategory {
+  id: number;
+  name: string;
+  category_id: number;
+  color?: string;
+  icon?: string;
+  is_active?: boolean;
+}
+
+const typeConfig: Record<CategoryType, { label: string; icon: string; color: string }> = {
+  income: { label: 'Income', icon: 'trending-up', color: '#10B981' },
+  expense: { label: 'Expense', icon: 'trending-down', color: '#EF4444' },
+  asset: { label: 'Asset', icon: 'domain', color: '#3B82F6' },
+  liability: { label: 'Liability', icon: 'credit-card', color: '#F59E0B' },
+};
 
 export default function CategoriesScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
 
+  const [activeTab, setActiveTab] = useState<CategoryType>('income');
   const [modalVisible, setModalVisible] = useState(false);
-  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [subcategoryModalVisible, setSubcategoryModalVisible] = useState(false);
+  const [selectedParentCategory, setSelectedParentCategory] = useState<Category | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    type: 'expense' as 'income' | 'expense',
-    icon: 'tag',
-    color: '#3B82F6',
+    type: 'income' as CategoryType,
+    color: '#10B981',
+    is_active: true,
+  });
+  const [subcategoryFormData, setSubcategoryFormData] = useState({
+    name: '',
+    color: '#10B981',
+    is_active: true,
   });
 
   const {
@@ -47,29 +81,25 @@ export default function CategoriesScreen() {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'tree'],
     queryFn: async () => {
-      const result = await categoryService.getGrouped();
+      const result = await categoryService.getAll(null, true);
       if (result.success && result.data) {
         const responseData = result.data as any;
-        const data = responseData?.data || responseData;
-        // Flatten grouped categories
-        const allCategories: Category[] = [];
-        if (data.income) allCategories.push(...data.income);
-        if (data.expense) allCategories.push(...data.expense);
-        return allCategories;
+        const data = responseData?.data || responseData || [];
+        return Array.isArray(data) ? data : [];
       }
       return [];
     },
   });
 
-  const createMutation = useMutation({
+  const createCategoryMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const result = await categoryService.create({
         name: data.name,
         type: data.type,
-        icon: data.icon,
         color: data.color,
+        is_active: data.is_active ? 1 : 0,
       });
       if (!result.success) throw new Error(result.error);
       return result;
@@ -81,9 +111,29 @@ export default function CategoriesScreen() {
     onError: (error: Error) => Alert.alert('Error', error.message),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const result = await categoryService.delete(id);
+  const createSubcategoryMutation = useMutation({
+    mutationFn: async ({ parentId, data }: { parentId: number; data: typeof subcategoryFormData }) => {
+      const result = await categoryService.createSubcategory({
+        name: data.name,
+        category_id: parentId,
+        color: data.color,
+        is_active: data.is_active ? 1 : 0,
+      });
+      if (!result.success) throw new Error(result.error);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      closeSubcategoryModal();
+    },
+    onError: (error: Error) => Alert.alert('Error', error.message),
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async ({ id, isSubcategory }: { id: number; isSubcategory: boolean }) => {
+      const result = isSubcategory
+        ? await categoryService.deleteSubcategory(id)
+        : await categoryService.delete(id);
       if (!result.success) throw new Error(result.error);
       return result;
     },
@@ -93,12 +143,12 @@ export default function CategoriesScreen() {
     onError: (error: Error) => Alert.alert('Error', error.message),
   });
 
-  const openModal = () => {
+  const openModal = (type?: CategoryType) => {
     setFormData({
       name: '',
-      type: 'expense',
-      icon: 'tag',
-      color: '#3B82F6',
+      type: type || activeTab,
+      color: typeConfig[type || activeTab].color,
+      is_active: true,
     });
     setModalVisible(true);
   };
@@ -107,45 +157,78 @@ export default function CategoriesScreen() {
     setModalVisible(false);
   };
 
-  const handleSave = () => {
+  const openSubcategoryModal = (parentCategory: Category) => {
+    setSelectedParentCategory(parentCategory);
+    setSubcategoryFormData({
+      name: '',
+      color: parentCategory.color || typeConfig[parentCategory.type].color,
+      is_active: true,
+    });
+    setSubcategoryModalVisible(true);
+  };
+
+  const closeSubcategoryModal = () => {
+    setSubcategoryModalVisible(false);
+    setSelectedParentCategory(null);
+  };
+
+  const handleSaveCategory = () => {
     if (!formData.name.trim()) {
       Alert.alert('Error', 'Please enter a category name');
       return;
     }
-    createMutation.mutate(formData);
+    createCategoryMutation.mutate(formData);
   };
 
-  const handleDelete = (category: Category) => {
-    if (category.is_default) {
+  const handleSaveSubcategory = () => {
+    if (!subcategoryFormData.name.trim()) {
+      Alert.alert('Error', 'Please enter a subcategory name');
+      return;
+    }
+    if (!selectedParentCategory) return;
+    createSubcategoryMutation.mutate({
+      parentId: selectedParentCategory.id,
+      data: subcategoryFormData,
+    });
+  };
+
+  const handleDelete = (item: Category | Subcategory, isSubcategory: boolean) => {
+    if ((item as Category).is_default) {
       Alert.alert('Cannot Delete', 'Default categories cannot be deleted');
       return;
     }
+    const itemType = isSubcategory ? 'subcategory' : 'category';
+    const hasSubcats = !isSubcategory && (item as Category).subcategories?.length;
     Alert.alert(
-      'Delete Category',
-      `Are you sure you want to delete "${category.name}"?`,
+      `Delete ${itemType}`,
+      `Are you sure you want to delete "${item.name}"?${hasSubcats ? '\n\nWarning: This will also delete all subcategories.' : ''}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteMutation.mutate(category.id),
+          onPress: () => deleteCategoryMutation.mutate({ id: item.id, isSubcategory }),
         },
       ]
     );
   };
 
-  const filteredCategories = (categories || []).filter((cat: Category) => {
-    if (typeFilter === 'all') return true;
-    return cat.type === typeFilter;
-  });
+  // Calculate stats
+  const viewCategories: Category[] = categories || [];
+  const totalCategories = viewCategories.length;
+  const totalSubcategories = viewCategories.reduce(
+    (sum, cat) => sum + (cat.subcategories?.length || 0),
+    0
+  );
+  const incomeCount = viewCategories.filter((c) => c.type === 'income').length;
+  const expenseCount = viewCategories.filter((c) => c.type === 'expense').length;
+  const assetCount = viewCategories.filter((c) => c.type === 'asset').length;
+  const liabilityCount = viewCategories.filter((c) => c.type === 'liability').length;
 
-  const incomeCategories = filteredCategories.filter((c: Category) => c.type === 'income');
-  const expenseCategories = filteredCategories.filter((c: Category) => c.type === 'expense');
+  // Filter categories by active tab
+  const filteredCategories = viewCategories.filter((c) => c.type === activeTab);
 
-  const colorOptions = [
-    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-    '#F97316', '#EC4899', '#06B6D4', '#84CC16', '#6366F1',
-  ];
+  const getTypeColor = (type: CategoryType) => typeConfig[type]?.color || colors.primary;
 
   if (isLoading) {
     return (
@@ -156,66 +239,6 @@ export default function CategoriesScreen() {
       </SafeAreaView>
     );
   }
-
-  const renderCategoryList = (categoryList: Category[], title: string, typeColor: string) => {
-    if (categoryList.length === 0) return null;
-
-    return (
-      <View style={styles.section}>
-        <Text variant="titleMedium" style={[styles.sectionTitle, { color: colors.onSurface }]}>
-          {title}
-        </Text>
-        <Surface style={[styles.listCard, { backgroundColor: colors.surface }]} elevation={1}>
-          {categoryList.map((category: Category, index: number) => (
-            <React.Fragment key={category.id}>
-              <TouchableOpacity
-                style={styles.categoryItem}
-                onLongPress={() => handleDelete(category)}
-              >
-                <View
-                  style={[
-                    styles.categoryIcon,
-                    { backgroundColor: `${category.color || typeColor}20` },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={(category.icon as any) || 'tag'}
-                    size={20}
-                    color={category.color || typeColor}
-                  />
-                </View>
-                <View style={styles.categoryInfo}>
-                  <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
-                    {category.name}
-                  </Text>
-                  {category.subcategories && category.subcategories.length > 0 && (
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {category.subcategories.length} subcategories
-                    </Text>
-                  )}
-                </View>
-                {category.is_default && (
-                  <Chip
-                    compact
-                    style={{ backgroundColor: colors.surfaceVariant }}
-                    textStyle={{ color: colors.onSurfaceVariant, fontSize: 10 }}
-                  >
-                    Default
-                  </Chip>
-                )}
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={20}
-                  color={colors.onSurfaceVariant}
-                />
-              </TouchableOpacity>
-              {index < categoryList.length - 1 && <Divider style={{ marginLeft: 56 }} />}
-            </React.Fragment>
-          ))}
-        </Surface>
-      </View>
-    );
-  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -230,36 +253,96 @@ export default function CategoriesScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Filter Chips */}
-      <View style={styles.filterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.filterChips}>
-            <Chip
-              selected={typeFilter === 'all'}
-              onPress={() => setTypeFilter('all')}
-              style={styles.filterChip}
-              mode={typeFilter === 'all' ? 'flat' : 'outlined'}
+      {/* Stats Section */}
+      <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
+        <View style={styles.statItem}>
+          <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+            {totalCategories}
+          </Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Categories</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+            {totalSubcategories}
+          </Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Subcategories</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text variant="titleMedium" style={{ color: '#10B981', fontWeight: 'bold' }}>
+            {incomeCount}
+          </Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Income</Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text variant="titleMedium" style={{ color: '#EF4444', fontWeight: 'bold' }}>
+            {expenseCount}
+          </Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Expense</Text>
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View style={[styles.tabsWrapper, { backgroundColor: colors.surfaceVariant }]}>
+        {(Object.keys(typeConfig) as CategoryType[]).map((type) => {
+          const config = typeConfig[type];
+          const count = viewCategories.filter((c) => c.type === type).length;
+          const isActive = activeTab === type;
+
+          return (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.tab,
+                isActive && {
+                  backgroundColor: colors.surface,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 2,
+                  elevation: 2,
+                },
+              ]}
+              onPress={() => setActiveTab(type)}
             >
-              All
-            </Chip>
-            <Chip
-              selected={typeFilter === 'income'}
-              onPress={() => setTypeFilter('income')}
-              style={styles.filterChip}
-              mode={typeFilter === 'income' ? 'flat' : 'outlined'}
-            >
-              Income
-            </Chip>
-            <Chip
-              selected={typeFilter === 'expense'}
-              onPress={() => setTypeFilter('expense')}
-              style={styles.filterChip}
-              mode={typeFilter === 'expense' ? 'flat' : 'outlined'}
-            >
-              Expense
-            </Chip>
-          </View>
-        </ScrollView>
+              <View style={[
+                styles.tabIconWrapper,
+                { backgroundColor: isActive ? `${config.color}20` : 'transparent' }
+              ]}>
+                <MaterialCommunityIcons
+                  name={config.icon as any}
+                  size={14}
+                  color={isActive ? config.color : colors.onSurfaceVariant}
+                />
+              </View>
+              <Text
+                style={{
+                  color: isActive ? colors.onSurface : colors.onSurfaceVariant,
+                  fontWeight: isActive ? '600' : '500',
+                  fontSize: 11,
+                }}
+                numberOfLines={1}
+              >
+                {config.label}
+              </Text>
+              <View
+                style={[
+                  styles.tabBadge,
+                  {
+                    backgroundColor: isActive ? config.color : `${colors.onSurfaceVariant}30`,
+                  },
+                ]}
+              >
+                <Text style={{
+                  color: isActive ? '#fff' : colors.onSurfaceVariant,
+                  fontSize: 9,
+                  fontWeight: 'bold'
+                }}>
+                  {count}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <ScrollView
@@ -272,130 +355,264 @@ export default function CategoriesScreen() {
           />
         }
       >
+        {/* Tab Header */}
+        <View style={styles.tabHeader}>
+          <View>
+            <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+              {typeConfig[activeTab].label} Categories
+            </Text>
+            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+              {filteredCategories.length} categories
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.addButton, { backgroundColor: getTypeColor(activeTab) }]}
+            onPress={() => openModal(activeTab)}
+          >
+            <MaterialCommunityIcons name="plus" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 4 }}>Add</Text>
+          </TouchableOpacity>
+        </View>
+
         {filteredCategories.length > 0 ? (
-          <>
-            {typeFilter !== 'expense' && renderCategoryList(incomeCategories, 'Income Categories', colors.tertiary)}
-            {typeFilter !== 'income' && renderCategoryList(expenseCategories, 'Expense Categories', colors.error)}
-          </>
+          filteredCategories.map((category) => (
+            <Surface
+              key={category.id}
+              style={[styles.categoryCard, { backgroundColor: colors.surface }]}
+              elevation={1}
+            >
+              <TouchableOpacity
+                onLongPress={() => !category.is_default && handleDelete(category, false)}
+              >
+                <View style={styles.categoryHeader}>
+                  <View
+                    style={[
+                      styles.categoryColor,
+                      { backgroundColor: category.color || getTypeColor(category.type) },
+                    ]}
+                  />
+                  <View style={[styles.categoryIcon, { backgroundColor: `${category.color || getTypeColor(category.type)}15` }]}>
+                    <MaterialCommunityIcons
+                      name={(category.icon || 'folder') as any}
+                      size={20}
+                      color={category.color || getTypeColor(category.type)}
+                    />
+                  </View>
+                  <View style={styles.categoryInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text variant="titleMedium" style={{ color: colors.onSurface, flex: 1 }}>
+                        {category.name}
+                      </Text>
+                      {category.is_default && (
+                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                          Default
+                        </Text>
+                      )}
+                    </View>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      {category.subcategories && category.subcategories.length > 0
+                        ? `${category.subcategories.length} subcategories`
+                        : 'No subcategories'}
+                    </Text>
+                  </View>
+                  <View style={styles.categoryActions}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, { backgroundColor: `${colors.primary}15`, borderRadius: 16 }]}
+                      onPress={() => openSubcategoryModal(category)}
+                    >
+                      <MaterialCommunityIcons name="plus" size={18} color={colors.primary} />
+                    </TouchableOpacity>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        { backgroundColor: category.is_active !== false ? colors.tertiary : colors.error },
+                      ]}
+                    />
+                  </View>
+                </View>
+
+                {/* Subcategories */}
+                {category.subcategories && category.subcategories.length > 0 && (
+                  <View style={[styles.subcategoriesContainer, { borderTopColor: colors.surfaceVariant }]}>
+                    {category.subcategories.map((sub, index) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        style={[
+                          styles.subcategoryItem,
+                          { borderBottomColor: colors.surfaceVariant },
+                          index === category.subcategories!.length - 1 && { borderBottomWidth: 0 },
+                        ]}
+                        onLongPress={() => handleDelete(sub, true)}
+                      >
+                        <View
+                          style={[
+                            styles.subcategoryColor,
+                            { backgroundColor: sub.color || category.color || getTypeColor(category.type) },
+                          ]}
+                        />
+                        <Text variant="bodyMedium" style={{ color: colors.onSurface, flex: 1 }}>
+                          {sub.name}
+                        </Text>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            { backgroundColor: sub.is_active !== false ? colors.tertiary : colors.error },
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+            </Surface>
+          ))
         ) : (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="tag-off" size={64} color={colors.onSurfaceVariant} />
+            <MaterialCommunityIcons
+              name={(typeConfig[activeTab]?.icon || 'folder') as any}
+              size={64}
+              color={colors.onSurfaceVariant}
+            />
             <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
-              No categories found
+              No {typeConfig[activeTab].label.toLowerCase()} categories yet
             </Text>
+            <TouchableOpacity
+              style={[styles.createButton, { backgroundColor: getTypeColor(activeTab) }]}
+              onPress={() => openModal(activeTab)}
+            >
+              <MaterialCommunityIcons name="plus" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 4 }}>
+                Create First {typeConfig[activeTab].label}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        color={colors.onPrimary}
-        onPress={openModal}
+        style={[styles.fab, { backgroundColor: getTypeColor(activeTab) }]}
+        color="#fff"
+        onPress={() => openModal()}
       />
 
-      {/* Add Modal */}
+      {/* Create Category Modal */}
       <Portal>
         <Modal
           visible={modalVisible}
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-            Add Category
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              Create New Category
+            </Text>
+
+            <TextInput
+              label="Category Name *"
+              value={formData.name}
+              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              mode="outlined"
+              style={styles.input}
+            />
+
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Type
+            </Text>
+            <View style={styles.typeButtons}>
+              {(Object.keys(typeConfig) as CategoryType[]).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    {
+                      backgroundColor: formData.type === type ? `${typeConfig[type].color}20` : colors.surfaceVariant,
+                      borderColor: formData.type === type ? typeConfig[type].color : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, type, color: typeConfig[type].color })}
+                >
+                  <MaterialCommunityIcons
+                    name={typeConfig[type].icon as any}
+                    size={16}
+                    color={formData.type === type ? typeConfig[type].color : colors.onSurfaceVariant}
+                  />
+                  <Text
+                    style={{
+                      color: formData.type === type ? typeConfig[type].color : colors.onSurfaceVariant,
+                      fontSize: 11,
+                      marginLeft: 2,
+                    }}
+                  >
+                    {typeConfig[type].label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.switchRow}>
+              <Text variant="bodyMedium" style={{ color: colors.onSurface }}>Active</Text>
+              <Switch
+                value={formData.is_active}
+                onValueChange={(value) => setFormData({ ...formData, is_active: value })}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button
+                mode="contained"
+                onPress={handleSaveCategory}
+                loading={createCategoryMutation.isPending}
+                buttonColor={typeConfig[formData.type].color}
+              >
+                Create
+              </Button>
+            </View>
+          </ScrollView>
+        </Modal>
+      </Portal>
+
+      {/* Create Subcategory Modal */}
+      <Portal>
+        <Modal
+          visible={subcategoryModalVisible}
+          onDismiss={closeSubcategoryModal}
+          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+        >
+          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 4 }}>
+            Create Subcategory
           </Text>
+          {selectedParentCategory && (
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
+              Under: {selectedParentCategory.name}
+            </Text>
+          )}
 
           <TextInput
-            label="Category Name"
-            value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
+            label="Subcategory Name *"
+            value={subcategoryFormData.name}
+            onChangeText={(text) => setSubcategoryFormData({ ...subcategoryFormData, name: text })}
             mode="outlined"
             style={styles.input}
           />
 
-          <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
-            Type
-          </Text>
-          <View style={styles.typeButtons}>
-            <TouchableOpacity
-              style={[
-                styles.typeButton,
-                {
-                  backgroundColor: formData.type === 'income' ? colors.tertiaryContainer : colors.surfaceVariant,
-                  borderColor: formData.type === 'income' ? colors.tertiary : 'transparent',
-                },
-              ]}
-              onPress={() => setFormData({ ...formData, type: 'income' })}
-            >
-              <MaterialCommunityIcons
-                name="arrow-up"
-                size={20}
-                color={formData.type === 'income' ? colors.tertiary : colors.onSurfaceVariant}
-              />
-              <Text
-                style={{
-                  color: formData.type === 'income' ? colors.tertiary : colors.onSurfaceVariant,
-                  marginLeft: 4,
-                }}
-              >
-                Income
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.typeButton,
-                {
-                  backgroundColor: formData.type === 'expense' ? colors.errorContainer : colors.surfaceVariant,
-                  borderColor: formData.type === 'expense' ? colors.error : 'transparent',
-                },
-              ]}
-              onPress={() => setFormData({ ...formData, type: 'expense' })}
-            >
-              <MaterialCommunityIcons
-                name="arrow-down"
-                size={20}
-                color={formData.type === 'expense' ? colors.error : colors.onSurfaceVariant}
-              />
-              <Text
-                style={{
-                  color: formData.type === 'expense' ? colors.error : colors.onSurfaceVariant,
-                  marginLeft: 4,
-                }}
-              >
-                Expense
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8, marginTop: 8 }}>
-            Color
-          </Text>
-          <View style={styles.colorGrid}>
-            {colorOptions.map((color) => (
-              <TouchableOpacity
-                key={color}
-                style={[
-                  styles.colorOption,
-                  { backgroundColor: color },
-                  formData.color === color && styles.colorSelected,
-                ]}
-                onPress={() => setFormData({ ...formData, color })}
-              >
-                {formData.color === color && (
-                  <MaterialCommunityIcons name="check" size={16} color="white" />
-                )}
-              </TouchableOpacity>
-            ))}
+          <View style={styles.switchRow}>
+            <Text variant="bodyMedium" style={{ color: colors.onSurface }}>Active</Text>
+            <Switch
+              value={subcategoryFormData.is_active}
+              onValueChange={(value) => setSubcategoryFormData({ ...subcategoryFormData, is_active: value })}
+            />
           </View>
 
           <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeModal}>Cancel</Button>
+            <Button mode="text" onPress={closeSubcategoryModal}>Cancel</Button>
             <Button
               mode="contained"
-              onPress={handleSave}
-              loading={createMutation.isPending}
+              onPress={handleSaveSubcategory}
+              loading={createSubcategoryMutation.isPending}
             >
-              Add
+              Create
             </Button>
           </View>
         </Modal>
@@ -422,20 +639,52 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: 'bold',
   },
-  filterContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  filterChips: {
+  statsRow: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 12,
   },
-  filterChip: {
-    height: 32,
+  statItem: {
+    alignItems: 'center',
+  },
+  tabsWrapper: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    gap: 4,
+  },
+  tabIconWrapper: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadge: {
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     padding: 16,
-    paddingTop: 8,
     paddingBottom: 100,
   },
   loadingContainer: {
@@ -443,21 +692,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  section: {
-    marginBottom: 20,
+  tabHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  sectionTitle: {
-    fontWeight: '600',
-    marginBottom: 8,
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
   },
-  listCard: {
+  categoryCard: {
     borderRadius: 12,
+    marginBottom: 12,
     overflow: 'hidden',
   },
-  categoryItem: {
+  categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
+  },
+  categoryColor: {
+    width: 4,
+    height: 40,
+    borderRadius: 2,
+    marginRight: 12,
   },
   categoryIcon: {
     width: 40,
@@ -470,9 +732,51 @@ const styles = StyleSheet.create({
   categoryInfo: {
     flex: 1,
   },
+  categoryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 8,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  subcategoriesContainer: {
+    marginLeft: 56,
+    borderTopWidth: 1,
+  },
+  subcategoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  subcategoryColor: {
+    width: 3,
+    height: 20,
+    borderRadius: 2,
+    marginRight: 12,
+  },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 64,
+  },
+  createButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 16,
   },
   fab: {
     position: 'absolute',
@@ -483,40 +787,30 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
+    maxHeight: '80%',
   },
   input: {
     marginBottom: 12,
   },
   typeButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 8,
-  },
-  typeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  colorGrid: {
-    flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
     marginBottom: 16,
   },
-  colorOption: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  typeButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  colorSelected: {
-    borderWidth: 3,
-    borderColor: 'white',
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalButtons: {
     flexDirection: 'row',

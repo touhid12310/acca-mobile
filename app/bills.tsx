@@ -26,9 +26,10 @@ import { router } from 'expo-router';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import billService from '../src/services/billService';
+import categoryService from '../src/services/categoryService';
 import { Bill } from '../src/types';
 
-const frequencyOptions = ['monthly', 'weekly', 'yearly', 'one-time'];
+const frequencyOptions = ['Weekly', 'Monthly', 'Quarterly', 'Yearly'];
 
 export default function BillsScreen() {
   const { colors } = useTheme();
@@ -37,10 +38,12 @@ export default function BillsScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
+    vendor: '',
     amount: '',
-    due_date: '',
-    frequency: 'monthly' as Bill['frequency'],
+    frequency: 'Monthly' as string,
+    next_due_date: '',
+    notes: '',
+    category_id: '',
   });
 
   const {
@@ -60,13 +63,33 @@ export default function BillsScreen() {
     },
   });
 
+  // Fetch expense categories for selection
+  const { data: categories } = useQuery({
+    queryKey: ['categories', 'expense'],
+    queryFn: async () => {
+      const result = await categoryService.getForTransaction('expense');
+      if (result.success && result.data) {
+        const responseData = result.data as any;
+        const payload = responseData?.data || responseData || [];
+        return Array.isArray(payload) ? payload : [];
+      }
+      return [];
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const result = await billService.create({
-        name: data.name,
+        name: data.vendor, // Use vendor as name
+        vendor: data.vendor,
+        contact_name: data.vendor,
         amount: parseFloat(data.amount) || 0,
-        due_date: data.due_date || new Date().toISOString().split('T')[0],
         frequency: data.frequency,
+        next_due_date: data.next_due_date || new Date().toISOString().split('T')[0],
+        due_date: data.next_due_date || new Date().toISOString().split('T')[0],
+        notes: data.notes,
+        category_id: data.category_id ? parseInt(data.category_id) : undefined,
+        status: 'scheduled',
       });
       if (!result.success) throw new Error(result.error);
       return result;
@@ -92,10 +115,12 @@ export default function BillsScreen() {
 
   const openModal = () => {
     setFormData({
-      name: '',
+      vendor: '',
       amount: '',
-      due_date: new Date().toISOString().split('T')[0],
-      frequency: 'monthly',
+      frequency: 'Monthly',
+      next_due_date: new Date().toISOString().split('T')[0],
+      notes: '',
+      category_id: '',
     });
     setModalVisible(true);
   };
@@ -105,8 +130,8 @@ export default function BillsScreen() {
   };
 
   const handleSave = () => {
-    if (!formData.name.trim()) {
-      Alert.alert('Error', 'Please enter a bill name');
+    if (!formData.vendor.trim()) {
+      Alert.alert('Error', 'Please enter a vendor name');
       return;
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
@@ -117,9 +142,10 @@ export default function BillsScreen() {
   };
 
   const handleDelete = (bill: Bill) => {
+    const billName = bill.name || bill.contact_name || bill.vendor || 'this bill';
     Alert.alert(
-      'Delete Bill',
-      `Are you sure you want to delete "${bill.name}"?`,
+      'Delete Repeating Expense',
+      `Are you sure you want to delete "${billName}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -132,23 +158,47 @@ export default function BillsScreen() {
   };
 
   const getDaysUntilDue = (dueDate: string) => {
+    if (!dueDate) return null;
     const today = new Date();
     const due = new Date(dueDate);
     const diffTime = due.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  const getDueStatusColor = (daysUntil: number) => {
+  const getDueStatusColor = (daysUntil: number | null) => {
+    if (daysUntil === null) return colors.onSurfaceVariant;
     if (daysUntil < 0) return colors.error;
     if (daysUntil <= 3) return '#F59E0B';
     if (daysUntil <= 7) return colors.primary;
     return colors.tertiary;
   };
 
-  const totalMonthlyBills = (bills || [])
-    .filter((b: Bill) => b.frequency === 'monthly')
-    .reduce((sum: number, b: Bill) => sum + (b.amount || 0), 0);
+  const getStatusColor = (status?: string) => {
+    switch (status?.toLowerCase()) {
+      case 'paid': return colors.tertiary;
+      case 'scheduled': return colors.primary;
+      case 'overdue': return colors.error;
+      default: return colors.onSurfaceVariant;
+    }
+  };
+
+  const getCategoryName = (categoryId?: number | string) => {
+    if (!categoryId || !categories) return null;
+    const category = categories.find((c: any) => c.id === Number(categoryId));
+    return category?.name || null;
+  };
+
+  // Calculate stats
+  const viewBills = bills || [];
+  const totalMonthlyBills = viewBills
+    .filter((b: Bill) => b.frequency?.toLowerCase() === 'monthly')
+    .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
+  const totalWeeklyBills = viewBills
+    .filter((b: Bill) => b.frequency?.toLowerCase() === 'weekly')
+    .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
+  const totalYearlyBills = viewBills
+    .filter((b: Bill) => b.frequency?.toLowerCase() === 'yearly')
+    .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
 
   if (isLoading) {
     return (
@@ -168,7 +218,7 @@ export default function BillsScreen() {
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
         </TouchableOpacity>
         <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Bills
+          Repeating Expenses
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -183,21 +233,42 @@ export default function BillsScreen() {
           />
         }
       >
-        {/* Monthly Total Card */}
-        {bills && bills.length > 0 && (
-          <Surface style={[styles.totalCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
-            <Text variant="bodyMedium" style={{ color: colors.primary }}>Monthly Bills</Text>
-            <Text variant="headlineMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
-              {formatAmount(totalMonthlyBills)}
-            </Text>
-          </Surface>
+        {/* Stats Section */}
+        {viewBills.length > 0 && (
+          <View style={styles.statsContainer}>
+            <Surface style={[styles.statCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
+              <MaterialCommunityIcons name="calendar-month" size={20} color={colors.primary} />
+              <Text variant="labelSmall" style={{ color: colors.primary }}>Monthly</Text>
+              <Text variant="titleSmall" style={{ color: colors.primary, fontWeight: 'bold' }}>
+                {formatAmount(totalMonthlyBills)}
+              </Text>
+            </Surface>
+            <Surface style={[styles.statCard, { backgroundColor: colors.tertiaryContainer }]} elevation={1}>
+              <MaterialCommunityIcons name="calendar-week" size={20} color={colors.tertiary} />
+              <Text variant="labelSmall" style={{ color: colors.tertiary }}>Weekly</Text>
+              <Text variant="titleSmall" style={{ color: colors.tertiary, fontWeight: 'bold' }}>
+                {formatAmount(totalWeeklyBills)}
+              </Text>
+            </Surface>
+            <Surface style={[styles.statCard, { backgroundColor: colors.secondaryContainer }]} elevation={1}>
+              <MaterialCommunityIcons name="calendar" size={20} color={colors.secondary} />
+              <Text variant="labelSmall" style={{ color: colors.secondary }}>Yearly</Text>
+              <Text variant="titleSmall" style={{ color: colors.secondary, fontWeight: 'bold' }}>
+                {formatAmount(totalYearlyBills)}
+              </Text>
+            </Surface>
+          </View>
         )}
 
-        {bills && bills.length > 0 ? (
-          bills.map((bill: Bill) => {
-            const daysUntil = getDaysUntilDue(bill.due_date);
+        {viewBills.length > 0 ? (
+          viewBills.map((bill: Bill) => {
+            const dueDate = bill.next_due_date || bill.due_date;
+            const daysUntil = getDaysUntilDue(dueDate);
             const statusColor = getDueStatusColor(daysUntil);
-            const isPaid = bill.is_paid;
+            const billName = bill.name || bill.contact_name || bill.vendor || 'Unnamed Bill';
+            const categoryName = getCategoryName(bill.category_id);
+            const status = bill.status || 'scheduled';
+            const isPaid = bill.is_paid || status.toLowerCase() === 'paid';
 
             return (
               <Surface
@@ -209,28 +280,39 @@ export default function BillsScreen() {
                   <View style={styles.billHeader}>
                     <View style={[styles.billIcon, { backgroundColor: `${statusColor}15` }]}>
                       <MaterialCommunityIcons
-                        name={isPaid ? 'check-circle' : 'calendar-clock'}
+                        name={isPaid ? 'check-circle' : 'repeat'}
                         size={24}
                         color={statusColor}
                       />
                     </View>
                     <View style={styles.billInfo}>
                       <Text variant="titleMedium" style={{ color: colors.onSurface }}>
-                        {bill.name}
+                        {billName}
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                          {bill.frequency ? bill.frequency.charAt(0).toUpperCase() + bill.frequency.slice(1) : 'Monthly'}
-                        </Text>
-                        {isPaid && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Chip
+                          compact
+                          style={{ backgroundColor: colors.surfaceVariant, height: 22 }}
+                          textStyle={{ color: colors.onSurfaceVariant, fontSize: 10 }}
+                        >
+                          {bill.frequency || 'Monthly'}
+                        </Chip>
+                        {categoryName && (
                           <Chip
                             compact
-                            style={{ backgroundColor: colors.tertiaryContainer }}
-                            textStyle={{ color: colors.tertiary, fontSize: 10 }}
+                            style={{ backgroundColor: colors.primaryContainer, height: 22 }}
+                            textStyle={{ color: colors.primary, fontSize: 10 }}
                           >
-                            Paid
+                            {categoryName}
                           </Chip>
                         )}
+                        <Chip
+                          compact
+                          style={{ backgroundColor: `${getStatusColor(status)}20`, height: 22 }}
+                          textStyle={{ color: getStatusColor(status), fontSize: 10 }}
+                        >
+                          {status}
+                        </Chip>
                       </View>
                     </View>
                     <View style={styles.billAmount}>
@@ -240,12 +322,18 @@ export default function BillsScreen() {
                     </View>
                   </View>
 
+                  {bill.notes && (
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginTop: 8 }}>
+                      {bill.notes}
+                    </Text>
+                  )}
+
                   <View style={[styles.dueInfo, { borderTopColor: colors.surfaceVariant }]}>
                     <MaterialCommunityIcons name="calendar" size={16} color={colors.onSurfaceVariant} />
                     <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginLeft: 4 }}>
-                      Due: {new Date(bill.due_date).toLocaleDateString()}
+                      Next Due: {dueDate ? new Date(dueDate).toLocaleDateString() : 'Not set'}
                     </Text>
-                    {!isPaid && (
+                    {!isPaid && daysUntil !== null && (
                       <Text
                         variant="labelSmall"
                         style={{
@@ -268,12 +356,12 @@ export default function BillsScreen() {
           })
         ) : (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="calendar-blank" size={64} color={colors.onSurfaceVariant} />
+            <MaterialCommunityIcons name="repeat" size={64} color={colors.onSurfaceVariant} />
             <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
-              No bills yet
+              No repeating expenses yet
             </Text>
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
-              Add recurring bills to track due dates
+              Track your recurring expenses and never miss a payment
             </Text>
           </View>
         )}
@@ -293,66 +381,142 @@ export default function BillsScreen() {
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-            Add Bill
-          </Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              Create Repeating Expense
+            </Text>
 
-          <TextInput
-            label="Bill Name"
-            value={formData.name}
-            onChangeText={(text) => setFormData({ ...formData, name: text })}
-            mode="outlined"
-            style={styles.input}
-          />
+            <TextInput
+              label="Vendor *"
+              value={formData.vendor}
+              onChangeText={(text) => setFormData({ ...formData, vendor: text })}
+              mode="outlined"
+              placeholder="Netflix, Electricity, etc."
+              style={styles.input}
+            />
 
-          <TextInput
-            label="Amount"
-            value={formData.amount}
-            onChangeText={(text) => setFormData({ ...formData, amount: text })}
-            mode="outlined"
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
+            <TextInput
+              label="Amount *"
+              value={formData.amount}
+              onChangeText={(text) => setFormData({ ...formData, amount: text })}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
 
-          <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
-            Frequency
-          </Text>
-          <View style={styles.frequencyButtons}>
-            {frequencyOptions.map((freq) => (
-              <TouchableOpacity
-                key={freq}
-                style={[
-                  styles.frequencyButton,
-                  {
-                    backgroundColor: formData.frequency === freq ? colors.primaryContainer : colors.surfaceVariant,
-                    borderColor: formData.frequency === freq ? colors.primary : 'transparent',
-                  },
-                ]}
-                onPress={() => setFormData({ ...formData, frequency: freq as Bill['frequency'] })}
-              >
-                <Text
-                  style={{
-                    color: formData.frequency === freq ? colors.primary : colors.onSurfaceVariant,
-                    fontWeight: formData.frequency === freq ? '600' : '400',
-                    fontSize: 12,
-                  }}
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Frequency
+            </Text>
+            <View style={styles.frequencyButtons}>
+              {frequencyOptions.map((freq) => (
+                <TouchableOpacity
+                  key={freq}
+                  style={[
+                    styles.frequencyButton,
+                    {
+                      backgroundColor: formData.frequency === freq ? colors.primaryContainer : colors.surfaceVariant,
+                      borderColor: formData.frequency === freq ? colors.primary : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, frequency: freq })}
                 >
-                  {freq.charAt(0).toUpperCase() + freq.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+                  <Text
+                    style={{
+                      color: formData.frequency === freq ? colors.primary : colors.onSurfaceVariant,
+                      fontWeight: formData.frequency === freq ? '600' : '400',
+                      fontSize: 12,
+                    }}
+                  >
+                    {freq}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeModal}>Cancel</Button>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              loading={createMutation.isPending}
-            >
-              Add
-            </Button>
-          </View>
+            {categories && categories.length > 0 && (
+              <>
+                <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 8 }}>
+                  Category
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.categoryChip,
+                        {
+                          backgroundColor: !formData.category_id ? colors.primaryContainer : colors.surfaceVariant,
+                          borderColor: !formData.category_id ? colors.primary : 'transparent',
+                        },
+                      ]}
+                      onPress={() => setFormData({ ...formData, category_id: '' })}
+                    >
+                      <Text
+                        style={{
+                          color: !formData.category_id ? colors.primary : colors.onSurfaceVariant,
+                          fontSize: 12,
+                        }}
+                      >
+                        None
+                      </Text>
+                    </TouchableOpacity>
+                    {categories.map((cat: any) => (
+                      <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                          styles.categoryChip,
+                          {
+                            backgroundColor: formData.category_id === String(cat.id) ? colors.primaryContainer : colors.surfaceVariant,
+                            borderColor: formData.category_id === String(cat.id) ? colors.primary : 'transparent',
+                          },
+                        ]}
+                        onPress={() => setFormData({ ...formData, category_id: String(cat.id) })}
+                      >
+                        <Text
+                          style={{
+                            color: formData.category_id === String(cat.id) ? colors.primary : colors.onSurfaceVariant,
+                            fontSize: 12,
+                          }}
+                        >
+                          {cat.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
+            )}
+
+            <TextInput
+              label="Next Due Date"
+              value={formData.next_due_date}
+              onChangeText={(text) => setFormData({ ...formData, next_due_date: text })}
+              mode="outlined"
+              placeholder="YYYY-MM-DD"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Notes"
+              value={formData.notes}
+              onChangeText={(text) => setFormData({ ...formData, notes: text })}
+              mode="outlined"
+              multiline
+              numberOfLines={2}
+              placeholder="Account number, reference, etc."
+              style={styles.input}
+            />
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button
+                mode="contained"
+                onPress={handleSave}
+                loading={createMutation.isPending}
+              >
+                Save
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </SafeAreaView>
@@ -386,11 +550,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  totalCard: {
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
+  statsContainer: {
+    flexDirection: 'row',
+    gap: 8,
     marginBottom: 20,
+  },
+  statCard: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 2,
   },
   billCard: {
     borderRadius: 12,
@@ -435,6 +605,7 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
+    maxHeight: '85%',
   },
   input: {
     marginBottom: 12,
@@ -443,9 +614,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   frequencyButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  categoryChip: {
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
