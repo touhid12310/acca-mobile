@@ -12,12 +12,10 @@ import {
   Surface,
   FAB,
   ActivityIndicator,
-  Divider,
   Portal,
   Modal,
   TextInput,
   Button,
-  SegmentedButtons,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -27,24 +25,30 @@ import { router } from 'expo-router';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import accountService from '../src/services/accountService';
-import { Account, AccountType } from '../src/types';
+import { Account } from '../src/types';
 
 const accountTypeOptions = [
-  { value: 'checking', label: 'Checking' },
-  { value: 'savings', label: 'Savings' },
-  { value: 'credit', label: 'Credit' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'investment', label: 'Investment' },
+  { value: 'Cash', label: 'Cash' },
+  { value: 'Bank Account', label: 'Bank Account' },
+  { value: 'Savings Account', label: 'Savings' },
+  { value: 'Credit Card', label: 'Credit Card' },
+  { value: 'Mobile Banking/e-Wallet', label: 'e-Wallet' },
+  { value: 'Loan Account', label: 'Loan' },
+  { value: 'Investment Account', label: 'Investment' },
+  { value: 'Digital Bank Account', label: 'Digital Bank' },
+  { value: 'Prepaid Card', label: 'Prepaid' },
+  { value: 'Other', label: 'Other' },
 ];
 
-const accountIcons: Record<string, string> = {
-  checking: 'bank',
-  savings: 'piggy-bank',
-  credit: 'credit-card',
-  cash: 'cash',
-  investment: 'chart-line',
-  loan: 'hand-coin',
-  other: 'wallet',
+const getAccountIcon = (type: string = ''): string => {
+  const normalized = type.toLowerCase();
+  if (normalized.includes('cash')) return 'cash';
+  if (normalized.includes('credit') || normalized.includes('card')) return 'credit-card';
+  if (normalized.includes('wallet') || normalized.includes('mobile')) return 'wallet';
+  if (normalized.includes('savings') || normalized.includes('piggy')) return 'piggy-bank';
+  if (normalized.includes('investment')) return 'chart-line';
+  if (normalized.includes('loan')) return 'hand-coin';
+  return 'bank';
 };
 
 export default function AccountsScreen() {
@@ -53,10 +57,9 @@ export default function AccountsScreen() {
   const queryClient = useQueryClient();
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [formData, setFormData] = useState({
     account_name: '',
-    account_type: 'checking' as AccountType,
+    account_type: 'Bank Account' as string,
     balance: '',
   });
 
@@ -95,24 +98,6 @@ export default function AccountsScreen() {
     onError: (error: Error) => Alert.alert('Error', error.message),
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
-      const result = await accountService.update(id, {
-        account_name: data.account_name,
-        account_type: data.account_type,
-        balance: parseFloat(data.balance) || 0,
-      });
-      if (!result.success) throw new Error(result.error);
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      closeModal();
-    },
-    onError: (error: Error) => Alert.alert('Error', error.message),
-  });
-
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await accountService.delete(id);
@@ -126,28 +111,17 @@ export default function AccountsScreen() {
     onError: (error: Error) => Alert.alert('Error', error.message),
   });
 
-  const openModal = (account?: Account) => {
-    if (account) {
-      setEditingAccount(account);
-      setFormData({
-        account_name: account.account_name,
-        account_type: account.account_type,
-        balance: String(account.balance || 0),
-      });
-    } else {
-      setEditingAccount(null);
-      setFormData({
-        account_name: '',
-        account_type: 'checking',
-        balance: '',
-      });
-    }
+  const openAddModal = () => {
+    setFormData({
+      account_name: '',
+      account_type: 'Bank Account',
+      balance: '',
+    });
     setModalVisible(true);
   };
 
   const closeModal = () => {
     setModalVisible(false);
-    setEditingAccount(null);
   };
 
   const handleSave = () => {
@@ -155,12 +129,7 @@ export default function AccountsScreen() {
       Alert.alert('Error', 'Please enter an account name');
       return;
     }
-
-    if (editingAccount) {
-      updateMutation.mutate({ id: editingAccount.id, data: formData });
-    } else {
-      createMutation.mutate(formData);
-    }
+    createMutation.mutate(formData);
   };
 
   const handleDelete = (account: Account) => {
@@ -178,10 +147,28 @@ export default function AccountsScreen() {
     );
   };
 
-  const totalBalance = (accounts || []).reduce(
-    (sum: number, acc: Account) => sum + (acc.balance || 0),
+  const handleAccountPress = (account: Account) => {
+    router.push(`/account-detail?id=${account.id}`);
+  };
+
+  // Calculate stats
+  const viewAccounts = accounts || [];
+  const totalBalance = viewAccounts.reduce(
+    (sum: number, acc: Account) => {
+      const balance = Number(acc.current_balance) || Number(acc.balance) || 0;
+      return sum + balance;
+    },
     0
   );
+  const accountsCount = viewAccounts.length;
+  const uniqueTypes = new Set(viewAccounts.map((acc: Account) => acc.type || acc.account_type || 'Other')).size;
+  const topAccount = viewAccounts.length > 0
+    ? viewAccounts.reduce((prev: Account, current: Account) => {
+        const prevBalance = Number(prev.current_balance) || Number(prev.balance) || 0;
+        const currBalance = Number(current.current_balance) || Number(current.balance) || 0;
+        return currBalance > prevBalance ? current : prev;
+      }, viewAccounts[0])
+    : null;
 
   if (isLoading) {
     return (
@@ -216,53 +203,107 @@ export default function AccountsScreen() {
           />
         }
       >
-        {/* Total Balance Card */}
-        <Surface style={[styles.totalCard, { backgroundColor: colors.primaryContainer }]} elevation={1}>
-          <Text variant="bodyMedium" style={{ color: colors.primary }}>Total Balance</Text>
-          <Text variant="headlineMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
-            {formatAmount(totalBalance)}
-          </Text>
-        </Surface>
+        {/* Stats Section */}
+        <View style={styles.statsGrid}>
+          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
+            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.primary}15` }]}>
+              <MaterialCommunityIcons name="wallet" size={20} color={colors.primary} />
+            </View>
+            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Total Balance</Text>
+            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+              {formatAmount(totalBalance)}
+            </Text>
+          </Surface>
+
+          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
+            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.tertiary}15` }]}>
+              <MaterialCommunityIcons name="bank" size={20} color={colors.tertiary} />
+            </View>
+            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Accounts</Text>
+            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+              {accountsCount}
+            </Text>
+          </Surface>
+
+          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
+            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.secondary}15` }]}>
+              <MaterialCommunityIcons name="star" size={20} color={colors.secondary} />
+            </View>
+            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Top Account</Text>
+            <Text variant="titleSmall" style={{ color: colors.onSurface, fontWeight: '600' }} numberOfLines={1}>
+              {topAccount?.account_name || '-'}
+            </Text>
+          </Surface>
+
+          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
+            <View style={[styles.statIconWrapper, { backgroundColor: '#F59E0B15' }]}>
+              <MaterialCommunityIcons name="shape" size={20} color="#F59E0B" />
+            </View>
+            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Types</Text>
+            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+              {uniqueTypes}
+            </Text>
+          </Surface>
+        </View>
 
         {/* Accounts List */}
-        {accounts && accounts.length > 0 ? (
-          <Surface style={[styles.listCard, { backgroundColor: colors.surface }]} elevation={1}>
-            {accounts.map((account: Account, index: number) => (
-              <React.Fragment key={account.id}>
-                <TouchableOpacity
-                  style={styles.accountItem}
-                  onPress={() => openModal(account)}
-                  onLongPress={() => handleDelete(account)}
+        {viewAccounts.length > 0 ? (
+          <View>
+            <Text variant="titleMedium" style={{ color: colors.onSurface, marginBottom: 12 }}>
+              All Accounts
+            </Text>
+            {viewAccounts.map((account: Account) => {
+              const accountType = account.type || account.account_type || 'Other';
+              const balance = account.current_balance || account.balance || 0;
+              const iconName = getAccountIcon(accountType);
+
+              return (
+                <Surface
+                  key={account.id}
+                  style={[styles.accountCard, { backgroundColor: colors.surface }]}
+                  elevation={1}
                 >
-                  <View style={[styles.accountIcon, { backgroundColor: `${colors.primary}15` }]}>
-                    <MaterialCommunityIcons
-                      name={(account.account_type && accountIcons[account.account_type]) || 'wallet'}
-                      size={24}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <View style={styles.accountInfo}>
-                    <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
-                      {account.account_name || 'Unnamed Account'}
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {account.account_type ? account.account_type.charAt(0).toUpperCase() + account.account_type.slice(1) : 'Other'}
-                    </Text>
-                  </View>
-                  <Text
-                    variant="titleMedium"
-                    style={{
-                      color: (account.balance || 0) >= 0 ? colors.tertiary : colors.error,
-                      fontWeight: '600',
-                    }}
+                  <TouchableOpacity
+                    style={styles.accountCardInner}
+                    onPress={() => handleAccountPress(account)}
+                    onLongPress={() => handleDelete(account)}
                   >
-                    {formatAmount(account.balance || 0)}
-                  </Text>
-                </TouchableOpacity>
-                {index < accounts.length - 1 && <Divider style={{ marginLeft: 72 }} />}
-              </React.Fragment>
-            ))}
-          </Surface>
+                    <View style={[styles.accountIcon, { backgroundColor: `${colors.primary}15` }]}>
+                      <MaterialCommunityIcons
+                        name={iconName as any}
+                        size={24}
+                        color={colors.primary}
+                      />
+                    </View>
+                    <View style={styles.accountInfo}>
+                      <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+                        {account.account_name || 'Unnamed Account'}
+                      </Text>
+                      <View style={[styles.typeBadge, { backgroundColor: `${colors.primary}10` }]}>
+                        <Text variant="labelSmall" style={{ color: colors.primary }}>
+                          {accountType}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.balanceContainer}>
+                      <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Balance
+                      </Text>
+                      <Text
+                        variant="titleMedium"
+                        style={{
+                          color: balance >= 0 ? colors.tertiary : colors.error,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {formatAmount(balance)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </Surface>
+              );
+            })}
+          </View>
         ) : (
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="bank-off" size={64} color={colors.onSurfaceVariant} />
@@ -280,7 +321,7 @@ export default function AccountsScreen() {
         icon="plus"
         style={[styles.fab, { backgroundColor: colors.primary }]}
         color={colors.onPrimary}
-        onPress={() => openModal()}
+        onPress={openAddModal}
       />
 
       {/* Add/Edit Modal */}
@@ -291,7 +332,7 @@ export default function AccountsScreen() {
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
           <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-            {editingAccount ? 'Edit Account' : 'Add Account'}
+            Add Account
           </Text>
 
           <TextInput
@@ -305,12 +346,35 @@ export default function AccountsScreen() {
           <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 8 }}>
             Account Type
           </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-            <SegmentedButtons
-              value={formData.account_type}
-              onValueChange={(value) => setFormData({ ...formData, account_type: value as AccountType })}
-              buttons={accountTypeOptions}
-            />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 16 }}
+            contentContainerStyle={{ gap: 8 }}
+          >
+            {accountTypeOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.typeChip,
+                  {
+                    backgroundColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
+                    borderColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
+                  },
+                ]}
+                onPress={() => setFormData({ ...formData, account_type: option.value })}
+              >
+                <Text
+                  style={{
+                    color: formData.account_type === option.value ? '#fff' : colors.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: '500',
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
 
           <TextInput
@@ -327,9 +391,9 @@ export default function AccountsScreen() {
             <Button
               mode="contained"
               onPress={handleSave}
-              loading={createMutation.isPending || updateMutation.isPending}
+              loading={createMutation.isPending}
             >
-              {editingAccount ? 'Update' : 'Add'}
+              Add
             </Button>
           </View>
         </Modal>
@@ -365,31 +429,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  totalCard: {
-    padding: 20,
-    borderRadius: 16,
-    alignItems: 'center',
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
     marginBottom: 20,
   },
-  listCard: {
+  statCard: {
+    width: '48%',
+    flexGrow: 1,
+    padding: 12,
     borderRadius: 12,
+    gap: 4,
+  },
+  statIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  accountCard: {
+    borderRadius: 12,
+    marginBottom: 10,
     overflow: 'hidden',
   },
-  accountItem: {
+  accountCardInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
   },
   accountIcon: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   accountInfo: {
     flex: 1,
+    gap: 4,
+  },
+  typeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  balanceContainer: {
+    alignItems: 'flex-end',
   },
   emptyState: {
     alignItems: 'center',
@@ -407,6 +497,12 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  typeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   modalButtons: {
     flexDirection: 'row',
