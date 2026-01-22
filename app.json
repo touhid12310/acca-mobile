@@ -57,7 +57,9 @@
           "photosPermission": "Allow ACCA to access your photos to upload receipts.",
           "cameraPermission": "Allow ACCA to access your camera to capture receipts."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
