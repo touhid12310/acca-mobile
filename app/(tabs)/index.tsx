@@ -5,6 +5,7 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import {
   Text,
@@ -180,11 +181,18 @@ export default function DashboardScreen() {
             style={[styles.avatarContainer, { backgroundColor: colors.primaryContainer }]}
             onPress={() => router.push('/(tabs)/more')}
           >
-            <MaterialCommunityIcons
-              name="account"
-              size={28}
-              color={colors.primary}
-            />
+            {user?.profile_picture_url ? (
+              <Image
+                source={{ uri: user.profile_picture_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <MaterialCommunityIcons
+                name="account"
+                size={28}
+                color={colors.primary}
+              />
+            )}
           </TouchableOpacity>
         </View>
 
@@ -487,6 +495,12 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   netWorthCard: {
     marginBottom: 16,

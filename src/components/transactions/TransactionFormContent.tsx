@@ -9,6 +9,7 @@ import {
   Image,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import {
   Text,
@@ -33,6 +34,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
 import categoryService from '../../services/categoryService';
 import accountService from '../../services/accountService';
+import transactionService from '../../services/transactionService';
+import { buildFileUrl } from '../../config/api';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
 import { formatDate } from '../../utils/date';
 
@@ -157,6 +160,9 @@ export default function TransactionFormContent({
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [showToAccountPicker, setShowToAccountPicker] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
+  const [processingStage, setProcessingStage] = useState('');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // Fetch categories based on transaction type
   // Pass the actual type to the API (asset, liability, income, expense)
@@ -194,8 +200,11 @@ export default function TransactionFormContent({
   const categories: Category[] = categoriesData || [];
   const accounts: Account[] = accountsData || [];
 
-  // Initialize form with initial data
+  // Initialize form with initial data - only once when data first becomes available
   useEffect(() => {
+    // Skip if already initialized to prevent overwriting user edits
+    if (isInitialized) return;
+
     if (initialData) {
       // Normalize type to lowercase
       const normalizedType = (initialData.type?.toLowerCase() || 'expense') as TransactionType;
@@ -217,9 +226,10 @@ export default function TransactionFormContent({
         receipt_type: (initialData as any).receipt_type || 'image',
         receipt_name: (initialData as any).receipt_name || 'receipt',
       });
+      setIsInitialized(true); // Mark as initialized
     }
     setErrors({});
-  }, [initialData]);
+  }, [initialData, isInitialized]);
 
   const updateField = <K extends keyof TransactionFormData>(
     field: K,
@@ -278,6 +288,178 @@ export default function TransactionFormContent({
         type: asset.mimeType || 'image/jpeg',
         name: 'receipt.jpg',
       });
+    }
+  };
+
+  // Process receipt with AI
+  const processReceiptWithAI = async (file: { uri: string; name: string; type: string }) => {
+    setIsProcessingReceipt(true);
+    setProcessingStage('Uploading receipt...');
+
+    try {
+      setProcessingStage('Analyzing with AI...');
+      const result = await transactionService.processReceipt(file);
+
+      if (result.success && result.data) {
+        const responseData = result.data as any;
+
+        // Handle different response structures
+        const data = responseData.data || responseData;
+
+        // Extract items from response
+        const items = data.items || data.expense_candidates?.[0]?.items || [];
+        const formItems: TransactionItemData[] = items.map((item: any) => ({
+          name: item.name || '',
+          quantity: item.quantity?.toString() || '1',
+          price: item.price?.toString() || '0',
+          total: item.total?.toString() || (parseFloat(item.quantity || 1) * parseFloat(item.price || 0)).toFixed(2),
+        }));
+
+        // Update form with extracted data
+        if (formItems.length > 0) {
+          updateField('items', formItems);
+          // Calculate total amount from items
+          const totalAmount = formItems.reduce((sum, item) => {
+            return sum + (parseFloat(item.total) || 0);
+          }, 0);
+          updateField('amount', totalAmount.toFixed(2));
+        } else if (data.amount) {
+          updateField('amount', data.amount.toString());
+        }
+
+        // Set merchant name (could be in merchant_name or item field)
+        if (data.merchant_name) {
+          updateField('merchant_name', data.merchant_name);
+        } else if (data.item) {
+          updateField('merchant_name', data.item);
+        }
+
+        // Set date
+        if (data.date) {
+          updateField('date', new Date(data.date));
+        }
+
+        // Set type first (needed for category matching)
+        const transactionType = data.type?.toLowerCase() as TransactionType || 'expense';
+        updateField('type', transactionType);
+
+        // Match category name to category ID
+        // Fetch categories for the new type directly since the query might not have updated yet
+        if (data.category) {
+          try {
+            const categoryResult = await categoryService.getForTransaction({ type: transactionType });
+            if (categoryResult.success && categoryResult.data) {
+              const categoryPayload = categoryResult.data as any;
+              let typeCategories: Category[] = [];
+              if (Array.isArray(categoryPayload)) typeCategories = categoryPayload;
+              else if (Array.isArray(categoryPayload.data)) typeCategories = categoryPayload.data;
+              else if (Array.isArray(categoryPayload.data?.data)) typeCategories = categoryPayload.data.data;
+
+              if (typeCategories.length > 0) {
+                const categoryName = data.category.toLowerCase().trim();
+
+                // Find matching category by name (case-insensitive)
+                const matchedCategory = typeCategories.find(cat =>
+                  cat.name.toLowerCase().trim() === categoryName ||
+                  cat.name.toLowerCase().includes(categoryName) ||
+                  categoryName.includes(cat.name.toLowerCase())
+                );
+
+                if (matchedCategory) {
+                  updateField('category_id', matchedCategory.id);
+
+                  // Also check for subcategory match if available
+                  if (data.subcategory && matchedCategory.subcategories?.length) {
+                    const subcategoryName = data.subcategory.toLowerCase().trim();
+                    const matchedSubcategory = matchedCategory.subcategories.find(sub =>
+                      sub.name.toLowerCase().trim() === subcategoryName ||
+                      sub.name.toLowerCase().includes(subcategoryName) ||
+                      subcategoryName.includes(sub.name.toLowerCase())
+                    );
+                    if (matchedSubcategory) {
+                      updateField('subcategory_id', matchedSubcategory.id);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // Category matching failed, user can select manually
+          }
+        }
+
+        // Store the receipt path from server if available
+        if (data.receipt_path) {
+          updateField('receipt_path', data.receipt_path);
+          updateField('receipt_type', 'image');
+          updateField('receipt_name', file.name);
+        }
+
+        Alert.alert(
+          'Receipt Processed',
+          formItems.length > 0
+            ? `Found ${formItems.length} item(s) totaling ${currencySymbol}${formItems.reduce((sum, item) => sum + parseFloat(item.total), 0).toFixed(2)}`
+            : 'Transaction details extracted successfully'
+        );
+      } else {
+        Alert.alert('Processing Failed', result.error || 'Could not extract data from receipt');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to process receipt. Please try again.');
+    } finally {
+      setIsProcessingReceipt(false);
+      setProcessingStage('');
+    }
+  };
+
+  // Handle receipt selection for AI processing
+  const handleScanReceipt = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const file = {
+        uri: asset.uri,
+        type: asset.mimeType || 'image/jpeg',
+        name: asset.fileName || 'receipt.jpg',
+      };
+
+      // Store the receipt for display
+      updateField('receipt', file);
+
+      // Process with AI
+      await processReceiptWithAI(file);
+    }
+  };
+
+  // Handle camera capture for AI processing
+  const handleCaptureReceipt = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera permission is needed to capture receipts');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      const file = {
+        uri: asset.uri,
+        type: asset.mimeType || 'image/jpeg',
+        name: 'receipt.jpg',
+      };
+
+      // Store the receipt for display
+      updateField('receipt', file);
+
+      // Process with AI
+      await processReceiptWithAI(file);
     }
   };
 
@@ -407,6 +589,67 @@ export default function TransactionFormContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Scan Receipt with AI - Only show when no data entered yet */}
+          {!initialData?.id && !formData.receipt && !formData.receipt_path && formData.items.length === 0 && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
+                Scan Receipt (Optional)
+              </Text>
+              <Surface style={[styles.scanReceiptContainer, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
+                <MaterialCommunityIcons
+                  name="receipt"
+                  size={32}
+                  color={colors.primary}
+                  style={styles.scanReceiptIcon}
+                />
+                <Text style={[styles.scanReceiptText, { color: colors.onSurface }]}>
+                  Upload a receipt image to auto-fill transaction details
+                </Text>
+                {isProcessingReceipt ? (
+                  <View style={styles.processingContainer}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={[styles.processingText, { color: colors.primary }]}>
+                      {processingStage}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.scanReceiptButtons}>
+                    <Button
+                      mode="contained"
+                      icon="image"
+                      onPress={handleScanReceipt}
+                      style={styles.scanButton}
+                      compact
+                    >
+                      Gallery
+                    </Button>
+                    <Button
+                      mode="contained"
+                      icon="camera"
+                      onPress={handleCaptureReceipt}
+                      style={styles.scanButton}
+                      compact
+                    >
+                      Camera
+                    </Button>
+                  </View>
+                )}
+              </Surface>
+            </View>
+          )}
+
+          {/* Processing Overlay - Show when processing receipt with existing data */}
+          {isProcessingReceipt && (formData.receipt || formData.items.length > 0) && (
+            <View style={styles.section}>
+              <Surface style={[styles.processingOverlay, { backgroundColor: colors.primaryContainer }]} elevation={1}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.processingText, { color: colors.onPrimaryContainer, marginLeft: 12 }]}>
+                  {processingStage}
+                </Text>
+              </Surface>
+            </View>
+          )}
+
           {/* Transaction Type */}
           <View style={styles.section}>
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
@@ -468,55 +711,61 @@ export default function TransactionFormContent({
             </ScrollView>
           </View>
 
-          {/* Receipt Preview from Chat - Show after type when available */}
-          {formData.receipt_path && (
+          {/* Receipt Preview - Show after type when available (from scan or chat) */}
+          {(formData.receipt_path || formData.receipt) && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Attached Receipt
               </Text>
-              {/* Open in Browser Button - above file */}
-              <TouchableOpacity
-                style={[styles.openBrowserButtonTop, { backgroundColor: colors.primary }]}
-                onPress={async () => {
-                  if (formData.receipt_path) {
-                    try {
-                      const canOpen = await Linking.canOpenURL(formData.receipt_path);
-                      if (canOpen) {
-                        await Linking.openURL(formData.receipt_path);
-                      } else {
-                        Alert.alert('Cannot Open', 'Unable to open this file.');
+              {/* Open in Browser Button - only show for remote paths (not local camera/gallery images) */}
+              {formData.receipt_path && !formData.receipt_path.startsWith('file://') && !formData.receipt_path.startsWith('content://') && (
+                <TouchableOpacity
+                  style={[styles.openBrowserButtonTop, { backgroundColor: colors.primary }]}
+                  onPress={async () => {
+                    if (formData.receipt_path) {
+                      try {
+                        const fullUrl = buildFileUrl(formData.receipt_path);
+                        if (fullUrl) {
+                          const canOpen = await Linking.canOpenURL(fullUrl);
+                          if (canOpen) {
+                            await Linking.openURL(fullUrl);
+                          } else {
+                            Alert.alert('Cannot Open', 'Unable to open this file.');
+                          }
+                        }
+                      } catch (error) {
+                        Alert.alert('Error', 'Failed to open file.');
                       }
-                    } catch (error) {
-                      Alert.alert('Error', 'Failed to open file.');
                     }
-                  }
-                }}
-              >
-                <MaterialCommunityIcons name="open-in-new" size={20} color="#fff" />
-                <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
-                  Open in Browser
-                </Text>
-              </TouchableOpacity>
+                  }}
+                >
+                  <MaterialCommunityIcons name="open-in-new" size={20} color="#fff" />
+                  <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
+                    Open in Browser
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               <Surface
                 style={[styles.receiptImageContainer, { backgroundColor: colors.surfaceVariant }]}
                 elevation={1}
               >
-                {/* Show image preview for image types */}
-                {formData.receipt_type === 'image' && (
+                {/* Show image preview - prefer local receipt, fallback to remote path */}
+                {/* Default to image type if not specified */}
+                {(formData.receipt?.uri || ((!formData.receipt_type || formData.receipt_type === 'image') && formData.receipt_path)) && (
                   <Image
-                    source={{ uri: formData.receipt_path }}
+                    source={{ uri: formData.receipt?.uri || buildFileUrl(formData.receipt_path) || '' }}
                     style={styles.receiptImage}
                     resizeMode="cover"
                   />
                 )}
 
                 {/* Show PDF inline using WebView with Google Docs viewer */}
-                {formData.receipt_type === 'pdf' && (
+                {formData.receipt_type === 'pdf' && formData.receipt_path && (
                   <View style={styles.pdfContainer}>
                     <WebView
                       source={{
-                        uri: `https://docs.google.com/viewer?url=${encodeURIComponent(formData.receipt_path)}&embedded=true`,
+                        uri: `https://docs.google.com/viewer?url=${encodeURIComponent(buildFileUrl(formData.receipt_path) || '')}&embedded=true`,
                       }}
                       style={styles.pdfWebView}
                       startInLoadingState={true}
@@ -526,7 +775,7 @@ export default function TransactionFormContent({
                 )}
 
                 {/* Show file info for CSV and other non-image/non-pdf types */}
-                {formData.receipt_type !== 'image' && formData.receipt_type !== 'pdf' && (
+                {formData.receipt_type && formData.receipt_type !== 'image' && formData.receipt_type !== 'pdf' && (
                   <View style={styles.receiptFileInfo}>
                     <MaterialCommunityIcons
                       name="file-document"
@@ -546,6 +795,7 @@ export default function TransactionFormContent({
                   iconColor="#fff"
                   style={styles.receiptRemoveButton}
                   onPress={() => {
+                    updateField('receipt', null);
                     updateField('receipt_path', undefined as any);
                     updateField('receipt_type', undefined as any);
                     updateField('receipt_name', undefined as any);
@@ -815,33 +1065,20 @@ export default function TransactionFormContent({
             />
           </View>
 
-          {/* Receipt Upload - Only show when no receipt attached from chat */}
-          {!formData.receipt_path && (
+          {/* Receipt Upload - Show only when no receipt attached at all */}
+          {!formData.receipt_path && !formData.receipt && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Receipt (Optional)
               </Text>
-              {formData.receipt ? (
-                <Surface
-                  style={[styles.receiptPreview, { backgroundColor: colors.surfaceVariant }]}
-                  elevation={1}
-                >
-                  <MaterialCommunityIcons name="file-image" size={24} color={colors.primary} />
-                  <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }} numberOfLines={1}>
-                    {formData.receipt.name}
-                  </Text>
-                  <IconButton icon="close" size={20} onPress={() => updateField('receipt', null)} />
-                </Surface>
-              ) : (
-                <View style={styles.receiptButtons}>
-                  <Button mode="outlined" icon="image" onPress={handlePickReceipt} style={styles.receiptButton}>
-                    Gallery
-                  </Button>
-                  <Button mode="outlined" icon="camera" onPress={handleTakePhoto} style={styles.receiptButton}>
-                    Camera
-                  </Button>
-                </View>
-              )}
+              <View style={styles.receiptButtons}>
+                <Button mode="outlined" icon="image" onPress={handlePickReceipt} style={styles.receiptButton}>
+                  Gallery
+                </Button>
+                <Button mode="outlined" icon="camera" onPress={handleTakePhoto} style={styles.receiptButton}>
+                  Camera
+                </Button>
+              </View>
             </View>
           )}
         </ScrollView>
@@ -1087,6 +1324,20 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
   },
+  receiptThumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+  },
+  receiptInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  receiptActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
   receiptImageContainer: {
     borderRadius: 8,
     overflow: 'hidden',
@@ -1172,6 +1423,41 @@ const styles = StyleSheet.create({
   },
   receiptButton: {
     flex: 1,
+  },
+  scanReceiptContainer: {
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  scanReceiptIcon: {
+    marginBottom: 12,
+  },
+  scanReceiptText: {
+    textAlign: 'center',
+    marginBottom: 16,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  scanReceiptButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  scanButton: {
+    minWidth: 100,
+  },
+  processingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  processingText: {
+    fontSize: 14,
+  },
+  processingOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
   },
   footer: {
     padding: 16,

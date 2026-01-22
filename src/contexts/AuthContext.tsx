@@ -95,7 +95,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(false);
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
       // Don't clear auth on network errors
     }
   }, []);
@@ -205,7 +204,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         errors: (result.data as { errors?: Record<string, string[]> })?.errors,
       };
     } catch (error) {
-      console.error('Registration error:', error);
       return {
         success: false,
         message: 'Network error. Please try again.',
@@ -217,7 +215,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await authService.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      // Logout failed, still clear local auth
     } finally {
       await removeAuthToken();
       setToken(null);

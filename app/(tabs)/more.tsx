@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
 import {
   Text,
   Surface,
@@ -10,6 +10,7 @@ import {
   Modal,
   Button,
   RadioButton,
+  TextInput,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -46,6 +47,13 @@ export default function MoreScreen() {
 
   const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+
+  const filteredCurrencies = availableCurrencies.filter(
+    (curr) =>
+      curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+      curr.label.toLowerCase().includes(currencySearch.toLowerCase())
+  );
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -141,18 +149,20 @@ export default function MoreScreen() {
         {
           icon: 'account-edit',
           label: 'Edit Profile',
-          onPress: () => {},
+          description: 'Update your profile & photo',
+          onPress: () => router.push('/profile'),
         },
         {
           icon: 'lock',
           label: 'Change Password',
-          onPress: () => {},
+          description: 'Update your password',
+          onPress: () => router.push('/profile'),
         },
         {
           icon: 'shield-key',
           label: 'Two-Factor Auth',
           description: 'Add extra security',
-          onPress: () => {},
+          onPress: () => router.push('/profile'),
         },
         {
           icon: 'download',
@@ -250,32 +260,41 @@ export default function MoreScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Header */}
-        <Surface
-          style={[styles.profileCard, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <Avatar.Text
-            size={64}
-            label={getInitials(user?.name || 'User')}
-            style={{ backgroundColor: colors.primaryContainer }}
-            labelStyle={{ color: colors.primary }}
-          />
-          <View style={styles.profileInfo}>
-            <Text variant="titleLarge" style={{ color: colors.onSurface }}>
-              {user?.name || 'User'}
-            </Text>
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>
-              {user?.email || 'No email'}
-            </Text>
-          </View>
-          <TouchableOpacity style={styles.editProfileButton}>
-            <MaterialCommunityIcons
-              name="pencil"
-              size={20}
-              color={colors.primary}
-            />
-          </TouchableOpacity>
-        </Surface>
+        <TouchableOpacity onPress={() => router.push('/profile')}>
+          <Surface
+            style={[styles.profileCard, { backgroundColor: colors.surface }]}
+            elevation={1}
+          >
+            {(user as any)?.profile_picture_url ? (
+              <Image
+                source={{ uri: (user as any).profile_picture_url }}
+                style={styles.profileAvatar}
+              />
+            ) : (
+              <Avatar.Text
+                size={64}
+                label={getInitials(user?.name || 'User')}
+                style={{ backgroundColor: colors.primaryContainer }}
+                labelStyle={{ color: colors.primary }}
+              />
+            )}
+            <View style={styles.profileInfo}>
+              <Text variant="titleLarge" style={{ color: colors.onSurface }}>
+                {user?.name || 'User'}
+              </Text>
+              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>
+                {user?.email || 'No email'}
+              </Text>
+            </View>
+            <View style={styles.editProfileButton}>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color={colors.onSurfaceVariant}
+              />
+            </View>
+          </Surface>
+        </TouchableOpacity>
 
         {/* Menu Sections */}
         {menuSections.map((section, sectionIndex) => (
@@ -376,14 +395,27 @@ export default function MoreScreen() {
       <Portal>
         <Modal
           visible={currencyModalVisible}
-          onDismiss={() => setCurrencyModalVisible(false)}
+          onDismiss={() => {
+            setCurrencyModalVisible(false);
+            setCurrencySearch('');
+          }}
           contentContainerStyle={[styles.modal, styles.currencyModal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 12 }}>
             Choose Currency
           </Text>
+          <TextInput
+            placeholder="Search currency..."
+            value={currencySearch}
+            onChangeText={setCurrencySearch}
+            mode="outlined"
+            dense
+            left={<TextInput.Icon icon="magnify" />}
+            right={currencySearch ? <TextInput.Icon icon="close" onPress={() => setCurrencySearch('')} /> : null}
+            style={{ marginBottom: 12 }}
+          />
           <ScrollView style={styles.currencyList}>
-            {availableCurrencies.slice(0, 20).map((curr) => (
+            {filteredCurrencies.map((curr) => (
               <TouchableOpacity
                 key={curr.code}
                 style={[
@@ -393,6 +425,7 @@ export default function MoreScreen() {
                 onPress={async () => {
                   await updateCurrency(curr.code);
                   setCurrencyModalVisible(false);
+                  setCurrencySearch('');
                 }}
                 disabled={isCurrencyUpdating}
               >
@@ -414,8 +447,16 @@ export default function MoreScreen() {
                 )}
               </TouchableOpacity>
             ))}
+            {filteredCurrencies.length === 0 && (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text style={{ color: colors.onSurfaceVariant }}>No currencies found</Text>
+              </View>
+            )}
           </ScrollView>
-          <Button mode="text" onPress={() => setCurrencyModalVisible(false)}>
+          <Button mode="text" onPress={() => {
+            setCurrencyModalVisible(false);
+            setCurrencySearch('');
+          }}>
             Cancel
           </Button>
         </Modal>
@@ -438,6 +479,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     marginBottom: 20,
+  },
+  profileAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
   },
   profileInfo: {
     flex: 1,

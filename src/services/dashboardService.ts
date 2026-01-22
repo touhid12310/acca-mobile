@@ -128,7 +128,6 @@ export const dashboardService = {
 
       return { success: true, data: dashboardData };
     } catch (error) {
-      console.error('Dashboard fetch error:', error);
       return { success: false, error: 'Failed to load dashboard data' };
     }
   },

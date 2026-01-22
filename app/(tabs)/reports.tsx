@@ -125,7 +125,6 @@ export default function ReportsScreen() {
         }
         return [];
       } catch (error: any) {
-        console.error('Monthly summary error:', error);
         return [];
       }
     },

@@ -19,6 +19,7 @@ import {
   ProgressBar,
   Chip,
   SegmentedButtons,
+  Divider,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,8 @@ export default function LoansScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [showAccountPicker, setShowAccountPicker] = useState(false);
@@ -117,7 +120,6 @@ export default function LoansScreen() {
           setCategories(Array.isArray(data) ? data : []);
         }
       } catch (error) {
-        console.error('Error loading categories:', error);
         setCategories([]);
       }
     };
@@ -271,19 +273,27 @@ export default function LoansScreen() {
     paymentMutation.mutate({ id: selectedLoan.id, data: paymentData });
   };
 
-  const handleDelete = (loan: Loan) => {
-    Alert.alert(
-      'Delete Loan',
-      `Are you sure you want to delete "${loan.loan_name || loan.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteMutation.mutate(loan.id),
-        },
-      ]
-    );
+  const showLoanActions = (loan: Loan) => {
+    setSelectedLoan(loan);
+    setShowActionSheet(true);
+  };
+
+  const handleDeletePress = () => {
+    setShowActionSheet(false);
+    setTimeout(() => setShowDeleteConfirm(true), 200);
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedLoan) {
+      deleteMutation.mutate(selectedLoan.id);
+    }
+    setShowDeleteConfirm(false);
+    setSelectedLoan(null);
+  };
+
+  const closeActionSheet = () => {
+    setShowActionSheet(false);
+    setSelectedLoan(null);
   };
 
   const getSelectedCategoryName = () => {
@@ -462,7 +472,7 @@ export default function LoansScreen() {
                 style={[styles.loanCard, { backgroundColor: colors.surface }]}
                 elevation={1}
               >
-                <TouchableOpacity onLongPress={() => handleDelete(loan)}>
+                <TouchableOpacity onLongPress={() => showLoanActions(loan)}>
                   <View style={styles.loanHeader}>
                     <View style={[styles.loanIcon, { backgroundColor: `${isLent ? colors.tertiary : colors.error}15` }]}>
                       <MaterialCommunityIcons
@@ -510,6 +520,13 @@ export default function LoansScreen() {
                         remaining
                       </Text>
                     </View>
+                    <TouchableOpacity
+                      onPress={() => showLoanActions(loan)}
+                      style={styles.menuButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <MaterialCommunityIcons name="dots-vertical" size={20} color={colors.onSurfaceVariant} />
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.loanDetails}>
@@ -996,6 +1013,101 @@ export default function LoansScreen() {
           </ScrollView>
         </Modal>
       </Portal>
+
+      {/* Action Sheet Modal */}
+      <Portal>
+        <Modal
+          visible={showActionSheet}
+          onDismiss={closeActionSheet}
+          contentContainerStyle={[styles.actionSheetContainer, { backgroundColor: colors.surface }]}
+        >
+          {selectedLoan && (
+            <>
+              <View style={styles.actionSheetHeader}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: `${selectedLoan.loan_type === 'Lent' ? colors.tertiary : colors.error}20` }]}>
+                  <MaterialCommunityIcons
+                    name={selectedLoan.loan_type === 'Lent' ? 'cash-plus' : 'hand-coin'}
+                    size={28}
+                    color={selectedLoan.loan_type === 'Lent' ? colors.tertiary : colors.error}
+                  />
+                </View>
+                <View style={styles.actionSheetInfo}>
+                  <Text variant="titleMedium" style={{ color: colors.onSurface }} numberOfLines={1}>
+                    {selectedLoan.loan_name || selectedLoan.name || 'Unnamed Loan'}
+                  </Text>
+                  <Text variant="titleLarge" style={{ color: selectedLoan.loan_type === 'Lent' ? colors.tertiary : colors.error, fontWeight: 'bold' }}>
+                    {formatAmount(parseFloat(String(selectedLoan.remaining_balance || selectedLoan.principal || 0)))}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    {selectedLoan.loan_type || 'Borrowed'} • {selectedLoan.status || 'Active'}
+                  </Text>
+                </View>
+              </View>
+
+              <Divider style={{ marginVertical: 16 }} />
+
+              {selectedLoan.status === 'Active' && (
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={() => {
+                    setShowActionSheet(false);
+                    openPaymentModal(selectedLoan);
+                  }}
+                >
+                  <MaterialCommunityIcons name="cash" size={24} color={colors.primary} />
+                  <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.onSurface }]}>
+                    Make Payment
+                  </Text>
+                  <MaterialCommunityIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity style={styles.actionSheetButton} onPress={handleDeletePress}>
+                <MaterialCommunityIcons name="delete" size={24} color={colors.error} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.error }]}>
+                  Delete Loan
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.error} />
+              </TouchableOpacity>
+
+              <Button mode="outlined" onPress={closeActionSheet} style={styles.actionSheetCancel}>
+                Cancel
+              </Button>
+            </>
+          )}
+        </Modal>
+      </Portal>
+
+      {/* Delete Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={showDeleteConfirm}
+          onDismiss={() => setShowDeleteConfirm(false)}
+          contentContainerStyle={[styles.deleteConfirmContainer, { backgroundColor: colors.surface }]}
+        >
+          <MaterialCommunityIcons name="alert-circle" size={48} color={colors.error} style={{ alignSelf: 'center' }} />
+          <Text variant="titleLarge" style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}>
+            Delete Loan?
+          </Text>
+          <Text variant="bodyMedium" style={[styles.deleteConfirmText, { color: colors.onSurfaceVariant }]}>
+            This action cannot be undone. The loan and all payment history will be permanently removed.
+          </Text>
+          <View style={styles.deleteConfirmButtons}>
+            <Button mode="outlined" onPress={() => setShowDeleteConfirm(false)} style={styles.deleteConfirmButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor={colors.error}
+              onPress={handleConfirmDelete}
+              style={styles.deleteConfirmButton}
+              loading={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -1161,5 +1273,69 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginBottom: 16,
+  },
+  menuButton: {
+    padding: 8,
+    marginLeft: 4,
+    marginRight: -8,
+  },
+  actionSheetContainer: {
+    margin: 16,
+    marginTop: 'auto',
+    borderRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionSheetIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionSheetInfo: {
+    flex: 1,
+  },
+  actionSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  actionSheetButtonText: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  actionSheetCancel: {
+    marginTop: 16,
+    borderRadius: 12,
+  },
+  deleteConfirmContainer: {
+    margin: 24,
+    borderRadius: 20,
+    padding: 24,
+  },
+  deleteConfirmTitle: {
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: 'bold',
+  },
+  deleteConfirmText: {
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  deleteConfirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    borderRadius: 12,
   },
 });

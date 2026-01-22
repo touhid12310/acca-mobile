@@ -10,7 +10,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import settingsService from '../services/settingsService';
-import { CURRENCIES } from '../data/currencies';
+import { CURRENCIES } from '../constants/currencies';
 
 interface Currency {
   code: string;
@@ -88,7 +88,7 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
           setCurrency(stored.toUpperCase());
         }
       } catch (error) {
-        console.error('Failed to load stored currency:', error);
+        // Failed to load stored currency
       }
     };
 
@@ -137,7 +137,6 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
       setCurrency(normalized);
       await AsyncStorage.setItem(STORAGE_KEY, normalized);
     } catch (error) {
-      console.error('Failed to load currency preference:', error);
       setCurrency(DEFAULT_CURRENCY);
     } finally {
       setIsCurrencyLoading(false);
@@ -181,7 +180,7 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
         setCurrency(finalCode);
         await AsyncStorage.setItem(STORAGE_KEY, finalCode);
       } catch (error) {
-        console.error('Currency update failed:', error);
+        // Currency update failed
       } finally {
         setIsCurrencyUpdating(false);
         setUpdatingCurrencyCode(null);

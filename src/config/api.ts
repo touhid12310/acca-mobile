@@ -104,7 +104,6 @@ export const getAuthToken = async (): Promise<string | null> => {
   try {
     return await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
   } catch (error) {
-    console.error('Error getting auth token:', error);
     return null;
   }
 };
@@ -114,7 +113,7 @@ export const saveAuthToken = async (token: string): Promise<void> => {
   try {
     await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
   } catch (error) {
-    console.error('Error saving auth token:', error);
+    // Failed to save token
   }
 };
 
@@ -123,13 +122,37 @@ export const removeAuthToken = async (): Promise<void> => {
   try {
     await SecureStore.deleteItemAsync(AUTH_TOKEN_KEY);
   } catch (error) {
-    console.error('Error removing auth token:', error);
+    // Failed to remove token
   }
 };
 
 // Build full API URL
 export const buildApiUrl = (endpoint: string): string => {
   return `${API_CONFIG.BASE_URL}${endpoint}`;
+};
+
+// CDN/File base URL (without /api)
+export const FILE_BASE_URL = 'https://acca-api.autoaiassistant.com';
+
+// Build full URL for files (receipts, images, etc.)
+export const buildFileUrl = (path: string | null | undefined): string | null => {
+  if (!path || typeof path !== 'string') {
+    return null;
+  }
+
+  // Already a full URL
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+
+  // Local file URI (from camera/gallery)
+  if (path.startsWith('file://') || path.startsWith('content://')) {
+    return path;
+  }
+
+  // Relative path - prepend base URL
+  const normalizedPath = path.replace(/^\/+/, '');
+  return `${FILE_BASE_URL}/${normalizedPath}`;
 };
 
 // Get headers with auth token
@@ -195,7 +218,6 @@ export const apiRequest = async <T = unknown>(
       error: !response.ok ? data?.message || 'Request failed' : undefined,
     };
   } catch (error) {
-    console.error('API Request Error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Network error',

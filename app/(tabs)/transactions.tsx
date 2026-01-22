@@ -6,6 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import {
   Text,
@@ -17,9 +18,12 @@ import {
   Divider,
   Menu,
   IconButton,
+  Portal,
+  Modal,
+  Button,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -42,6 +46,59 @@ export default function TransactionsScreen() {
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const result = await transactionService.delete(id);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to delete transaction');
+      }
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+    },
+    onError: (error: Error) => {
+      Alert.alert('Error', error.message);
+    },
+  });
+
+  const showTransactionActions = (item: Transaction) => {
+    setSelectedTransaction(item);
+    setShowActionSheet(true);
+  };
+
+  const handleDeletePress = () => {
+    setShowActionSheet(false);
+    setTimeout(() => setShowDeleteConfirm(true), 200);
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedTransaction) {
+      deleteMutation.mutate(selectedTransaction.id);
+    }
+    setShowDeleteConfirm(false);
+    setSelectedTransaction(null);
+  };
+
+  const handleEditPress = () => {
+    if (selectedTransaction) {
+      handleEditTransaction(selectedTransaction);
+    }
+    setShowActionSheet(false);
+    setSelectedTransaction(null);
+  };
+
+  const closeActionSheet = () => {
+    setShowActionSheet(false);
+    setSelectedTransaction(null);
+  };
 
   // Fetch accounts for asset/liability filtering
   const { data: accountsData } = useQuery({
@@ -102,7 +159,6 @@ export default function TransactionsScreen() {
           transactionsData = laravelResponse;
         }
 
-        console.log('Transactions loaded:', transactionsData.length);
         return transactionsData;
       }
       throw new Error(result.error || 'Failed to load transactions');
@@ -152,7 +208,9 @@ export default function TransactionsScreen() {
         const dateB = new Date(b.date).getTime();
         return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
       } else {
-        return sortOrder === 'desc' ? b.amount - a.amount : a.amount - b.amount;
+        const amountA = parseFloat(String(a.amount)) || 0;
+        const amountB = parseFloat(String(b.amount)) || 0;
+        return sortOrder === 'desc' ? amountB - amountA : amountA - amountB;
       }
     });
 
@@ -203,84 +261,95 @@ export default function TransactionsScreen() {
     }
   };
 
+  const handleEditTransaction = (item: Transaction) => {
+    // Handle API structure: payment_method for account, expense_categories for category
+    // Category: check expense_categories array first, then fallback to category_id/category
+    let categoryId: number | undefined = item.category_id || item.category?.id;
+    let subcategoryId: number | undefined = item.subcategory_id || item.subcategory?.id;
+
+    if (item.expense_categories && item.expense_categories.length > 0) {
+      const primaryCategory = item.expense_categories[0];
+      categoryId = primaryCategory.category_id;
+      subcategoryId = primaryCategory.subcategory_id;
+    }
+
+    // Account: check payment_method first, then account_id/account
+    const accountId = item.payment_method || item.account_id || item.account?.id;
+
+    router.push({
+      pathname: '/transaction-modal',
+      params: {
+        id: item.id.toString(),
+        type: item.type,
+        amount: item.amount.toString(),
+        merchant_name: item.merchant_name || '',
+        description: item.description || '',
+        category_id: categoryId?.toString() || '',
+        subcategory_id: subcategoryId?.toString() || '',
+        account_id: accountId?.toString() || '',
+        notes: item.notes || '',
+        date: item.date,
+      },
+    });
+  };
+
   const renderTransaction = ({ item }: { item: Transaction }) => (
-    <TouchableOpacity
-      style={styles.transactionItem}
-      onPress={() => {
-        // Handle API structure: payment_method for account, expense_categories for category
-        // Category: check expense_categories array first, then fallback to category_id/category
-        let categoryId: number | undefined = item.category_id || item.category?.id;
-        let subcategoryId: number | undefined = item.subcategory_id || item.subcategory?.id;
-
-        if (item.expense_categories && item.expense_categories.length > 0) {
-          const primaryCategory = item.expense_categories[0];
-          categoryId = primaryCategory.category_id;
-          subcategoryId = primaryCategory.subcategory_id;
-        }
-
-        // Account: check payment_method first, then account_id/account
-        const accountId = item.payment_method || item.account_id || item.account?.id;
-
-        router.push({
-          pathname: '/transaction-modal',
-          params: {
-            id: item.id.toString(),
-            type: item.type,
-            amount: item.amount.toString(),
-            merchant_name: item.merchant_name || '',
-            description: item.description || '',
-            category_id: categoryId?.toString() || '',
-            subcategory_id: subcategoryId?.toString() || '',
-            account_id: accountId?.toString() || '',
-            notes: item.notes || '',
-            date: item.date,
-          },
-        });
-      }}
-    >
-      <View
-        style={[
-          styles.transactionIcon,
-          { backgroundColor: `${getTransactionColor(item.type)}20` },
-        ]}
+    <View style={styles.transactionRow}>
+      <TouchableOpacity
+        style={styles.transactionItem}
+        onPress={() => handleEditTransaction(item)}
+        onLongPress={() => showTransactionActions(item)}
       >
-        <MaterialCommunityIcons
-          name={getTransactionIcon(item.type)}
-          size={24}
-          color={getTransactionColor(item.type)}
-        />
-      </View>
-      <View style={styles.transactionInfo}>
-        <Text
-          variant="bodyLarge"
-          style={{ color: colors.onSurface }}
-          numberOfLines={1}
+        <View
+          style={[
+            styles.transactionIcon,
+            { backgroundColor: `${getTransactionColor(item.type)}20` },
+          ]}
         >
-          {item.merchant_name || item.description || 'Transaction'}
-        </Text>
-        <View style={styles.transactionMeta}>
-          <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-            {formatDate(item.date)}
-          </Text>
-          {item.category && (
-            <Chip
-              compact
-              textStyle={{ fontSize: 10 }}
-              style={styles.categoryChip}
-            >
-              {item.category.name}
-            </Chip>
-          )}
+          <MaterialCommunityIcons
+            name={getTransactionIcon(item.type)}
+            size={24}
+            color={getTransactionColor(item.type)}
+          />
         </View>
-      </View>
-      <Text
-        variant="titleMedium"
-        style={{ color: getTransactionColor(item.type), fontWeight: '600' }}
-      >
-        {item.type === 'expense' ? '-' : item.type === 'income' ? '+' : ''}
-        {formatAmount(item.amount)}
-      </Text>
-    </TouchableOpacity>
+        <View style={styles.transactionInfo}>
+          <Text
+            variant="bodyLarge"
+            style={{ color: colors.onSurface }}
+            numberOfLines={1}
+          >
+            {item.merchant_name || item.description || 'Transaction'}
+          </Text>
+          <View style={styles.transactionMeta}>
+            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+              {formatDate(item.date)}
+            </Text>
+            {item.category && (
+              <Chip
+                compact
+                textStyle={{ fontSize: 10 }}
+                style={styles.categoryChip}
+              >
+                {item.category.name}
+              </Chip>
+            )}
+          </View>
+        </View>
+        <Text
+          variant="titleMedium"
+          style={{ color: getTransactionColor(item.type), fontWeight: '600', marginRight: 4 }}
+        >
+          {item.type === 'expense' ? '-' : item.type === 'income' ? '+' : ''}
+          {formatAmount(parseFloat(String(item.amount)) || 0)}
+        </Text>
+      </TouchableOpacity>
+      <IconButton
+        icon="dots-vertical"
+        size={20}
+        onPress={() => showTransactionActions(item)}
+        style={styles.menuButton}
+      />
+    </View>
   );
 
   const renderSectionHeader = (date: string) => (
@@ -485,6 +554,118 @@ export default function TransactionsScreen() {
         color="#ffffff"
         onPress={() => router.push('/transaction-modal')}
       />
+
+      {/* Action Sheet Modal */}
+      <Portal>
+        <Modal
+          visible={showActionSheet}
+          onDismiss={closeActionSheet}
+          contentContainerStyle={[styles.actionSheetContainer, { backgroundColor: colors.surface }]}
+        >
+          {selectedTransaction && (
+            <>
+              {/* Header */}
+              <View style={styles.actionSheetHeader}>
+                <View
+                  style={[
+                    styles.actionSheetIcon,
+                    { backgroundColor: `${getTransactionColor(selectedTransaction.type)}20` },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={getTransactionIcon(selectedTransaction.type)}
+                    size={28}
+                    color={getTransactionColor(selectedTransaction.type)}
+                  />
+                </View>
+                <View style={styles.actionSheetInfo}>
+                  <Text variant="titleMedium" style={{ color: colors.onSurface }} numberOfLines={1}>
+                    {selectedTransaction.merchant_name || selectedTransaction.description || 'Transaction'}
+                  </Text>
+                  <Text
+                    variant="titleLarge"
+                    style={{ color: getTransactionColor(selectedTransaction.type), fontWeight: 'bold' }}
+                  >
+                    {selectedTransaction.type === 'expense' ? '-' : selectedTransaction.type === 'income' ? '+' : ''}
+                    {formatAmount(parseFloat(String(selectedTransaction.amount)) || 0)}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    {formatDate(selectedTransaction.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                  </Text>
+                </View>
+              </View>
+
+              <Divider style={{ marginVertical: 16 }} />
+
+              {/* Actions */}
+              <TouchableOpacity
+                style={styles.actionSheetButton}
+                onPress={handleEditPress}
+              >
+                <MaterialCommunityIcons name="pencil" size={24} color={colors.primary} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.onSurface }]}>
+                  Edit Transaction
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionSheetButton}
+                onPress={handleDeletePress}
+              >
+                <MaterialCommunityIcons name="delete" size={24} color={colors.error} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.error }]}>
+                  Delete Transaction
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.error} />
+              </TouchableOpacity>
+
+              <Button
+                mode="outlined"
+                onPress={closeActionSheet}
+                style={styles.actionSheetCancel}
+              >
+                Cancel
+              </Button>
+            </>
+          )}
+        </Modal>
+      </Portal>
+
+      {/* Delete Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={showDeleteConfirm}
+          onDismiss={() => setShowDeleteConfirm(false)}
+          contentContainerStyle={[styles.deleteConfirmContainer, { backgroundColor: colors.surface }]}
+        >
+          <MaterialCommunityIcons name="alert-circle" size={48} color={colors.error} style={{ alignSelf: 'center' }} />
+          <Text variant="titleLarge" style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}>
+            Delete Transaction?
+          </Text>
+          <Text variant="bodyMedium" style={[styles.deleteConfirmText, { color: colors.onSurfaceVariant }]}>
+            This action cannot be undone. The transaction will be permanently removed.
+          </Text>
+          <View style={styles.deleteConfirmButtons}>
+            <Button
+              mode="outlined"
+              onPress={() => setShowDeleteConfirm(false)}
+              style={styles.deleteConfirmButton}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor={colors.error}
+              onPress={handleConfirmDelete}
+              style={styles.deleteConfirmButton}
+              loading={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -545,10 +726,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  transactionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   transactionItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
+    paddingRight: 8,
+  },
+  menuButton: {
+    marginRight: 4,
   },
   transactionIcon: {
     width: 44,
@@ -575,5 +765,66 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     bottom: 16,
+  },
+  // Action Sheet Styles
+  actionSheetContainer: {
+    margin: 16,
+    marginTop: 'auto',
+    borderRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionSheetIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionSheetInfo: {
+    flex: 1,
+  },
+  actionSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  actionSheetButtonText: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  actionSheetCancel: {
+    marginTop: 16,
+    borderRadius: 12,
+  },
+  // Delete Confirmation Styles
+  deleteConfirmContainer: {
+    margin: 24,
+    borderRadius: 20,
+    padding: 24,
+  },
+  deleteConfirmTitle: {
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: 'bold',
+  },
+  deleteConfirmText: {
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  deleteConfirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    borderRadius: 12,
   },
 });

@@ -3,7 +3,11 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  mobile?: string;
   avatar?: string;
+  profile_picture?: string;
+  profile_picture_url?: string;
+  two_factor_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
   settings?: UserSettings;
@@ -101,6 +105,8 @@ export interface TransactionFormData {
   to_account_id?: number;
   notes?: string;
   items?: TransactionItem[];
+  receipt_path?: string;
+  receipt_file?: string;
 }
 
 // Category Types

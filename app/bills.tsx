@@ -16,6 +16,7 @@ import {
   Modal,
   TextInput,
   Button,
+  Divider,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +48,9 @@ export default function BillsScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState({
     vendor: '',
     amount: '',
@@ -89,17 +93,11 @@ export default function BillsScreen() {
             billsArray = responseData;
           }
 
-          console.log('Bills loaded:', billsArray.length, 'items');
-          if (billsArray.length > 0) {
-            console.log('First bill sample:', JSON.stringify(billsArray[0], null, 2));
-          }
           return billsArray;
         }
 
-        console.log('Bills API failed:', result.error);
         return [];
       } catch (err) {
-        console.error('Bills fetch error:', err);
         return [];
       }
     },
@@ -181,20 +179,27 @@ export default function BillsScreen() {
     createMutation.mutate(formData);
   };
 
-  const handleDelete = (bill: Bill) => {
-    const billName = bill.contact_name || bill.vendor || 'this bill';
-    Alert.alert(
-      'Delete Repeating Expense',
-      `Are you sure you want to delete "${billName}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteMutation.mutate(bill.id),
-        },
-      ]
-    );
+  const showBillActions = (bill: Bill) => {
+    setSelectedBill(bill);
+    setShowActionSheet(true);
+  };
+
+  const handleDeletePress = () => {
+    setShowActionSheet(false);
+    setTimeout(() => setShowDeleteConfirm(true), 200);
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedBill) {
+      deleteMutation.mutate(selectedBill.id);
+    }
+    setShowDeleteConfirm(false);
+    setSelectedBill(null);
+  };
+
+  const closeActionSheet = () => {
+    setShowActionSheet(false);
+    setSelectedBill(null);
   };
 
   const getDaysUntilDue = (dueDate?: string) => {
@@ -323,7 +328,7 @@ export default function BillsScreen() {
                 style={[styles.billCard, { backgroundColor: colors.surface }]}
                 elevation={1}
               >
-                <TouchableOpacity onLongPress={() => handleDelete(bill)}>
+                <TouchableOpacity onLongPress={() => showBillActions(bill)}>
                   <View style={styles.billHeader}>
                     <View style={[styles.billIcon, { backgroundColor: `${statusColor}15` }]}>
                       <MaterialCommunityIcons
@@ -333,9 +338,21 @@ export default function BillsScreen() {
                       />
                     </View>
                     <View style={styles.billInfo}>
-                      <Text variant="titleMedium" style={{ color: colors.onSurface }}>
-                        {billName}
-                      </Text>
+                      <View style={styles.billTitleRow}>
+                        <Text variant="titleMedium" style={{ color: colors.onSurface, flex: 1 }} numberOfLines={1}>
+                          {billName}
+                        </Text>
+                        <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
+                          {formatAmount(billAmount)}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => showBillActions(bill)}
+                          style={styles.menuButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <MaterialCommunityIcons name="dots-vertical" size={20} color={colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                      </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
                         <View style={[styles.badge, { backgroundColor: colors.surfaceVariant }]}>
                           <Text style={{ color: colors.onSurfaceVariant, fontSize: 11 }}>
@@ -355,11 +372,6 @@ export default function BillsScreen() {
                           </Text>
                         </View>
                       </View>
-                    </View>
-                    <View style={styles.billAmount}>
-                      <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
-                        {formatAmount(billAmount)}
-                      </Text>
                     </View>
                   </View>
 
@@ -576,6 +588,81 @@ export default function BillsScreen() {
           </ScrollView>
         </Modal>
       </Portal>
+
+      {/* Action Sheet Modal */}
+      <Portal>
+        <Modal
+          visible={showActionSheet}
+          onDismiss={closeActionSheet}
+          contentContainerStyle={[styles.actionSheetContainer, { backgroundColor: colors.surface }]}
+        >
+          {selectedBill && (
+            <>
+              <View style={styles.actionSheetHeader}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: `${colors.primary}20` }]}>
+                  <MaterialCommunityIcons name="repeat" size={28} color={colors.primary} />
+                </View>
+                <View style={styles.actionSheetInfo}>
+                  <Text variant="titleMedium" style={{ color: colors.onSurface }} numberOfLines={1}>
+                    {selectedBill.contact_name || selectedBill.vendor || 'Unnamed Bill'}
+                  </Text>
+                  <Text variant="titleLarge" style={{ color: colors.error, fontWeight: 'bold' }}>
+                    {formatAmount(parseFloat(String(selectedBill.amount)) || 0)}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    {selectedBill.frequency || 'Monthly'}
+                  </Text>
+                </View>
+              </View>
+
+              <Divider style={{ marginVertical: 16 }} />
+
+              <TouchableOpacity style={styles.actionSheetButton} onPress={handleDeletePress}>
+                <MaterialCommunityIcons name="delete" size={24} color={colors.error} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.error }]}>
+                  Delete Repeating Expense
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.error} />
+              </TouchableOpacity>
+
+              <Button mode="outlined" onPress={closeActionSheet} style={styles.actionSheetCancel}>
+                Cancel
+              </Button>
+            </>
+          )}
+        </Modal>
+      </Portal>
+
+      {/* Delete Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={showDeleteConfirm}
+          onDismiss={() => setShowDeleteConfirm(false)}
+          contentContainerStyle={[styles.deleteConfirmContainer, { backgroundColor: colors.surface }]}
+        >
+          <MaterialCommunityIcons name="alert-circle" size={48} color={colors.error} style={{ alignSelf: 'center' }} />
+          <Text variant="titleLarge" style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}>
+            Delete Repeating Expense?
+          </Text>
+          <Text variant="bodyMedium" style={[styles.deleteConfirmText, { color: colors.onSurfaceVariant }]}>
+            This action cannot be undone. The repeating expense will be permanently removed.
+          </Text>
+          <View style={styles.deleteConfirmButtons}>
+            <Button mode="outlined" onPress={() => setShowDeleteConfirm(false)} style={styles.deleteConfirmButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor={colors.error}
+              onPress={handleConfirmDelete}
+              style={styles.deleteConfirmButton}
+              loading={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -647,8 +734,10 @@ const styles = StyleSheet.create({
   billInfo: {
     flex: 1,
   },
-  billAmount: {
-    alignItems: 'flex-end',
+  billTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   badge: {
     paddingHorizontal: 8,
@@ -726,5 +815,69 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: 8,
     marginTop: 8,
+  },
+  menuButton: {
+    padding: 4,
+    marginLeft: 4,
+    marginRight: -4,
+  },
+  actionSheetContainer: {
+    margin: 16,
+    marginTop: 'auto',
+    borderRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionSheetIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionSheetInfo: {
+    flex: 1,
+  },
+  actionSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  actionSheetButtonText: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  actionSheetCancel: {
+    marginTop: 16,
+    borderRadius: 12,
+  },
+  deleteConfirmContainer: {
+    margin: 24,
+    borderRadius: 20,
+    padding: 24,
+  },
+  deleteConfirmTitle: {
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: 'bold',
+  },
+  deleteConfirmText: {
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  deleteConfirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    borderRadius: 12,
   },
 });

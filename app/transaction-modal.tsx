@@ -45,90 +45,120 @@ export default function TransactionModalScreen() {
       return null;
     },
     enabled: !!params.id, // Only fetch when editing
+    staleTime: 0, // Always consider data stale - fetch fresh on every visit
+    refetchOnMount: 'always', // Always refetch when component mounts
   });
 
 
   // Prepare initial data - prefer fetched data when editing
   const initialData: Partial<Transaction> | undefined = React.useMemo(() => {
-    if (fetchedTransaction) {
-      // Use the fetched transaction data
-      const tx = fetchedTransaction as any;
+    try {
+      if (fetchedTransaction) {
+        // Use the fetched transaction data
+        const tx = fetchedTransaction as any;
 
-      // Extract category from expense_categories if available
-      let categoryId = tx.category_id;
-      let subcategoryId = tx.subcategory_id;
+        // Extract category from expense_categories if available
+        let categoryId = tx.category_id;
+        let subcategoryId = tx.subcategory_id;
 
-      if (tx.expense_categories && tx.expense_categories.length > 0) {
-        const primaryCategory = tx.expense_categories[0];
-        categoryId = primaryCategory.category_id;
-        subcategoryId = primaryCategory.subcategory_id;
-      }
-
-      // Account is stored as payment_method in the API
-      const accountId = tx.payment_method || tx.account_id;
-
-      return {
-        id: tx.id,
-        type: (tx.type?.toLowerCase() as TransactionType) || 'expense',
-        amount: typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount,
-        merchant_name: tx.merchant_name,
-        description: tx.description,
-        category_id: categoryId,
-        subcategory_id: subcategoryId,
-        account_id: accountId,
-        notes: tx.notes,
-        date: tx.date,
-        items: tx.items, // Include items from API
-      };
-    }
-
-    // Fall back to params for new transactions or pre-filling from chat
-    if (params.type || params.amount) {
-      // Parse items from JSON string if provided
-      let parsedItems = undefined;
-      if (params.items) {
-        try {
-          parsedItems = JSON.parse(params.items);
-        } catch (e) {
-          console.warn('Failed to parse items JSON:', e);
+        if (tx.expense_categories && tx.expense_categories.length > 0) {
+          const primaryCategory = tx.expense_categories[0];
+          categoryId = primaryCategory.category_id;
+          subcategoryId = primaryCategory.subcategory_id;
         }
+
+        // Account is stored as payment_method in the API
+        const accountId = tx.payment_method || tx.account_id;
+
+        return {
+          id: tx.id,
+          type: (tx.type?.toLowerCase() as TransactionType) || 'expense',
+          amount: typeof tx.amount === 'string' ? parseFloat(tx.amount) : tx.amount,
+          merchant_name: tx.merchant_name,
+          description: tx.description,
+          category_id: categoryId,
+          subcategory_id: subcategoryId,
+          account_id: accountId,
+          notes: tx.notes,
+          date: tx.date,
+          items: tx.items, // Include items from API
+          receipt_file: tx.receipt_file, // Receipt file path from API
+          receipt_path: tx.receipt_file, // Also set as receipt_path for display
+        };
       }
 
-      return {
-        type: (params.type?.toLowerCase() as TransactionType) || 'expense',
-        amount: params.amount ? parseFloat(params.amount) : undefined,
-        merchant_name: params.merchant_name,
-        description: params.description,
-        category_id: params.category_id ? parseInt(params.category_id) : undefined,
-        subcategory_id: params.subcategory_id ? parseInt(params.subcategory_id) : undefined,
-        account_id: params.account_id ? parseInt(params.account_id) : undefined,
-        notes: params.notes,
-        date: params.date || new Date().toISOString(),
-        items: parsedItems,
-        receipt_path: params.receipt_uri, // Pass as receipt_path for display
-        receipt_type: params.receipt_type || 'image',
-        receipt_name: params.receipt_name || 'receipt',
-      };
-    }
+      // Fall back to params for new transactions or pre-filling from chat
+      if (params.type || params.amount) {
+        // Parse items from JSON string if provided
+        let parsedItems = undefined;
+        if (params.items) {
+          try {
+            parsedItems = JSON.parse(params.items);
+          } catch (e) {
+            // Failed to parse items JSON
+          }
+        }
 
-    return undefined;
+        return {
+          type: (params.type?.toLowerCase() as TransactionType) || 'expense',
+          amount: params.amount ? parseFloat(params.amount) : undefined,
+          merchant_name: params.merchant_name || undefined,
+          description: params.description || undefined,
+          category_id: params.category_id ? parseInt(params.category_id) : undefined,
+          subcategory_id: params.subcategory_id ? parseInt(params.subcategory_id) : undefined,
+          account_id: params.account_id ? parseInt(params.account_id) : undefined,
+          notes: params.notes || undefined,
+          date: params.date || new Date().toISOString(),
+          items: parsedItems,
+          receipt_path: params.receipt_uri || undefined, // Pass as receipt_path for display
+          receipt_type: params.receipt_type || 'image',
+          receipt_name: params.receipt_name || 'receipt',
+        };
+      }
+
+      return undefined;
+    } catch (error) {
+      return undefined;
+    }
   }, [fetchedTransaction, params]);
 
   const createMutation = useMutation({
     mutationFn: async (data: TransactionFormData) => {
-      // Convert form data to API format (convert null to undefined)
-      const payload = {
+      // Convert form data to API format
+      // Note: API expects 'payment_method' instead of 'account_id'
+      // API expects 'categories' as array and 'items' as array
+      const payload: any = {
         type: data.type,
         amount: typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
         date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : data.date,
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
-        category_id: data.category_id || undefined,
-        subcategory_id: data.subcategory_id || undefined,
-        account_id: data.account_id || undefined,
+        payment_method: data.account_id || undefined,
         to_account_id: data.to_account_id || undefined,
         notes: data.notes || undefined,
       };
+
+      // Add categories in the format API expects: [{ category_id, subcategory_id }]
+      if (data.category_id) {
+        payload.categories = [{
+          category_id: data.category_id,
+          subcategory_id: data.subcategory_id || null,
+        }];
+      }
+
+      // Add items array if present
+      if (data.items && data.items.length > 0) {
+        payload.items = data.items.map(item => ({
+          name: item.name,
+          quantity: parseFloat(item.quantity) || 1,
+          price: parseFloat(item.price) || 0,
+        }));
+      }
+
+      // Add receipt_path if present
+      if (data.receipt_path) {
+        payload.receipt_path = data.receipt_path;
+      }
 
       const result = await transactionService.create(payload);
       if (!result.success) {
@@ -149,19 +179,41 @@ export default function TransactionModalScreen() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: TransactionFormData }) => {
-      // Convert form data to API format (convert null to undefined)
-      const payload = {
+      // Convert form data to API format
+      // Note: API expects 'payment_method' instead of 'account_id'
+      // API expects 'categories' as array and 'items' as array
+      const payload: any = {
         type: data.type,
         amount: typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
         date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : data.date,
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
-        category_id: data.category_id || undefined,
-        subcategory_id: data.subcategory_id || undefined,
-        account_id: data.account_id || undefined,
+        payment_method: data.account_id || undefined,
         to_account_id: data.to_account_id || undefined,
         notes: data.notes || undefined,
       };
+
+      // Add categories in the format API expects: [{ category_id, subcategory_id }]
+      if (data.category_id) {
+        payload.categories = [{
+          category_id: data.category_id,
+          subcategory_id: data.subcategory_id || null,
+        }];
+      }
+
+      // Add items array if present
+      if (data.items && data.items.length > 0) {
+        payload.items = data.items.map(item => ({
+          name: item.name,
+          quantity: parseFloat(item.quantity) || 1,
+          price: parseFloat(item.price) || 0,
+        }));
+      }
+
+      // Add receipt_path if present
+      if (data.receipt_path) {
+        payload.receipt_path = data.receipt_path;
+      }
 
       const result = await transactionService.update(id, payload);
       if (!result.success) {
@@ -171,6 +223,7 @@ export default function TransactionModalScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['transaction', params.id] }); // Invalidate specific transaction
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       router.back();

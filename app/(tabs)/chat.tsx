@@ -512,7 +512,7 @@ export default function ChatScreen() {
         });
       }
     } catch (error) {
-      console.error('Document picker error:', error);
+      // Document picker cancelled or failed
     }
   };
 
@@ -528,7 +528,6 @@ export default function ChatScreen() {
       audioRecorder.record();
       setIsRecording(true);
     } catch (error) {
-      console.error('Failed to start recording:', error);
       Alert.alert('Error', 'Failed to start recording.');
     }
   };
@@ -563,7 +562,6 @@ export default function ChatScreen() {
         }
       }
     } catch (error) {
-      console.error('Transcription error:', error);
       Alert.alert('Error', 'Failed to transcribe audio.');
     } finally {
       setIsTranscribing(false);
@@ -724,26 +722,13 @@ export default function ChatScreen() {
                     compact
                     onPress={() => {
                       // Find receipt from the immediate previous user message
-                      console.log('=== Preview & Save clicked ===');
-                      console.log('Current message id:', message.id);
-                      console.log('Total messages:', messages.length);
-                      console.log('lastUploadedFileUri:', lastUploadedFileUri);
-
                       let receiptUri: string | undefined;
                       const msgIndex = messages.findIndex((m) => m.id === message.id);
-                      console.log('Message index:', msgIndex);
 
                       if (msgIndex > 0) {
                         // Look backwards for user message with file
                         for (let i = msgIndex - 1; i >= 0; i--) {
                           const prevMsg = messages[i];
-                          console.log(`Checking message ${i}:`, {
-                            id: prevMsg.id,
-                            is_user: prevMsg.is_user,
-                            file_url: prevMsg.file_url,
-                            image_path: prevMsg.image_path,
-                            metadata: prevMsg.metadata,
-                          });
 
                           if (prevMsg.is_user) {
                             // Check all possible file fields
@@ -754,10 +739,8 @@ export default function ChatScreen() {
                                            (prevMsg.metadata as any)?.image_url ||
                                            (prevMsg as any).image ||
                                            (prevMsg as any).attachment_url;
-                            console.log('Found fileUrl:', fileUrl);
                             if (fileUrl) {
                               receiptUri = ensureAbsoluteUrl(fileUrl) || fileUrl;
-                              console.log('Using receiptUri:', receiptUri);
                               break;
                             }
                           }
@@ -765,13 +748,10 @@ export default function ChatScreen() {
                       }
                       // Fallback to lastUploadedFileUri
                       if (!receiptUri) {
-                        console.log('No receipt found in messages, using lastUploadedFileUri');
                         receiptUri = lastUploadedFileUri;
                       }
-                      console.log('Final receiptUri:', receiptUri);
 
                       const params = prepareTransactionParams(candidate, receiptUri);
-                      console.log('Navigation params:', params);
 
                       router.push({
                         pathname: '/transaction-modal',

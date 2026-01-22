@@ -108,7 +108,6 @@ export default function AccountDetailScreen() {
     queryKey: ['transactions', 'account', accountId],
     queryFn: async () => {
       const result = await accountService.getTransactions(accountId);
-      console.log('Account transactions API response:', JSON.stringify(result, null, 2));
       if (result.success && result.data) {
         const responseData = result.data as any;
         // Handle nested data structure from API: response.data.data.transactions
@@ -122,10 +121,8 @@ export default function AccountDetailScreen() {
         } else if (Array.isArray(responseData)) {
           txData = responseData;
         }
-        console.log('Extracted transactions count:', txData.length);
         return txData;
       }
-      console.log('API call failed or no data');
       return [];
     },
     enabled: !!accountId,
@@ -247,7 +244,7 @@ export default function AccountDetailScreen() {
         setCategories(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error('Error loading categories:', error);
+      // Failed to load categories
     }
   };
 
@@ -319,7 +316,6 @@ export default function AccountDetailScreen() {
         Alert.alert('Error', response.error || 'Failed to process CSV');
       }
     } catch (error) {
-      console.error('Error picking CSV:', error);
       Alert.alert('Error', 'Failed to pick or process CSV file');
     } finally {
       setIsProcessingCsv(false);

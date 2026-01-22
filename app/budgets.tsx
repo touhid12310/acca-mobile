@@ -18,6 +18,7 @@ import {
   Button,
   ProgressBar,
   Chip,
+  Divider,
 } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,9 @@ export default function BudgetsScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     budgeted_amount: '',
@@ -66,7 +70,7 @@ export default function BudgetsScreen() {
           setAvailableCategories(Array.isArray(data) ? data : []);
         }
       } catch (error) {
-        console.error('Error loading categories:', error);
+        // Failed to load categories
       }
     };
     loadCategories();
@@ -140,9 +144,7 @@ export default function BudgetsScreen() {
           subcategory_id: cat.subcategoryId,
         })),
       };
-      console.log('Update payload:', JSON.stringify(payload, null, 2));
       const result = await budgetService.update(id, payload);
-      console.log('Update result:', JSON.stringify(result, null, 2));
       if (!result.success) {
         const errorData = result.data as any;
         const errorMsg = errorData?.message || result.error || 'Update failed';
@@ -267,19 +269,35 @@ export default function BudgetsScreen() {
     }
   };
 
-  const handleDelete = (budget: Budget) => {
-    Alert.alert(
-      'Delete Budget',
-      `Are you sure you want to delete "${budget.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteMutation.mutate(budget.id),
-        },
-      ]
-    );
+  const showBudgetActions = (budget: Budget) => {
+    setSelectedBudget(budget);
+    setShowActionSheet(true);
+  };
+
+  const handleEditPress = () => {
+    if (selectedBudget) {
+      openModal(selectedBudget);
+    }
+    setShowActionSheet(false);
+    setSelectedBudget(null);
+  };
+
+  const handleDeletePress = () => {
+    setShowActionSheet(false);
+    setTimeout(() => setShowDeleteConfirm(true), 200);
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedBudget) {
+      deleteMutation.mutate(selectedBudget.id);
+    }
+    setShowDeleteConfirm(false);
+    setSelectedBudget(null);
+  };
+
+  const closeActionSheet = () => {
+    setShowActionSheet(false);
+    setSelectedBudget(null);
   };
 
   const getProgressColor = (percentage: number, status?: string) => {
@@ -395,7 +413,7 @@ export default function BudgetsScreen() {
               >
                 <TouchableOpacity
                   onPress={() => openModal(budget)}
-                  onLongPress={() => handleDelete(budget)}
+                  onLongPress={() => showBudgetActions(budget)}
                 >
                   {/* Header */}
                   <View style={styles.budgetHeader}>
@@ -417,6 +435,13 @@ export default function BudgetsScreen() {
                         {percentage.toFixed(0)}%
                       </Text>
                     </View>
+                    <TouchableOpacity
+                      onPress={() => showBudgetActions(budget)}
+                      style={styles.menuButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <MaterialCommunityIcons name="dots-vertical" size={20} color={colors.onSurfaceVariant} />
+                    </TouchableOpacity>
                   </View>
 
                   {/* Categories */}
@@ -652,6 +677,89 @@ export default function BudgetsScreen() {
           </ScrollView>
         </Modal>
       </Portal>
+
+      {/* Action Sheet Modal */}
+      <Portal>
+        <Modal
+          visible={showActionSheet}
+          onDismiss={closeActionSheet}
+          contentContainerStyle={[styles.actionSheetContainer, { backgroundColor: colors.surface }]}
+        >
+          {selectedBudget && (
+            <>
+              <View style={styles.actionSheetHeader}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: `${colors.primary}20` }]}>
+                  <MaterialCommunityIcons name="target" size={28} color={colors.primary} />
+                </View>
+                <View style={styles.actionSheetInfo}>
+                  <Text variant="titleMedium" style={{ color: colors.onSurface }} numberOfLines={1}>
+                    {selectedBudget.name}
+                  </Text>
+                  <Text variant="titleLarge" style={{ color: colors.primary, fontWeight: 'bold' }}>
+                    {formatAmount(parseFloat(String((selectedBudget as any).budgeted_amount || (selectedBudget as any).amount || 0)))}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                    {selectedBudget.period ? selectedBudget.period.charAt(0).toUpperCase() + selectedBudget.period.slice(1) : 'Monthly'}
+                  </Text>
+                </View>
+              </View>
+
+              <Divider style={{ marginVertical: 16 }} />
+
+              <TouchableOpacity style={styles.actionSheetButton} onPress={handleEditPress}>
+                <MaterialCommunityIcons name="pencil" size={24} color={colors.primary} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.onSurface }]}>
+                  Edit Budget
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionSheetButton} onPress={handleDeletePress}>
+                <MaterialCommunityIcons name="delete" size={24} color={colors.error} />
+                <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.error }]}>
+                  Delete Budget
+                </Text>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={colors.error} />
+              </TouchableOpacity>
+
+              <Button mode="outlined" onPress={closeActionSheet} style={styles.actionSheetCancel}>
+                Cancel
+              </Button>
+            </>
+          )}
+        </Modal>
+      </Portal>
+
+      {/* Delete Confirmation Modal */}
+      <Portal>
+        <Modal
+          visible={showDeleteConfirm}
+          onDismiss={() => setShowDeleteConfirm(false)}
+          contentContainerStyle={[styles.deleteConfirmContainer, { backgroundColor: colors.surface }]}
+        >
+          <MaterialCommunityIcons name="alert-circle" size={48} color={colors.error} style={{ alignSelf: 'center' }} />
+          <Text variant="titleLarge" style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}>
+            Delete Budget?
+          </Text>
+          <Text variant="bodyMedium" style={[styles.deleteConfirmText, { color: colors.onSurfaceVariant }]}>
+            This action cannot be undone. The budget will be permanently removed.
+          </Text>
+          <View style={styles.deleteConfirmButtons}>
+            <Button mode="outlined" onPress={() => setShowDeleteConfirm(false)} style={styles.deleteConfirmButton}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor={colors.error}
+              onPress={handleConfirmDelete}
+              style={styles.deleteConfirmButton}
+              loading={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -835,5 +943,69 @@ const styles = StyleSheet.create({
   subcategoryOption: {
     padding: 8,
     borderRadius: 6,
+  },
+  menuButton: {
+    padding: 8,
+    marginLeft: 4,
+    marginRight: -8,
+  },
+  actionSheetContainer: {
+    margin: 16,
+    marginTop: 'auto',
+    borderRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  actionSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionSheetIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  actionSheetInfo: {
+    flex: 1,
+  },
+  actionSheetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+  },
+  actionSheetButtonText: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  actionSheetCancel: {
+    marginTop: 16,
+    borderRadius: 12,
+  },
+  deleteConfirmContainer: {
+    margin: 24,
+    borderRadius: 20,
+    padding: 24,
+  },
+  deleteConfirmTitle: {
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: 'bold',
+  },
+  deleteConfirmText: {
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  deleteConfirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteConfirmButton: {
+    flex: 1,
+    borderRadius: 12,
   },
 });
