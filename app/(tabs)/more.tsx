@@ -165,6 +165,12 @@ export default function MoreScreen() {
           onPress: () => router.push('/profile'),
         },
         {
+          icon: 'shield-account',
+          label: 'Login Activity',
+          description: 'Manage active sessions',
+          onPress: () => router.push('/sessions'),
+        },
+        {
           icon: 'download',
           label: 'Export Data',
           description: 'Download your data',

@@ -48,6 +48,25 @@ interface Subcategory {
   is_active?: boolean;
 }
 
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
+
 const typeConfig: Record<CategoryType, { label: string; icon: string; color: string }> = {
   income: { label: 'Income', icon: 'trending-up', color: '#10B981' },
   expense: { label: 'Expense', icon: 'trending-down', color: '#EF4444' },
@@ -130,7 +149,7 @@ export default function CategoriesScreen() {
         color: data.color,
         is_active: data.is_active ? 1 : 0,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -148,7 +167,7 @@ export default function CategoriesScreen() {
         color: data.color,
         is_active: data.is_active ? 1 : 0,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -163,7 +182,7 @@ export default function CategoriesScreen() {
       const result = isSubcategory
         ? await categoryService.deleteSubcategory(id)
         : await categoryService.delete(id);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {

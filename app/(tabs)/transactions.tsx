@@ -22,7 +22,7 @@ import {
   Modal,
   Button,
 } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -40,6 +40,7 @@ export default function TransactionsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
@@ -550,7 +551,7 @@ export default function TransactionsScreen() {
       {/* FAB */}
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[styles.fab, { backgroundColor: colors.primary, bottom: 16 + insets.bottom }]}
         color="#ffffff"
         onPress={() => router.push('/transaction-modal')}
       />

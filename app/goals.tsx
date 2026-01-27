@@ -29,6 +29,25 @@ import goalService from '../src/services/goalService';
 import categoryService from '../src/services/categoryService';
 import { Goal } from '../src/types';
 
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
+
 export default function GoalsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
@@ -91,7 +110,7 @@ export default function GoalsScreen() {
         category: data.category || undefined,
         description: data.description || undefined,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -104,7 +123,7 @@ export default function GoalsScreen() {
   const addAmountMutation = useMutation({
     mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
       const result = await goalService.addAmount(id, { amount });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -117,7 +136,7 @@ export default function GoalsScreen() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await goalService.delete(id);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {

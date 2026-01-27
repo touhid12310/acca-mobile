@@ -6,6 +6,8 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Text,
@@ -17,7 +19,7 @@ import {
   TextInput,
   Button,
 } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -26,6 +28,25 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import accountService from '../src/services/accountService';
 import { Account } from '../src/types';
+
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
 
 const accountTypeOptions = [
   { value: 'Cash', label: 'Cash' },
@@ -55,6 +76,7 @@ export default function AccountsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [formData, setFormData] = useState({
@@ -84,10 +106,10 @@ export default function AccountsScreen() {
     mutationFn: async (data: typeof formData) => {
       const result = await accountService.create({
         account_name: data.account_name,
-        account_type: data.account_type,
-        balance: parseFloat(data.balance) || 0,
+        type: data.account_type,
+        current_balance: parseFloat(data.balance) || 0,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -101,7 +123,7 @@ export default function AccountsScreen() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await accountService.delete(id);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -155,7 +177,7 @@ export default function AccountsScreen() {
   const viewAccounts = accounts || [];
   const totalBalance = viewAccounts.reduce(
     (sum: number, acc: Account) => {
-      const balance = Number(acc.current_balance) || Number(acc.balance) || 0;
+      const balance = parseFloat(String(acc.current_balance ?? acc.balance ?? 0));
       return sum + balance;
     },
     0
@@ -164,8 +186,8 @@ export default function AccountsScreen() {
   const uniqueTypes = new Set(viewAccounts.map((acc: Account) => acc.type || acc.account_type || 'Other')).size;
   const topAccount = viewAccounts.length > 0
     ? viewAccounts.reduce((prev: Account, current: Account) => {
-        const prevBalance = Number(prev.current_balance) || Number(prev.balance) || 0;
-        const currBalance = Number(current.current_balance) || Number(current.balance) || 0;
+        const prevBalance = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
+        const currBalance = parseFloat(String(current.current_balance ?? current.balance ?? 0));
         return currBalance > prevBalance ? current : prev;
       }, viewAccounts[0])
     : null;
@@ -254,7 +276,7 @@ export default function AccountsScreen() {
             </Text>
             {viewAccounts.map((account: Account) => {
               const accountType = account.type || account.account_type || 'Other';
-              const balance = account.current_balance || account.balance || 0;
+              const balance = parseFloat(String(account.current_balance ?? account.balance ?? 0));
               const iconName = getAccountIcon(accountType);
 
               return (
@@ -319,7 +341,7 @@ export default function AccountsScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[styles.fab, { backgroundColor: colors.primary, bottom: 16 + insets.bottom }]}
         color={colors.onPrimary}
         onPress={openAddModal}
       />
@@ -331,71 +353,76 @@ export default function AccountsScreen() {
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-            Add Account
-          </Text>
-
-          <TextInput
-            label="Account Name"
-            value={formData.account_name}
-            onChangeText={(text) => setFormData({ ...formData, account_name: text })}
-            mode="outlined"
-            style={styles.input}
-          />
-
-          <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginTop: 8, marginBottom: 8 }}>
-            Account Type
-          </Text>
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginBottom: 16 }}
-            contentContainerStyle={{ gap: 8 }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
-            {accountTypeOptions.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.typeChip,
-                  {
-                    backgroundColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
-                    borderColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
-                  },
-                ]}
-                onPress={() => setFormData({ ...formData, account_type: option.value })}
-              >
-                <Text
-                  style={{
-                    color: formData.account_type === option.value ? '#fff' : colors.onSurfaceVariant,
-                    fontSize: 12,
-                    fontWeight: '500',
-                  }}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              Add Account
+            </Text>
 
-          <TextInput
-            label="Balance"
-            value={formData.balance}
-            onChangeText={(text) => setFormData({ ...formData, balance: text })}
-            mode="outlined"
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
+            <TextInput
+              label="Account Name"
+              value={formData.account_name}
+              onChangeText={(text) => setFormData({ ...formData, account_name: text })}
+              mode="outlined"
+              style={styles.input}
+            />
 
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeModal}>Cancel</Button>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              loading={createMutation.isPending}
+            <TextInput
+              label="Initial Balance"
+              value={formData.balance}
+              onChangeText={(text) => setFormData({ ...formData, balance: text })}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Account Type
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 16 }}
+              contentContainerStyle={{ gap: 8 }}
             >
-              Add
-            </Button>
-          </View>
+              {accountTypeOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.typeChip,
+                    {
+                      backgroundColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
+                      borderColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, account_type: option.value })}
+                >
+                  <Text
+                    style={{
+                      color: formData.account_type === option.value ? '#fff' : colors.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: '500',
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button
+                mode="contained"
+                onPress={handleSave}
+                loading={createMutation.isPending}
+              >
+                Add
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
     </SafeAreaView>
@@ -494,6 +521,7 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
+    maxHeight: '70%',
   },
   input: {
     marginBottom: 12,

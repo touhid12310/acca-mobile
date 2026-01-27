@@ -6,6 +6,8 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Text,
@@ -21,7 +23,7 @@ import {
   SegmentedButtons,
   Divider,
 } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -33,6 +35,25 @@ import accountService from '../src/services/accountService';
 import categoryService from '../src/services/categoryService';
 import { Loan } from '../src/types';
 
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
+
 const termPeriodOptions = [
   { value: 'months', label: 'Months' },
   { value: 'years', label: 'Years' },
@@ -42,6 +63,7 @@ export default function LoansScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -114,7 +136,7 @@ export default function LoansScreen() {
 
       const categoryType = formData.loan_type === 'Lent' ? 'asset' : 'liability';
       try {
-        const result = await categoryService.getAll({ type: categoryType });
+        const result = await categoryService.getForTransaction({ type: categoryType });
         if (result.success && result.data) {
           const data = (result.data as any)?.data || result.data;
           setCategories(Array.isArray(data) ? data : []);
@@ -144,7 +166,7 @@ export default function LoansScreen() {
         notes: data.notes || undefined,
       };
       const result = await loanService.create(payload);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -166,7 +188,7 @@ export default function LoansScreen() {
         notes: data.notes || undefined,
       };
       const result = await loanService.makePayment(id, payload);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -180,7 +202,7 @@ export default function LoansScreen() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await loanService.delete(id);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -262,7 +284,7 @@ export default function LoansScreen() {
       Alert.alert('Error', 'Please enter a valid payment amount');
       return;
     }
-    if (amount > (selectedLoan.remaining_balance || 0)) {
+    if (amount > parseFloat(String(selectedLoan.remaining_balance ?? 0))) {
       Alert.alert('Error', 'Payment amount exceeds remaining balance');
       return;
     }
@@ -318,7 +340,7 @@ export default function LoansScreen() {
     loan.loan_type === 'Borrowed' || !loan.loan_type
   );
   const totalLoansToPay = borrowedLoans.reduce(
-    (sum: number, loan: Loan) => sum + parseFloat(String(loan.remaining_balance || loan.principal || 0)),
+    (sum: number, loan: Loan) => sum + parseFloat(String(loan.remaining_balance ?? loan.principal ?? 0)),
     0
   );
 
@@ -327,18 +349,18 @@ export default function LoansScreen() {
     loan.loan_type === 'Lent'
   );
   const totalLoansToReceive = lentLoans.reduce(
-    (sum: number, loan: Loan) => sum + parseFloat(String(loan.remaining_balance || loan.principal || 0)),
+    (sum: number, loan: Loan) => sum + parseFloat(String(loan.remaining_balance ?? loan.principal ?? 0)),
     0
   );
 
   // Upcoming installments
   const totalUpcomingInstallments = activeLoans
     .filter((loan: Loan) => loan.next_payment && parseFloat(String(loan.next_payment)) > 0)
-    .reduce((sum: number, loan: Loan) => sum + parseFloat(String(loan.next_payment || loan.monthly_payment || 0)), 0);
+    .reduce((sum: number, loan: Loan) => sum + parseFloat(String(loan.next_payment ?? loan.monthly_payment ?? 0)), 0);
 
   const calculateProgress = (loan: Loan) => {
-    const original = parseFloat(String(loan.original_amount || loan.principal || 0));
-    const remaining = parseFloat(String(loan.remaining_balance || 0));
+    const original = parseFloat(String(loan.original_amount ?? loan.principal ?? 0));
+    const remaining = parseFloat(String(loan.remaining_balance ?? 0));
     if (original <= 0) return 0;
     return ((original - remaining) / original) * 100;
   };
@@ -456,10 +478,10 @@ export default function LoansScreen() {
           (showArchived ? viewLoans : activeLoans).map((loan: Loan) => {
             const progress = calculateProgress(loan);
             const loanName = loan.loan_name || loan.name || 'Unnamed Loan';
-            const originalAmount = parseFloat(String(loan.original_amount || loan.principal || 0));
-            const remainingBalance = parseFloat(String(loan.remaining_balance || 0));
-            const interestRate = loan.interest_rate || 0;
-            const nextPayment = loan.next_payment || loan.monthly_payment || 0;
+            const originalAmount = parseFloat(String(loan.original_amount ?? loan.principal ?? 0));
+            const remainingBalance = parseFloat(String(loan.remaining_balance ?? 0));
+            const interestRate = loan.interest_rate ?? 0;
+            const nextPayment = loan.next_payment ?? loan.monthly_payment ?? 0;
             const loanType = loan.loan_type || 'Borrowed';
             const status = loan.status || 'Active';
             const daysUntil = getDaysUntilPayment(loan.next_payment_date);
@@ -610,7 +632,7 @@ export default function LoansScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[styles.fab, { backgroundColor: colors.primary, bottom: 16 + insets.bottom }]}
         color={colors.onPrimary}
         onPress={openModal}
       />
@@ -622,7 +644,7 @@ export default function LoansScreen() {
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
               Add New Loan
             </Text>
@@ -767,7 +789,7 @@ export default function LoansScreen() {
                         <View>
                           <Text style={{ color: colors.onSurface }}>{acc.account_name}</Text>
                           <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                            {formatAmount(acc.current_balance || acc.balance || 0)}
+                            {formatAmount(parseFloat(String(acc.current_balance ?? acc.balance ?? 0)))}
                           </Text>
                         </View>
                         {String(formData.account_id) === String(acc.id) && (
@@ -878,7 +900,7 @@ export default function LoansScreen() {
           onDismiss={closePaymentModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 8 }}>
               Make Payment
             </Text>
@@ -893,13 +915,13 @@ export default function LoansScreen() {
                 <View style={styles.loanInfoRow}>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Remaining Balance:</Text>
                   <Text variant="bodyMedium" style={{ color: colors.error, fontWeight: '600' }}>
-                    {formatAmount(selectedLoan.remaining_balance || 0)}
+                    {formatAmount(parseFloat(String(selectedLoan.remaining_balance ?? 0)))}
                   </Text>
                 </View>
                 <View style={styles.loanInfoRow}>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>Suggested Payment:</Text>
                   <Text variant="bodyMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
-                    {formatAmount(selectedLoan.next_payment || selectedLoan.monthly_payment || 0)}
+                    {formatAmount(parseFloat(String(selectedLoan.next_payment ?? selectedLoan.monthly_payment ?? 0)))}
                   </Text>
                 </View>
               </Surface>
@@ -949,7 +971,7 @@ export default function LoansScreen() {
                       <View>
                         <Text style={{ color: colors.onSurface }}>{acc.account_name}</Text>
                         <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                          {formatAmount(acc.current_balance || acc.balance || 0)}
+                          {formatAmount(parseFloat(String(acc.current_balance ?? acc.balance ?? 0)))}
                         </Text>
                       </View>
                       {String(paymentData.account_id) === String(acc.id) && (
@@ -1036,7 +1058,7 @@ export default function LoansScreen() {
                     {selectedLoan.loan_name || selectedLoan.name || 'Unnamed Loan'}
                   </Text>
                   <Text variant="titleLarge" style={{ color: selectedLoan.loan_type === 'Lent' ? colors.tertiary : colors.error, fontWeight: 'bold' }}>
-                    {formatAmount(parseFloat(String(selectedLoan.remaining_balance || selectedLoan.principal || 0)))}
+                    {formatAmount(parseFloat(String(selectedLoan.remaining_balance ?? selectedLoan.principal ?? 0)))}
                   </Text>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
                     {selectedLoan.loan_type || 'Borrowed'} • {selectedLoan.status || 'Active'}
@@ -1225,7 +1247,7 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
-    maxHeight: '85%',
+    maxHeight: '70%',
   },
   input: {
     marginBottom: 12,

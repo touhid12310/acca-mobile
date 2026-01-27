@@ -164,6 +164,53 @@ export const authService = {
       token,
     });
   },
+
+  // Session Management
+  validateSession: async (): Promise<ApiResponse<{ valid: boolean; user: User }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ valid: boolean; user: User }>('/sessions/validate', {
+      method: 'GET',
+      token,
+    });
+  },
+
+  getSessions: async (): Promise<ApiResponse<{ sessions: Session[]; total: number }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ sessions: Session[]; total: number }>('/sessions', {
+      method: 'GET',
+      token,
+    });
+  },
+
+  revokeSession: async (sessionId: number): Promise<ApiResponse<void>> => {
+    const token = await getAuthToken();
+    return apiRequest<void>(`/sessions/${sessionId}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  revokeOtherSessions: async (): Promise<ApiResponse<{ revoked_count: number }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ revoked_count: number }>('/sessions', {
+      method: 'DELETE',
+      token,
+    });
+  },
 };
+
+// Session type for session management
+export interface Session {
+  id: number;
+  device_name: string;
+  ip_address: string;
+  user_agent: string | null;
+  browser: string;
+  platform: string;
+  last_active: string;
+  last_active_at: string | null;
+  created_at: string;
+  is_current: boolean;
+}
 
 export default authService;

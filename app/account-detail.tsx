@@ -57,6 +57,25 @@ const accountTypeOptions = [
   { value: 'Other', label: 'Other' },
 ];
 
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
+
 export default function AccountDetailScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
@@ -160,7 +179,7 @@ export default function AccountDetailScreen() {
         type: data.account_type,
         current_balance: parseFloat(data.balance) || 0,
       });
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -174,7 +193,7 @@ export default function AccountDetailScreen() {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       const result = await accountService.delete(accountId);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {

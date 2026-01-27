@@ -28,7 +28,7 @@
         "backgroundColor": "#1a73e8"
       },
       "package": "com.acca.finance",
-      "softwareKeyboardLayoutMode": "resize",
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",

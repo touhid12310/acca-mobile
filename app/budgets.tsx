@@ -6,6 +6,8 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Text,
@@ -20,7 +22,7 @@ import {
   Chip,
   Divider,
 } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -30,6 +32,25 @@ import { useCurrency } from '../src/contexts/CurrencyContext';
 import budgetService from '../src/services/budgetService';
 import categoryService from '../src/services/categoryService';
 import { Budget } from '../src/types';
+
+// Helper function to extract detailed validation errors from API response
+const formatApiError = (result: any): string => {
+  const errorData = result.data;
+  let errorMsg = errorData?.message || result.error || 'Request failed';
+
+  // Check for Laravel validation errors
+  const validationErrors = errorData?.errors;
+  if (validationErrors && typeof validationErrors === 'object') {
+    const errorDetails = Object.entries(validationErrors)
+      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+      .join('\n');
+    if (errorDetails) {
+      errorMsg = `${errorMsg}\n\n${errorDetails}`;
+    }
+  }
+
+  return errorMsg;
+};
 
 interface SelectedCategory {
   categoryId: number;
@@ -43,6 +64,7 @@ export default function BudgetsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
@@ -121,7 +143,7 @@ export default function BudgetsScreen() {
         })),
       };
       const result = await budgetService.create(payload);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -145,18 +167,7 @@ export default function BudgetsScreen() {
         })),
       };
       const result = await budgetService.update(id, payload);
-      if (!result.success) {
-        const errorData = result.data as any;
-        const errorMsg = errorData?.message || result.error || 'Update failed';
-        const validationErrors = errorData?.errors;
-        if (validationErrors) {
-          const errorDetails = Object.entries(validationErrors)
-            .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(', ')}`)
-            .join('\n');
-          throw new Error(`${errorMsg}\n${errorDetails}`);
-        }
-        throw new Error(errorMsg);
-      }
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -169,7 +180,7 @@ export default function BudgetsScreen() {
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await budgetService.delete(id);
-      if (!result.success) throw new Error(result.error);
+      if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
@@ -523,7 +534,7 @@ export default function BudgetsScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[styles.fab, { backgroundColor: colors.primary, bottom: 16 + insets.bottom }]}
         color={colors.onPrimary}
         onPress={() => openModal()}
       />
@@ -535,7 +546,7 @@ export default function BudgetsScreen() {
           onDismiss={closeModal}
           contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
               {editingBudget ? 'Edit Budget' : 'Add Budget'}
             </Text>
@@ -888,6 +899,7 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
+    maxHeight: '70%',
   },
   input: {
     marginBottom: 12,
