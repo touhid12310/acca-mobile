@@ -255,42 +255,6 @@ export default function TransactionFormContent({
     }
   };
 
-  const handlePickReceipt = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      updateField('receipt', {
-        uri: asset.uri,
-        type: asset.mimeType || 'image/jpeg',
-        name: asset.fileName || 'receipt.jpg',
-      });
-    }
-  };
-
-  const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      updateField('receipt', {
-        uri: asset.uri,
-        type: asset.mimeType || 'image/jpeg',
-        name: 'receipt.jpg',
-      });
-    }
-  };
-
   // Process receipt with AI
   const processReceiptWithAI = async (file: { uri: string; name: string; type: string }) => {
     setIsProcessingReceipt(true);
@@ -1065,22 +1029,6 @@ export default function TransactionFormContent({
             />
           </View>
 
-          {/* Receipt Upload - Show only when no receipt attached at all */}
-          {!formData.receipt_path && !formData.receipt && (
-            <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-                Receipt (Optional)
-              </Text>
-              <View style={styles.receiptButtons}>
-                <Button mode="outlined" icon="image" onPress={handlePickReceipt} style={styles.receiptButton}>
-                  Gallery
-                </Button>
-                <Button mode="outlined" icon="camera" onPress={handleTakePhoto} style={styles.receiptButton}>
-                  Camera
-                </Button>
-              </View>
-            </View>
-          )}
         </ScrollView>
 
         {/* Submit Button */}
@@ -1416,13 +1364,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginHorizontal: 8,
     marginBottom: 12,
-  },
-  receiptButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  receiptButton: {
-    flex: 1,
   },
   scanReceiptContainer: {
     borderRadius: 12,

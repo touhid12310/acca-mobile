@@ -33,6 +33,7 @@ import { useCurrency } from '../src/contexts/CurrencyContext';
 import loanService from '../src/services/loanService';
 import accountService from '../src/services/accountService';
 import categoryService from '../src/services/categoryService';
+import DateField from '../src/components/common/DateField';
 import { Loan } from '../src/types';
 
 // Helper function to extract detailed validation errors from API response
@@ -851,21 +852,17 @@ export default function LoansScreen() {
               </View>
             </View>
 
-            <TextInput
+            <DateField
               label="Start Date *"
               value={formData.start_date}
-              onChangeText={(text) => setFormData({ ...formData, start_date: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, start_date: date })}
               style={styles.input}
             />
 
-            <TextInput
+            <DateField
               label="Next Payment Date"
               value={formData.next_payment_date}
-              onChangeText={(text) => setFormData({ ...formData, next_payment_date: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, next_payment_date: date })}
               style={styles.input}
             />
 
@@ -983,12 +980,10 @@ export default function LoansScreen() {
               </Surface>
             )}
 
-            <TextInput
+            <DateField
               label="Payment Date *"
               value={paymentData.payment_date}
-              onChangeText={(text) => setPaymentData({ ...paymentData, payment_date: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setPaymentData({ ...paymentData, payment_date: date })}
               style={[styles.input, { marginTop: 12 }]}
             />
 
@@ -1002,11 +997,10 @@ export default function LoansScreen() {
               style={styles.input}
             />
 
-            <TextInput
+            <DateField
               label="Next Payment Date"
               value={paymentData.next_payment_date}
-              onChangeText={(text) => setPaymentData({ ...paymentData, next_payment_date: text })}
-              mode="outlined"
+              onChange={(date) => setPaymentData({ ...paymentData, next_payment_date: date })}
               placeholder="YYYY-MM-DD (Optional)"
               style={styles.input}
             />

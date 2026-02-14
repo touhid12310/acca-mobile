@@ -30,6 +30,7 @@ import { useCurrency } from '../src/contexts/CurrencyContext';
 import accountService from '../src/services/accountService';
 import transactionService from '../src/services/transactionService';
 import categoryService from '../src/services/categoryService';
+import DateField from '../src/components/common/DateField';
 import { Account, Transaction } from '../src/types';
 
 interface ReconcileTransaction {
@@ -885,11 +886,10 @@ export default function AccountDetailScreen() {
 
                     <View style={styles.reconcileItemRow}>
                       <View style={{ flex: 1 }}>
-                        <TextInput
+                        <DateField
                           label="Date"
                           value={item.date?.split('T')[0] || ''}
-                          onChangeText={(text) => handleUpdateReconcileItem(index, 'date', text)}
-                          mode="outlined"
+                          onChange={(date) => handleUpdateReconcileItem(index, 'date', date)}
                           dense
                           style={styles.reconcileInput}
                         />

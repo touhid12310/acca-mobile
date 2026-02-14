@@ -27,6 +27,7 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import goalService from '../src/services/goalService';
 import categoryService from '../src/services/categoryService';
+import DateField from '../src/components/common/DateField';
 import { Goal } from '../src/types';
 
 // Helper function to extract detailed validation errors from API response
@@ -472,12 +473,10 @@ export default function GoalsScreen() {
               style={styles.input}
             />
 
-            <TextInput
+            <DateField
               label="Target Date"
               value={formData.target_date}
-              onChangeText={(text) => setFormData({ ...formData, target_date: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, target_date: date })}
               style={styles.input}
             />
 

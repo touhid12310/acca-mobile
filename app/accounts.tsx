@@ -29,7 +29,7 @@ import { useCurrency } from '../src/contexts/CurrencyContext';
 import accountService from '../src/services/accountService';
 import { Account } from '../src/types';
 
-// Helper function to extract detailed validation errors from API response
+// Helper function to extracts detailed validation errors from API response
 const formatApiError = (result: any): string => {
   const errorData = result.data;
   let errorMsg = errorData?.message || result.error || 'Request failed';
@@ -186,10 +186,10 @@ export default function AccountsScreen() {
   const uniqueTypes = new Set(viewAccounts.map((acc: Account) => acc.type || acc.account_type || 'Other')).size;
   const topAccount = viewAccounts.length > 0
     ? viewAccounts.reduce((prev: Account, current: Account) => {
-        const prevBalance = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
-        const currBalance = parseFloat(String(current.current_balance ?? current.balance ?? 0));
-        return currBalance > prevBalance ? current : prev;
-      }, viewAccounts[0])
+      const prevBalance = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
+      const currBalance = parseFloat(String(current.current_balance ?? current.balance ?? 0));
+      return currBalance > prevBalance ? current : prev;
+    }, viewAccounts[0])
     : null;
 
   if (isLoading) {

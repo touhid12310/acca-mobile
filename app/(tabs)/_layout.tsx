@@ -14,7 +14,7 @@ type IconNames = {
 const TAB_ICONS: Record<string, IconNames> = {
   dashboard: { focused: 'view-dashboard', unfocused: 'view-dashboard-outline' },
   transactions: { focused: 'format-list-bulleted-square', unfocused: 'format-list-bulleted' },
-  chat: { focused: 'chat', unfocused: 'chat-outline' },
+  chat: { focused: 'robot', unfocused: 'robot-outline' },
   reports: { focused: 'chart-bar', unfocused: 'chart-bar' },
   more: { focused: 'menu', unfocused: 'menu' },
 };

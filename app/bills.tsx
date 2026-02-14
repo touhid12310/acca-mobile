@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -29,6 +29,7 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
 import billService from '../src/services/billService';
 import categoryService from '../src/services/categoryService';
+import DateField from '../src/components/common/DateField';
 import { Bill } from '../src/types';
 
 // Helper function to extract detailed validation errors from API response
@@ -282,6 +283,21 @@ export default function BillsScreen() {
   const totalRepeatingBills = viewBills
     .reduce((sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0), 0);
 
+  const statsFrequencyLabel = useMemo(() => {
+    const normalizedFrequencies = new Set(
+      viewBills
+        .map((bill: Bill) => String(bill.frequency || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    if (normalizedFrequencies.size === 1) {
+      const [onlyFrequency] = Array.from(normalizedFrequencies);
+      return `${onlyFrequency.charAt(0).toUpperCase()}${onlyFrequency.slice(1)} Repeats`;
+    }
+
+    return 'All Frequency Repeats';
+  }, [viewBills]);
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -300,7 +316,7 @@ export default function BillsScreen() {
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
         </TouchableOpacity>
         <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Repeating Expenses
+          Repating transctions
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -322,7 +338,7 @@ export default function BillsScreen() {
               <MaterialCommunityIcons name="repeat" size={24} color={colors.primary} />
             </View>
             <View style={styles.statsText}>
-              <Text variant="labelMedium" style={{ color: colors.primary }}>Monthly Repeats</Text>
+              <Text variant="labelMedium" style={{ color: colors.primary }}>{statsFrequencyLabel}</Text>
               <Text variant="headlineSmall" style={{ color: colors.primary, fontWeight: 'bold' }}>
                 {formatAmount(totalRepeatingBills)}
               </Text>
@@ -433,10 +449,10 @@ export default function BillsScreen() {
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="repeat" size={64} color={colors.onSurfaceVariant} />
             <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
-              No repeating expenses yet
+              No repeating transactions yet
             </Text>
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
-              Track your recurring expenses and never miss a payment
+              Track your recurring transactions and never miss a payment
             </Text>
             <TouchableOpacity
               style={[styles.createFirstButton, { backgroundColor: colors.primary }]}
@@ -444,7 +460,7 @@ export default function BillsScreen() {
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
               <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 8 }}>
-                Create Your First Repeating Expense
+                Create Repeatings transctions
               </Text>
             </TouchableOpacity>
           </View>
@@ -467,7 +483,7 @@ export default function BillsScreen() {
         >
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
-              Create Repeating Expense
+              Repeating transaction
             </Text>
 
             <TextInput
@@ -505,6 +521,7 @@ export default function BillsScreen() {
                   onPress={() => setFormData({ ...formData, frequency: freq })}
                 >
                   <Text
+                    numberOfLines={1}
                     style={{
                       color: formData.frequency === freq ? colors.primary : colors.onSurfaceVariant,
                       fontWeight: formData.frequency === freq ? '600' : '400',
@@ -577,12 +594,10 @@ export default function BillsScreen() {
               </Surface>
             )}
 
-            <TextInput
+            <DateField
               label="Next Due Date"
               value={formData.next_due_date}
-              onChangeText={(text) => setFormData({ ...formData, next_due_date: text })}
-              mode="outlined"
-              placeholder="YYYY-MM-DD"
+              onChange={(date) => setFormData({ ...formData, next_due_date: date })}
               style={[styles.input, { marginTop: 12 }]}
             />
 
@@ -604,7 +619,7 @@ export default function BillsScreen() {
                 onPress={handleSave}
                 loading={createMutation.isPending}
               >
-                Save
+                Save Repeating
               </Button>
             </View>
           </ScrollView>
@@ -642,7 +657,7 @@ export default function BillsScreen() {
               <TouchableOpacity style={styles.actionSheetButton} onPress={handleDeletePress}>
                 <MaterialCommunityIcons name="delete" size={24} color={colors.error} />
                 <Text variant="bodyLarge" style={[styles.actionSheetButtonText, { color: colors.error }]}>
-                  Delete Repeating Expense
+                  Delete Repeating transaction
                 </Text>
                 <MaterialCommunityIcons name="chevron-right" size={24} color={colors.error} />
               </TouchableOpacity>
@@ -664,10 +679,10 @@ export default function BillsScreen() {
         >
           <MaterialCommunityIcons name="alert-circle" size={48} color={colors.error} style={{ alignSelf: 'center' }} />
           <Text variant="titleLarge" style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}>
-            Delete Repeating Expense?
+            Delete Repeating transaction?
           </Text>
           <Text variant="bodyMedium" style={[styles.deleteConfirmText, { color: colors.onSurfaceVariant }]}>
-            This action cannot be undone. The repeating expense will be permanently removed.
+            This action cannot be undone. The repeating transaction will be permanently removed.
           </Text>
           <View style={styles.deleteConfirmButtons}>
             <Button mode="outlined" onPress={() => setShowDeleteConfirm(false)} style={styles.deleteConfirmButton}>
@@ -801,13 +816,15 @@ const styles = StyleSheet.create({
   },
   frequencyButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexWrap: 'nowrap',
+    gap: 6,
     marginBottom: 12,
   },
   frequencyButton: {
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 6,
     borderRadius: 8,
     borderWidth: 1,
   },
@@ -903,3 +920,4 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
 });
+

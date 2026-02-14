@@ -99,7 +99,7 @@ export default function MoreScreen() {
         },
         {
           icon: 'calendar-check',
-          label: 'Bills',
+          label: 'Schedules',
           description: 'Recurring bills reminder',
           onPress: () => router.push('/bills'),
         },
