@@ -77,6 +77,7 @@ export default function BillsScreen() {
   const [formData, setFormData] = useState({
     vendor: '',
     amount: '',
+    type: 'expense' as 'income' | 'expense',
     frequency: 'Monthly' as string,
     next_due_date: new Date().toISOString().split('T')[0],
     notes: '',
@@ -126,11 +127,11 @@ export default function BillsScreen() {
     },
   });
 
-  // Fetch expense categories for selection
+  // Fetch categories for selection
   const { data: categories } = useQuery({
-    queryKey: ['categories', 'expense'],
+    queryKey: ['categories', 'all'],
     queryFn: async () => {
-      const result = await categoryService.getForTransaction('expense');
+      const result = await categoryService.getForTransaction();
       if (result.success && result.data) {
         return unwrap(result.data);
       }
@@ -138,12 +139,19 @@ export default function BillsScreen() {
     },
   });
 
+  const viewCategories = Array.isArray(categories) ? categories : [];
+  const filteredCategories = useMemo(
+    () => viewCategories.filter((c: any) => c?.type === formData.type),
+    [viewCategories, formData.type]
+  );
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       const result = await billService.create({
         vendor: data.vendor,
         contact_name: data.vendor,
         amount: parseFloat(data.amount) || 0,
+        type: data.type,
         frequency: data.frequency,
         next_due_date: data.next_due_date || new Date().toISOString().split('T')[0],
         notes: data.notes,
@@ -176,6 +184,7 @@ export default function BillsScreen() {
     setFormData({
       vendor: '',
       amount: '',
+      type: 'expense',
       frequency: 'Monthly',
       next_due_date: new Date().toISOString().split('T')[0],
       notes: '',
@@ -251,16 +260,14 @@ export default function BillsScreen() {
   };
 
   const getCategoryName = (categoryId?: number | string) => {
-    if (!categoryId || !categories) return null;
-    const viewCategories = Array.isArray(categories) ? categories : [];
+    if (!categoryId) return null;
     const category = viewCategories.find((c: any) => c.id === Number(categoryId));
     return category?.name || null;
   };
 
   const getSelectedCategoryName = () => {
-    if (!formData.category_id || !categories) return '';
-    const viewCategories = Array.isArray(categories) ? categories : [];
-    const cat = viewCategories.find((c: any) => String(c.id) === String(formData.category_id));
+    if (!formData.category_id) return '';
+    const cat = filteredCategories.find((c: any) => String(c.id) === String(formData.category_id));
     return cat?.name || '';
   };
 
@@ -277,7 +284,6 @@ export default function BillsScreen() {
 
   // Calculate stats
   const viewBills = Array.isArray(bills) ? bills : [];
-  const viewCategories = Array.isArray(categories) ? categories : [];
 
   // Total of all repeating bills (same as web version)
   const totalRepeatingBills = viewBills
@@ -358,6 +364,8 @@ export default function BillsScreen() {
             const billName = bill.contact_name || bill.vendor || 'Unnamed Bill';
             const categoryName = getCategoryName(bill.category_id);
             const status = bill.status || 'scheduled';
+            const billType = String(bill.type || 'expense').toLowerCase();
+            const billTypeColor = billType === 'income' ? colors.tertiary : colors.error;
             const billAmount = parseFloat(String(bill.amount)) || 0;
 
             return (
@@ -392,6 +400,11 @@ export default function BillsScreen() {
                         </TouchableOpacity>
                       </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                        <View style={[styles.badge, { backgroundColor: `${billTypeColor}20` }]}>
+                          <Text style={{ color: billTypeColor, fontSize: 11 }}>
+                            {billType.charAt(0).toUpperCase() + billType.slice(1)}
+                          </Text>
+                        </View>
                         <View style={[styles.badge, { backgroundColor: colors.surfaceVariant }]}>
                           <Text style={{ color: colors.onSurfaceVariant, fontSize: 11 }}>
                             {bill.frequency || 'Monthly'}
@@ -505,6 +518,35 @@ export default function BillsScreen() {
             />
 
             <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+              Type
+            </Text>
+            <View style={styles.typeButtons}>
+              {(['expense', 'income'] as const).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    {
+                      backgroundColor:
+                        formData.type === type ? colors.primaryContainer : colors.surfaceVariant,
+                      borderColor: formData.type === type ? colors.primary : 'transparent',
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, type, category_id: '' })}
+                >
+                  <Text
+                    style={{
+                      color: formData.type === type ? colors.primary : colors.onSurfaceVariant,
+                      fontWeight: formData.type === type ? '600' : '400',
+                    }}
+                  >
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
               Frequency
             </Text>
             <View style={styles.frequencyButtons}>
@@ -566,12 +608,12 @@ export default function BillsScreen() {
                   >
                     <Text style={{ color: colors.onSurfaceVariant }}>None</Text>
                   </TouchableOpacity>
-                  {viewCategories.length === 0 ? (
+                  {filteredCategories.length === 0 ? (
                     <Text style={{ padding: 12, color: colors.onSurfaceVariant, textAlign: 'center' }}>
-                      No categories available
+                      No {formData.type} categories available
                     </Text>
                   ) : (
-                    viewCategories.map((cat: any) => (
+                    filteredCategories.map((cat: any) => (
                       <TouchableOpacity
                         key={cat.id}
                         style={[
@@ -813,6 +855,18 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  typeButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  typeButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
   },
   frequencyButtons: {
     flexDirection: 'row',

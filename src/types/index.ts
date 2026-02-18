@@ -199,10 +199,16 @@ export interface LoanPayment {
 // Bill Types
 export interface Bill {
   id: number;
-  name: string;
-  amount: number;
-  due_date: string;
-  frequency: 'monthly' | 'weekly' | 'yearly' | 'one-time';
+  name?: string;
+  vendor?: string;
+  contact_name?: string;
+  amount: number | string;
+  due_date?: string;
+  next_due_date?: string;
+  frequency: 'monthly' | 'weekly' | 'yearly' | 'one-time' | 'Monthly' | 'Weekly' | 'Quarterly' | 'Yearly' | string;
+  type?: 'income' | 'expense';
+  status?: string;
+  notes?: string;
   is_paid?: boolean;
   auto_pay?: boolean;
   category_id?: number;
