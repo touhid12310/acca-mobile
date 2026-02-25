@@ -3,10 +3,20 @@
  */
 
 /**
+ * Converts a Date object to local date input value (YYYY-MM-DD)
+ */
+export const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Returns today's date as an ISO date string (YYYY-MM-DD)
  */
 export const todayDateInputValue = (): string => {
-  return new Date().toISOString().split('T')[0];
+  return toDateInputValue(new Date());
 };
 
 /**
@@ -21,7 +31,14 @@ export const formatDate = (
   }
 ): string => {
   try {
-    const date = new Date(dateString);
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+    const date = dateOnlyMatch
+      ? new Date(
+          Number(dateOnlyMatch[1]),
+          Number(dateOnlyMatch[2]) - 1,
+          Number(dateOnlyMatch[3])
+        )
+      : new Date(dateString);
     return date.toLocaleDateString(undefined, options);
   } catch {
     return dateString;
@@ -78,8 +95,8 @@ export const getCurrentMonthRange = (): { start: string; end: string } => {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   return {
-    start: start.toISOString().split('T')[0],
-    end: end.toISOString().split('T')[0],
+    start: toDateInputValue(start),
+    end: toDateInputValue(end),
   };
 };
 
@@ -90,13 +107,13 @@ export const getDateRangeForMonths = (
   months: number
 ): { start: string; end: string } => {
   const now = new Date();
-  const end = now.toISOString().split('T')[0];
+  const end = toDateInputValue(now);
 
   const start = new Date(now);
   start.setMonth(start.getMonth() - months);
 
   return {
-    start: start.toISOString().split('T')[0],
+    start: toDateInputValue(start),
     end,
   };
 };
@@ -105,6 +122,14 @@ export const getDateRangeForMonths = (
  * Parses a date string and returns a Date object
  */
 export const parseDate = (dateString: string): Date => {
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
+  if (dateOnlyMatch) {
+    return new Date(
+      Number(dateOnlyMatch[1]),
+      Number(dateOnlyMatch[2]) - 1,
+      Number(dateOnlyMatch[3])
+    );
+  }
   return new Date(dateString);
 };
 
@@ -112,7 +137,7 @@ export const parseDate = (dateString: string): Date => {
  * Checks if a date string is valid
  */
 export const isValidDate = (dateString: string): boolean => {
-  const date = new Date(dateString);
+  const date = parseDate(dateString);
   return !isNaN(date.getTime());
 };
 

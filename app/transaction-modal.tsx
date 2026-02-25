@@ -246,7 +246,10 @@ export default function TransactionModalScreen() {
   // Show loading while fetching transaction data
   if (params.id && isFetching) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        edges={['top', 'bottom']}
+      >
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -255,7 +258,10 @@ export default function TransactionModalScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={['top', 'bottom']}
+    >
       <TransactionFormContent
         onCancel={() => router.back()}
         onSubmit={handleSubmit}

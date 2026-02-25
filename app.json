@@ -59,7 +59,14 @@
         }
       ],
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow ACCA to access your microphone for voice transcription.",
+          "speechRecognitionPermission": "Allow ACCA to use speech recognition for live transcription."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

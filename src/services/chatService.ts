@@ -8,6 +8,7 @@ interface SendMessageParams {
     name: string;
     type: string;
   };
+  chatDate?: string;
   categories?: Array<{
     id: number;
     name: string;
@@ -35,9 +36,13 @@ interface TranscribeResponse {
 }
 
 export const chatService = {
-  getMessages: async (): Promise<ApiResponse<ChatMessage[]>> => {
+  getMessages: async (chatDate?: string): Promise<ApiResponse<ChatMessage[]>> => {
     const token = await getAuthToken();
-    return apiRequest<ChatMessage[]>(API_CONFIG.ENDPOINTS.CHAT_MESSAGES, {
+    const endpoint = chatDate
+      ? `${API_CONFIG.ENDPOINTS.CHAT_MESSAGES}?date=${encodeURIComponent(chatDate)}`
+      : API_CONFIG.ENDPOINTS.CHAT_MESSAGES;
+
+    return apiRequest<ChatMessage[]>(endpoint, {
       method: 'GET',
       token,
     });
@@ -46,6 +51,7 @@ export const chatService = {
   sendMessage: async ({
     message,
     file,
+    chatDate,
     categories,
     paymentMethods,
   }: SendMessageParams): Promise<ApiResponse<SendMessageResponse>> => {
@@ -63,6 +69,10 @@ export const chatService = {
 
     if (message) {
       formData.append('message', message);
+    }
+
+    if (chatDate) {
+      formData.append('chat_date', chatDate);
     }
 
     if (file) {

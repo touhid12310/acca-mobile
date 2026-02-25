@@ -26,8 +26,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import { router } from 'expo-router';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useCurrency } from '../../src/contexts/CurrencyContext';
@@ -36,9 +36,34 @@ import chatService from '../../src/services/chatService';
 import categoryService from '../../src/services/categoryService';
 import accountService from '../../src/services/accountService';
 import { ChatMessage, ExpenseCandidate, Category, Account } from '../../src/types';
-import { formatDate, todayDateInputValue } from '../../src/utils/date';
+import { formatDate, toDateInputValue, todayDateInputValue } from '../../src/utils/date';
 
 const API_BASE_URL = 'https://acca-api.autoaiassistant.com/';
+
+type SpeechRecognitionModuleType = {
+  addListener: (
+    eventName: string,
+    listener: (event: any) => void
+  ) => { remove: () => void };
+  abort: () => void;
+  stop: () => void;
+  start: (options: Record<string, unknown>) => void;
+  isRecognitionAvailable: () => boolean;
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+};
+
+let SpeechRecognitionModule: SpeechRecognitionModuleType | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const speechRecognitionPackage = require('expo-speech-recognition');
+  SpeechRecognitionModule =
+    (speechRecognitionPackage?.ExpoSpeechRecognitionModule as
+      | SpeechRecognitionModuleType
+      | null) ?? null;
+} catch (error) {
+  SpeechRecognitionModule = null;
+}
 
 // Helper to ensure absolute URL for images - converts localhost to CDN URL
 const ensureAbsoluteUrl = (value?: string): string | null => {
@@ -85,7 +110,11 @@ const getMessageAttachment = (message: ChatMessage): { url: string; name: string
     if (url) {
       const fileName = message.file_name || (metadata as any).receipt_name || 'attachment';
       const mimeType = (message.file_mime || (metadata as any).receipt_mime || '').toLowerCase();
-      const isImage = mimeType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fileName);
+      const normalizedUrl = url.split('?')[0];
+      const isImage =
+        mimeType.startsWith('image/') ||
+        /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fileName) ||
+        /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(normalizedUrl);
       return { url, name: fileName, isImage };
     }
   }
@@ -125,6 +154,134 @@ const findRelatedAttachment = (
   return null;
 };
 
+const normalizeTranscriptText = (value?: string): string => {
+  if (!value) {
+    return '';
+  }
+  return value.replace(/\s+/g, ' ').trim();
+};
+
+const mergeTranscriptText = (existingText: string, incomingText: string): string => {
+  const existing = normalizeTranscriptText(existingText);
+  const incoming = normalizeTranscriptText(incomingText);
+
+  if (!incoming) {
+    return existing;
+  }
+
+  if (!existing) {
+    return incoming;
+  }
+
+  if (existing === incoming || existing.endsWith(incoming)) {
+    return existing;
+  }
+
+  if (incoming.startsWith(existing)) {
+    return incoming;
+  }
+
+  const existingWords = existing.split(' ');
+  const incomingWords = incoming.split(' ');
+  const maxOverlap = Math.min(existingWords.length, incomingWords.length);
+
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    const tail = existingWords.slice(-overlap).join(' ').toLowerCase();
+    const head = incomingWords.slice(0, overlap).join(' ').toLowerCase();
+
+    if (tail === head) {
+      const suffix = incomingWords.slice(overlap).join(' ');
+      return normalizeTranscriptText(`${existing} ${suffix}`);
+    }
+  }
+
+  return normalizeTranscriptText(`${existing} ${incoming}`);
+};
+
+const combineInputAndTranscript = (baseText: string, transcriptText: string): string => {
+  const base = normalizeTranscriptText(baseText);
+  const transcript = normalizeTranscriptText(transcriptText);
+
+  if (!base) {
+    return transcript;
+  }
+
+  if (!transcript) {
+    return base;
+  }
+
+  return `${base} ${transcript}`;
+};
+
+const getCandidateIdentity = (candidate: ExpenseCandidate): string => {
+  const merchant = (candidate.merchant_name || '').trim().toLowerCase();
+  const date = (candidate.date || '').trim().toLowerCase();
+  const type = (candidate.type || '').trim().toLowerCase();
+  const category = (candidate.category || '').trim().toLowerCase();
+  const paymentMethod = (
+    candidate.payment_method_label ||
+    candidate.payment_method ||
+    ''
+  )
+    .toString()
+    .trim()
+    .toLowerCase();
+  const notes = (candidate.notes || '').trim().toLowerCase();
+  const numericAmount =
+    typeof candidate.amount === 'string'
+      ? parseFloat(candidate.amount)
+      : candidate.amount;
+  const amount =
+    typeof numericAmount === 'number' && Number.isFinite(numericAmount)
+      ? numericAmount.toFixed(2)
+      : '0.00';
+
+  const semanticIdentity = [merchant, amount, date, type, category, paymentMethod, notes]
+    .filter(Boolean)
+    .join('|');
+
+  // Use semantic fields for dedupe. Fall back to id only if everything is empty.
+  if (semanticIdentity) {
+    return semanticIdentity;
+  }
+
+  return candidate.id ? `id:${candidate.id}` : '';
+};
+
+const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.messages)) return payload.messages;
+  if (Array.isArray(payload?.data?.data)) return payload.data.data;
+  if (Array.isArray(payload?.data?.messages)) return payload.data.messages;
+  if (Array.isArray(payload?.data?.data?.data)) return payload.data.data.data;
+
+  const queue: any[] = [payload];
+  const visited = new Set<any>();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || typeof current !== 'object' || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      return current;
+    }
+
+    Object.values(current).forEach((value) => {
+      if (value && typeof value === 'object') {
+        queue.push(value);
+      }
+    });
+  }
+
+  return [];
+};
+
 const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome',
   is_user: false,
@@ -139,12 +296,18 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
 };
 
 export default function ChatScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<RNTextInput>(null);
+  const voiceBaseInputRef = useRef('');
+  const voiceFinalTranscriptRef = useRef('');
+  const voiceInterimTranscriptRef = useRef('');
+  const voiceStopRequestedRef = useRef(false);
+  const previewTapLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastHistoryErrorRef = useRef<string | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([DEFAULT_WELCOME_MESSAGE]);
   const [inputText, setInputText] = useState('');
@@ -156,12 +319,111 @@ export default function ChatScreen() {
   const [isSending, setIsSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewCandidate, setPreviewCandidate] = useState<ExpenseCandidate | null>(
     null
   );
+  const [isOpeningTransactionModal, setIsOpeningTransactionModal] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [selectedChatDate, setSelectedChatDate] = useState<string>(
+    todayDateInputValue()
+  );
+  const [showChatDatePicker, setShowChatDatePicker] = useState(false);
+
+  const applyVoiceTextToInput = useCallback(() => {
+    const voiceText = mergeTranscriptText(
+      voiceFinalTranscriptRef.current,
+      voiceInterimTranscriptRef.current
+    );
+    setInputText(combineInputAndTranscript(voiceBaseInputRef.current, voiceText));
+  }, []);
+
+  useEffect(() => {
+    if (!SpeechRecognitionModule) {
+      return;
+    }
+
+    const startSub = SpeechRecognitionModule.addListener('start', () => {
+      setIsRecording(true);
+      setIsTranscribing(false);
+    });
+
+    const resultSub = SpeechRecognitionModule.addListener('result', (event: any) => {
+      const transcript = normalizeTranscriptText(event?.results?.[0]?.transcript);
+      if (!transcript) {
+        return;
+      }
+
+      if (event?.isFinal) {
+        voiceFinalTranscriptRef.current = mergeTranscriptText(
+          voiceFinalTranscriptRef.current,
+          transcript
+        );
+        voiceInterimTranscriptRef.current = '';
+      } else {
+        voiceInterimTranscriptRef.current = transcript;
+      }
+
+      applyVoiceTextToInput();
+    });
+
+    const endSub = SpeechRecognitionModule.addListener('end', () => {
+      setIsRecording(false);
+      setIsTranscribing(false);
+      voiceFinalTranscriptRef.current = mergeTranscriptText(
+        voiceFinalTranscriptRef.current,
+        voiceInterimTranscriptRef.current
+      );
+      voiceInterimTranscriptRef.current = '';
+      applyVoiceTextToInput();
+      voiceStopRequestedRef.current = false;
+    });
+
+    const errorSub = SpeechRecognitionModule.addListener('error', (event: any) => {
+      setIsRecording(false);
+      setIsTranscribing(false);
+      voiceFinalTranscriptRef.current = mergeTranscriptText(
+        voiceFinalTranscriptRef.current,
+        voiceInterimTranscriptRef.current
+      );
+      voiceInterimTranscriptRef.current = '';
+      applyVoiceTextToInput();
+
+      if (
+        !voiceStopRequestedRef.current &&
+        event?.error !== 'aborted' &&
+        event?.error !== 'no-speech'
+      ) {
+        Alert.alert(
+          'Voice input error',
+          event?.message || 'Unable to transcribe your speech right now.'
+        );
+      }
+
+      voiceStopRequestedRef.current = false;
+    });
+
+    return () => {
+      startSub.remove();
+      resultSub.remove();
+      endSub.remove();
+      errorSub.remove();
+    };
+  }, [applyVoiceTextToInput]);
+
+  useEffect(() => {
+    return () => {
+      if (previewTapLockTimeoutRef.current) {
+        clearTimeout(previewTapLockTimeoutRef.current);
+        previewTapLockTimeoutRef.current = null;
+      }
+      try {
+        SpeechRecognitionModule?.abort();
+      } catch (error) {
+        // no-op
+      }
+    };
+  }, []);
 
   // Handle keyboard show/hide for Android
   useEffect(() => {
@@ -193,7 +455,7 @@ export default function ChatScreen() {
     const merchantName = candidate.merchant_name || 'Unknown';
     const amount = candidate.amount || 0;
     const transactionType = candidate.type || 'expense';
-    const date = candidate.date || new Date().toISOString().split('T')[0];
+    const date = candidate.date || selectedChatDate;
     const notes = candidate.notes || '';
 
     // Get IDs directly from candidate if available
@@ -331,37 +593,73 @@ export default function ChatScreen() {
   });
 
   // Fetch chat history
-  const { data: messagesData, isLoading: isLoadingHistory } = useQuery({
-    queryKey: ['chat', 'messages'],
+  const {
+    data: messagesData,
+    isLoading: isLoadingHistory,
+    isFetching: isFetchingHistory,
+    error: messagesHistoryError,
+  } = useQuery({
+    queryKey: ['chat', 'messages', selectedChatDate],
+    retry: false,
     queryFn: async () => {
-      const result = await chatService.getMessages();
-      if (result.success) {
-        const data =
-          (result.data as { data?: { data?: ChatMessage[] } })?.data?.data ||
-          (result.data as { data?: ChatMessage[] })?.data ||
-          result.data;
-        return Array.isArray(data) ? data : [];
+      const result = await chatService.getMessages(selectedChatDate);
+      const payload = result.data as any;
+      if (!result.success || payload?.success === false) {
+        throw new Error(
+          payload?.message ||
+            result.error ||
+            'Unable to load chat history for this date.'
+        );
       }
-      return [];
+
+      return normalizeChatMessageResponse(payload);
     },
     enabled: !!token,
   });
 
   // Update messages when history loads
   useEffect(() => {
-    if (messagesData && messagesData.length > 0) {
-      setMessages(messagesData);
+    if (!messagesData) {
+      return;
     }
+
+    if (messagesData.length > 0) {
+      setMessages(messagesData);
+      return;
+    }
+
+    setMessages([DEFAULT_WELCOME_MESSAGE]);
   }, [messagesData]);
+
+  useEffect(() => {
+    if (!messagesHistoryError) {
+      lastHistoryErrorRef.current = null;
+      return;
+    }
+
+    const message =
+      messagesHistoryError instanceof Error
+        ? messagesHistoryError.message
+        : 'Unable to load chat history for this date.';
+
+    if (lastHistoryErrorRef.current === message) {
+      return;
+    }
+
+    lastHistoryErrorRef.current = message;
+    Alert.alert('Chat date error', message);
+  }, [messagesHistoryError]);
 
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async ({
       message,
       file,
+      chatDate,
     }: {
       message?: string;
       file?: { uri: string; name: string; type: string };
+      chatDate?: string;
     }) => {
       const categoryContext = categoriesData?.map((cat: Category) => ({
         id: cat.id,
@@ -381,11 +679,12 @@ export default function ChatScreen() {
       return chatService.sendMessage({
         message,
         file,
+        chatDate,
         categories: categoryContext,
         paymentMethods: paymentMethodContext,
       });
     },
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       if (result.success && result.data) {
         const data = result.data as {
           success?: boolean;
@@ -395,7 +694,9 @@ export default function ChatScreen() {
           setMessages((prev) => [...prev, data.data!.user!, data.data!.assistant!]);
         }
       }
-      queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
+      queryClient.invalidateQueries({
+        queryKey: ['chat', 'messages', variables.chatDate || todayDateInputValue()],
+      });
     },
   });
 
@@ -434,7 +735,7 @@ export default function ChatScreen() {
       file_url: file?.uri,
       file_name: file?.name,
       file_mime: file?.type,
-      created_at: new Date().toISOString(),
+      created_at: `${selectedChatDate}T${new Date().toTimeString().slice(0, 8)}`,
     };
     setMessages((prev) => [...prev, tempUserMessage]);
 
@@ -442,6 +743,7 @@ export default function ChatScreen() {
       await sendMessageMutation.mutateAsync({
         message: messageText || undefined,
         file: file || undefined,
+        chatDate: selectedChatDate,
       });
     } catch (error) {
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -519,52 +821,64 @@ export default function ChatScreen() {
   // Handle voice recording
   const startRecording = async () => {
     try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) {
-        Alert.alert('Permission needed', 'Please grant microphone access to record audio.');
+      if (!SpeechRecognitionModule) {
+        Alert.alert(
+          'Voice unavailable',
+          'Speech recognition needs a development build. Run npx expo run:android or npx expo run:ios.'
+        );
         return;
       }
 
-      audioRecorder.record();
+      if (!SpeechRecognitionModule.isRecognitionAvailable()) {
+        Alert.alert(
+          'Not available',
+          'Speech recognition is not available on this device.'
+        );
+        return;
+      }
+
+      const permission = await SpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission needed',
+          'Please grant microphone and speech recognition permissions.'
+        );
+        return;
+      }
+
+      voiceBaseInputRef.current = normalizeTranscriptText(inputText);
+      voiceFinalTranscriptRef.current = '';
+      voiceInterimTranscriptRef.current = '';
+      voiceStopRequestedRef.current = false;
+
       setIsRecording(true);
+      setIsTranscribing(false);
+
+      SpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+        continuous: true,
+        maxAlternatives: 1,
+        addsPunctuation: true,
+      });
     } catch (error) {
-      Alert.alert('Error', 'Failed to start recording.');
+      setIsRecording(false);
+      setIsTranscribing(false);
+      Alert.alert('Error', 'Failed to start voice transcription.');
     }
   };
 
-  const stopRecording = async () => {
-    if (!audioRecorder.isRecording) return;
-
-    setIsRecording(false);
-    setIsTranscribing(true);
-
+  const stopRecording = () => {
+    if (!isRecording) return;
     try {
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
-
-      if (uri) {
-        // Transcribe audio
-        const result = await chatService.transcribeAudio({
-          uri,
-          name: 'recording.m4a',
-          type: 'audio/m4a',
-        });
-
-        if (result.success && result.data) {
-          const data = result.data as { success?: boolean; data?: { text?: string } };
-          if (data.success && data.data?.text) {
-            setInputText((prev) =>
-              prev ? `${prev} ${data.data!.text}` : data.data!.text || ''
-            );
-          } else {
-            Alert.alert('Transcription failed', 'Could not transcribe audio.');
-          }
-        }
-      }
+      voiceStopRequestedRef.current = true;
+      setIsTranscribing(true);
+      SpeechRecognitionModule?.stop();
     } catch (error) {
-      Alert.alert('Error', 'Failed to transcribe audio.');
-    } finally {
+      voiceStopRequestedRef.current = false;
+      setIsRecording(false);
       setIsTranscribing(false);
+      Alert.alert('Error', 'Failed to stop voice transcription.');
     }
   };
 
@@ -580,6 +894,28 @@ export default function ChatScreen() {
   const handleQuickAction = (action: string) => {
     setInputText(action);
     inputRef.current?.focus();
+  };
+
+  const isTodayChatDate = selectedChatDate === todayDateInputValue();
+  const selectedChatDateLabel = isTodayChatDate
+    ? `Today - ${formatDate(selectedChatDate)}`
+    : formatDate(selectedChatDate);
+
+  const handleOpenChatDatePicker = () => {
+    setShowChatDatePicker(true);
+  };
+
+  const handleChatDateChange = (event: DateTimePickerEvent, date?: Date) => {
+    setShowChatDatePicker(false);
+    if (event.type === 'dismissed' || !date) {
+      return;
+    }
+
+    setSelectedChatDate(toDateInputValue(date));
+  };
+
+  const handleResetChatDateToToday = () => {
+    setSelectedChatDate(todayDateInputValue());
   };
 
   // Track receipt for preview modal
@@ -598,9 +934,60 @@ export default function ChatScreen() {
   // Parse expense candidates from message metadata
   const getExpenseCandidates = (message: ChatMessage): ExpenseCandidate[] => {
     if (!message.metadata?.expense_candidates) return [];
-    return Array.isArray(message.metadata.expense_candidates)
+    const rawCandidates = Array.isArray(message.metadata.expense_candidates)
       ? message.metadata.expense_candidates
       : [];
+
+    const seen = new Set<string>();
+    const uniqueCandidates: ExpenseCandidate[] = [];
+
+    for (const candidate of rawCandidates) {
+      const identity = getCandidateIdentity(candidate);
+      if (seen.has(identity)) {
+        continue;
+      }
+      seen.add(identity);
+      uniqueCandidates.push(candidate);
+    }
+
+    return uniqueCandidates;
+  };
+
+  const getCandidateReceiptUri = (messageId: string | number): string | undefined => {
+    const msgIndex = messages.findIndex((msg) => msg.id === messageId);
+    if (msgIndex > 0) {
+      for (let i = msgIndex - 1; i >= 0; i -= 1) {
+        const prevMsg = messages[i];
+
+        if (prevMsg.is_user) {
+          const fileUrl =
+            prevMsg.file_url ||
+            prevMsg.image_path ||
+            (prevMsg.metadata as any)?.receipt_path ||
+            (prevMsg.metadata as any)?.receipt_url ||
+            (prevMsg.metadata as any)?.image_url ||
+            (prevMsg as any).image ||
+            (prevMsg as any).attachment_url;
+
+          if (fileUrl) {
+            return ensureAbsoluteUrl(fileUrl) || fileUrl;
+          }
+        }
+      }
+    }
+
+    return lastUploadedFileUri;
+  };
+
+  const lockPreviewTap = () => {
+    setIsOpeningTransactionModal(true);
+    if (previewTapLockTimeoutRef.current) {
+      clearTimeout(previewTapLockTimeoutRef.current);
+    }
+    previewTapLockTimeoutRef.current = setTimeout(() => {
+      setIsOpeningTransactionModal(false);
+      previewTapLockTimeoutRef.current = null;
+    }, 900);
   };
 
   // Render message
@@ -613,6 +1000,8 @@ export default function ChatScreen() {
     const relatedAttachment = !isUser && candidates.length > 0
       ? findRelatedAttachment(message, messages)
       : null;
+    const displayAttachment = attachment || relatedAttachment;
+    const hasImageAttachment = Boolean(displayAttachment?.isImage);
 
     return (
       <View
@@ -640,22 +1029,26 @@ export default function ChatScreen() {
         <View
           style={[
             styles.messageBubble,
+            hasImageAttachment && styles.imageMessageBubble,
             isUser
               ? [styles.userBubble, { backgroundColor: colors.primary }]
               : [styles.assistantBubble, { backgroundColor: colors.surfaceVariant }],
           ]}
         >
           {/* Attachment preview (for user messages with images) */}
-          {attachment && attachment.isImage && (
+          {displayAttachment && displayAttachment.isImage && (
             <Image
-              source={{ uri: attachment.url }}
-              style={styles.messageImage}
+              source={{ uri: displayAttachment.url }}
+              style={[
+                styles.messageImage,
+                !message.message ? { marginBottom: 0 } : null,
+              ]}
               resizeMode="cover"
             />
           )}
 
           {/* Non-image attachment */}
-          {attachment && !attachment.isImage && (
+          {displayAttachment && !displayAttachment.isImage && (
             <View style={[styles.fileAttachment, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : colors.surface }]}>
               <MaterialCommunityIcons
                 name="file-document"
@@ -666,7 +1059,7 @@ export default function ChatScreen() {
                 style={{ color: isUser ? '#ffffff' : colors.onSurface, marginLeft: 8, flex: 1 }}
                 numberOfLines={1}
               >
-                {attachment.name}
+                {displayAttachment.name}
               </Text>
             </View>
           )}
@@ -703,7 +1096,7 @@ export default function ChatScreen() {
                         {candidate.merchant_name || 'Transaction'}
                       </Text>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                        {candidate.date || todayDateInputValue()}
+                        {candidate.date || selectedChatDate}
                         {candidate.category && ` • ${candidate.category}`}
                       </Text>
                     </View>
@@ -721,36 +1114,12 @@ export default function ChatScreen() {
                     mode="contained"
                     compact
                     onPress={() => {
-                      // Find receipt from the immediate previous user message
-                      let receiptUri: string | undefined;
-                      const msgIndex = messages.findIndex((m) => m.id === message.id);
-
-                      if (msgIndex > 0) {
-                        // Look backwards for user message with file
-                        for (let i = msgIndex - 1; i >= 0; i--) {
-                          const prevMsg = messages[i];
-
-                          if (prevMsg.is_user) {
-                            // Check all possible file fields
-                            const fileUrl = prevMsg.file_url ||
-                                           prevMsg.image_path ||
-                                           (prevMsg.metadata as any)?.receipt_path ||
-                                           (prevMsg.metadata as any)?.receipt_url ||
-                                           (prevMsg.metadata as any)?.image_url ||
-                                           (prevMsg as any).image ||
-                                           (prevMsg as any).attachment_url;
-                            if (fileUrl) {
-                              receiptUri = ensureAbsoluteUrl(fileUrl) || fileUrl;
-                              break;
-                            }
-                          }
-                        }
+                      if (isOpeningTransactionModal) {
+                        return;
                       }
-                      // Fallback to lastUploadedFileUri
-                      if (!receiptUri) {
-                        receiptUri = lastUploadedFileUri;
-                      }
+                      lockPreviewTap();
 
+                      const receiptUri = getCandidateReceiptUri(message.id);
                       const params = prepareTransactionParams(candidate, receiptUri);
 
                       router.push({
@@ -759,8 +1128,9 @@ export default function ChatScreen() {
                       });
                     }}
                     style={styles.previewButton}
+                    disabled={isOpeningTransactionModal}
                   >
-                    Preview & Save
+                    {isOpeningTransactionModal ? 'Opening...' : 'Preview & Save'}
                   </Button>
                 </Surface>
               ))}
@@ -828,6 +1198,27 @@ export default function ChatScreen() {
           </View>
         </View>
         <View style={[styles.statusDot, { backgroundColor: '#34a853' }]} />
+      </View>
+
+      <View style={[styles.chatDateRow, { borderBottomColor: colors.outlineVariant }]}>
+        <TouchableOpacity
+          style={[styles.chatDateButton, { backgroundColor: colors.surfaceVariant }]}
+          onPress={handleOpenChatDatePicker}
+        >
+          <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.primary} />
+          <Text style={[styles.chatDateText, { color: colors.onSurface }]}>{selectedChatDateLabel}</Text>
+        </TouchableOpacity>
+
+        {!isTodayChatDate && (
+          <TouchableOpacity
+            style={[styles.chatDateTodayButton, { borderColor: colors.outlineVariant }]}
+            onPress={handleResetChatDateToToday}
+          >
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>Today</Text>
+          </TouchableOpacity>
+        )}
+
+        {isFetchingHistory && <ActivityIndicator size="small" color={colors.primary} />}
       </View>
 
       {/* Messages */}
@@ -960,7 +1351,7 @@ export default function ChatScreen() {
                   color: colors.onSurface,
                 },
               ]}
-              placeholder="Type a message..."
+              placeholder="Type or speak a message..."
               placeholderTextColor={colors.onSurfaceVariant}
               value={inputText}
               onChangeText={setInputText}
@@ -969,7 +1360,25 @@ export default function ChatScreen() {
             />
 
             {/* Voice/Send button */}
-            {inputText.trim() || selectedFile ? (
+            {isRecording || isTranscribing || (!inputText.trim() && !selectedFile) ? (
+              <IconButton
+                icon={isRecording ? 'stop' : isTranscribing ? 'loading' : 'microphone'}
+                size={24}
+                onPress={toggleRecording}
+                iconColor={
+                  isRecording || isTranscribing
+                    ? colors.error
+                    : colors.onSurfaceVariant
+                }
+                style={{
+                  backgroundColor:
+                    isRecording || isTranscribing
+                      ? `${colors.error}20`
+                      : 'transparent',
+                }}
+                disabled={isTranscribing}
+              />
+            ) : (
               <IconButton
                 icon="send"
                 size={24}
@@ -977,17 +1386,6 @@ export default function ChatScreen() {
                 iconColor="#ffffff"
                 style={{ backgroundColor: colors.primary }}
                 disabled={isSending}
-              />
-            ) : (
-              <IconButton
-                icon={isRecording ? 'stop' : 'microphone'}
-                size={24}
-                onPress={toggleRecording}
-                iconColor={isRecording ? colors.error : colors.onSurfaceVariant}
-                style={{
-                  backgroundColor: isRecording ? `${colors.error}20` : 'transparent',
-                }}
-                disabled={isTranscribing}
               />
             )}
           </View>
@@ -1001,12 +1399,24 @@ export default function ChatScreen() {
                 color={colors.error}
               />
               <Text style={{ color: colors.error, marginLeft: 8, fontSize: 12 }}>
-                {isTranscribing ? 'Transcribing...' : 'Recording... Tap mic to stop'}
+                {isTranscribing
+                  ? 'Finishing voice input...'
+                  : 'Listening... Tap stop when done'}
               </Text>
             </View>
           )}
         </Surface>
       </KeyboardAvoidingView>
+
+      {showChatDatePicker && (
+        <DateTimePicker
+          value={new Date(`${selectedChatDate}T00:00:00`)}
+          mode="date"
+          display="default"
+          maximumDate={new Date()}
+          onChange={handleChatDateChange}
+        />
+      )}
 
       {/* Preview Modal */}
       <Portal>
@@ -1056,7 +1466,7 @@ export default function ChatScreen() {
               <View style={styles.previewRow}>
                 <Text style={{ color: colors.onSurfaceVariant }}>Date</Text>
                 <Text style={{ color: colors.onSurface, fontWeight: '500' }}>
-                  {previewCandidate.date || todayDateInputValue()}
+                  {previewCandidate.date || selectedChatDate}
                 </Text>
               </View>
               <Divider style={{ marginVertical: 8 }} />
@@ -1091,6 +1501,10 @@ export default function ChatScreen() {
                 <Button
                   mode="contained"
                   onPress={() => {
+                    if (isOpeningTransactionModal) {
+                      return;
+                    }
+                    lockPreviewTap();
                     setPreviewVisible(false);
                     if (previewCandidate) {
                       // Use previewReceiptUrl or fallback to lastUploadedFileUri
@@ -1103,8 +1517,9 @@ export default function ChatScreen() {
                     }
                   }}
                   style={{ flex: 1 }}
+                  disabled={isOpeningTransactionModal}
                 >
-                  Edit & Save
+                  {isOpeningTransactionModal ? 'Opening...' : 'Edit & Save'}
                 </Button>
               </View>
             </View>
@@ -1128,6 +1543,33 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
+  },
+  chatDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  chatDateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    flex: 1,
+  },
+  chatDateText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chatDateTodayButton: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   headerContent: {
     flexDirection: 'row',
@@ -1178,6 +1620,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
   },
+  imageMessageBubble: {
+    minWidth: 220,
+    padding: 8,
+  },
   userBubble: {
     marginRight: 8,
     borderBottomRightRadius: 4,
@@ -1192,7 +1638,7 @@ const styles = StyleSheet.create({
   },
   messageImage: {
     width: '100%',
-    height: 150,
+    height: 170,
     borderRadius: 8,
     marginBottom: 8,
   },
