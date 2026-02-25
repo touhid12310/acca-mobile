@@ -63,7 +63,7 @@ const unwrap = (response: any): any[] => {
   return [];
 };
 
-export default function BillsScreen() {
+export default function SchedulesScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
