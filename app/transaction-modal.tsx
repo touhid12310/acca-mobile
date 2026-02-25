@@ -1,8 +1,10 @@
 import React from 'react';
-import { StyleSheet, Alert, View, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Animated, Easing } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Portal, Modal, Text, Button } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import TransactionFormContent, {
@@ -10,6 +12,23 @@ import TransactionFormContent, {
 } from '../src/components/transactions/TransactionFormContent';
 import transactionService from '../src/services/transactionService';
 import { Transaction, TransactionType } from '../src/types';
+
+type StatusAlertType = 'success' | 'error';
+
+type StatusAlertConfig = {
+  type: StatusAlertType;
+  title: string;
+  message: string;
+  autoCloseMs?: number;
+  onClose?: () => void;
+};
+
+type StatusAlertState = {
+  visible: boolean;
+  type: StatusAlertType;
+  title: string;
+  message: string;
+};
 
 export default function TransactionModalScreen() {
   const { colors } = useTheme();
@@ -30,6 +49,146 @@ export default function TransactionModalScreen() {
     receipt_type?: string; // 'image', 'pdf', 'csv', etc
     receipt_name?: string; // Filename
   }>();
+  const [statusAlert, setStatusAlert] = React.useState<StatusAlertState>({
+    visible: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
+  const alertScale = React.useRef(new Animated.Value(0.9)).current;
+  const alertOpacity = React.useRef(new Animated.Value(0)).current;
+  const successIconScale = React.useRef(new Animated.Value(1)).current;
+  const successIconOpacity = React.useRef(new Animated.Value(1)).current;
+  const successIconTilt = React.useRef(new Animated.Value(0)).current;
+  const alertTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alertCloseActionRef = React.useRef<(() => void) | null>(null);
+
+  const hideStatusAlert = React.useCallback(() => {
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+      alertTimerRef.current = null;
+    }
+    setStatusAlert((prev) => ({ ...prev, visible: false }));
+    const onClose = alertCloseActionRef.current;
+    alertCloseActionRef.current = null;
+    if (onClose) {
+      onClose();
+    }
+  }, []);
+
+  const showStatusAlert = React.useCallback(
+    ({ type, title, message, autoCloseMs, onClose }: StatusAlertConfig) => {
+      if (alertTimerRef.current) {
+        clearTimeout(alertTimerRef.current);
+        alertTimerRef.current = null;
+      }
+
+      alertCloseActionRef.current = onClose || null;
+      setStatusAlert({
+        visible: true,
+        type,
+        title,
+        message,
+      });
+
+      if (autoCloseMs && autoCloseMs > 0) {
+        alertTimerRef.current = setTimeout(() => {
+          hideStatusAlert();
+        }, autoCloseMs);
+      }
+    },
+    [hideStatusAlert]
+  );
+
+  React.useEffect(() => {
+    if (!statusAlert.visible) {
+      alertScale.setValue(0.9);
+      alertOpacity.setValue(0);
+      successIconScale.setValue(1);
+      successIconOpacity.setValue(1);
+      successIconTilt.setValue(0);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.timing(alertOpacity, {
+        toValue: 1,
+        duration: 180,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(alertScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    if (statusAlert.type === 'success') {
+      successIconScale.setValue(0.55);
+      successIconOpacity.setValue(0);
+      successIconTilt.setValue(-10);
+
+      Animated.parallel([
+        Animated.timing(successIconOpacity, {
+          toValue: 1,
+          duration: 140,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.sequence([
+          Animated.spring(successIconScale, {
+            toValue: 1.15,
+            friction: 5,
+            tension: 150,
+            useNativeDriver: true,
+          }),
+          Animated.spring(successIconScale, {
+            toValue: 1,
+            friction: 7,
+            tension: 120,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(successIconTilt, {
+            toValue: 4,
+            duration: 110,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(successIconTilt, {
+            toValue: 0,
+            duration: 90,
+            easing: Easing.inOut(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]).start();
+    } else {
+      successIconScale.setValue(1);
+      successIconOpacity.setValue(1);
+      successIconTilt.setValue(0);
+    }
+  }, [
+    alertOpacity,
+    alertScale,
+    statusAlert.type,
+    statusAlert.visible,
+    successIconOpacity,
+    successIconScale,
+    successIconTilt,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      if (alertTimerRef.current) {
+        clearTimeout(alertTimerRef.current);
+        alertTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Fetch full transaction data when editing (to get expense_categories and payment_method)
   const { data: fetchedTransaction, isLoading: isFetching } = useQuery({
@@ -170,10 +329,20 @@ export default function TransactionModalScreen() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      router.back();
+      showStatusAlert({
+        type: 'success',
+        title: 'Transaction Saved',
+        message: 'Your transaction has been saved successfully.',
+        autoCloseMs: 1200,
+        onClose: () => router.back(),
+      });
     },
     onError: (error: Error) => {
-      Alert.alert('Error', error.message);
+      showStatusAlert({
+        type: 'error',
+        title: 'Save Failed',
+        message: error.message || 'Unable to save transaction.',
+      });
     },
   });
 
@@ -226,10 +395,20 @@ export default function TransactionModalScreen() {
       queryClient.invalidateQueries({ queryKey: ['transaction', params.id] }); // Invalidate specific transaction
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      router.back();
+      showStatusAlert({
+        type: 'success',
+        title: 'Transaction Updated',
+        message: 'Your transaction has been updated successfully.',
+        autoCloseMs: 1200,
+        onClose: () => router.back(),
+      });
     },
     onError: (error: Error) => {
-      Alert.alert('Error', error.message);
+      showStatusAlert({
+        type: 'error',
+        title: 'Update Failed',
+        message: error.message || 'Unable to update transaction.',
+      });
     },
   });
 
@@ -242,6 +421,10 @@ export default function TransactionModalScreen() {
   };
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
+  const successIconRotate = successIconTilt.interpolate({
+    inputRange: [-12, 12],
+    outputRange: ['-12deg', '12deg'],
+  });
 
   // Show loading while fetching transaction data
   if (params.id && isFetching) {
@@ -269,6 +452,70 @@ export default function TransactionModalScreen() {
         isLoading={isLoading}
         title={params.id ? 'Edit Transaction' : 'Add Transaction'}
       />
+
+      <Portal>
+        <Modal
+          visible={statusAlert.visible}
+          onDismiss={() => {
+            if (statusAlert.type === 'error') {
+              hideStatusAlert();
+            }
+          }}
+          dismissable={statusAlert.type === 'error'}
+          contentContainerStyle={styles.statusAlertModal}
+        >
+          <Animated.View
+            style={[
+              styles.statusAlertCard,
+              {
+                backgroundColor: colors.surface,
+                opacity: alertOpacity,
+                transform: [{ scale: alertScale }],
+              },
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.statusAlertIcon,
+                {
+                  backgroundColor:
+                    statusAlert.type === 'success'
+                      ? `${colors.tertiary}20`
+                      : `${colors.error}20`,
+                },
+                statusAlert.type === 'success'
+                  ? {
+                      opacity: successIconOpacity,
+                      transform: [{ scale: successIconScale }, { rotate: successIconRotate }],
+                    }
+                  : null,
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={statusAlert.type === 'success' ? 'check-circle' : 'close-circle'}
+                size={48}
+                color={statusAlert.type === 'success' ? colors.tertiary : colors.error}
+              />
+            </Animated.View>
+
+            <Text variant="titleLarge" style={[styles.statusAlertTitle, { color: colors.onSurface }]}>
+              {statusAlert.title}
+            </Text>
+            <Text
+              variant="bodyMedium"
+              style={[styles.statusAlertMessage, { color: colors.onSurfaceVariant }]}
+            >
+              {statusAlert.message}
+            </Text>
+
+            {statusAlert.type === 'error' ? (
+              <Button mode="contained" onPress={hideStatusAlert} style={styles.statusAlertButton}>
+                OK
+              </Button>
+            ) : null}
+          </Animated.View>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -281,5 +528,35 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statusAlertModal: {
+    marginHorizontal: 24,
+  },
+  statusAlertCard: {
+    borderRadius: 18,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    alignItems: 'center',
+  },
+  statusAlertIcon: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  statusAlertTitle: {
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  statusAlertMessage: {
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  statusAlertButton: {
+    marginTop: 20,
+    minWidth: 120,
   },
 });
