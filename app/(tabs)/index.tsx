@@ -279,7 +279,12 @@ export default function DashboardScreen() {
               icon="camera"
               label="Scan Receipt"
               color="#9c27b0"
-              onPress={() => router.push('/(tabs)/chat')}
+              onPress={() =>
+                router.push({
+                  pathname: '/transaction-modal',
+                  params: { type: 'expense', scan_mode: 'camera' },
+                })
+              }
             />
           </View>
         </View>

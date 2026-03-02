@@ -323,7 +323,7 @@ export default function TransactionForm({
         contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
           style={styles.keyboardView}
         >
           {/* Header */}

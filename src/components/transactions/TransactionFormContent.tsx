@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -93,6 +93,7 @@ type Props = {
   initialData?: Partial<Transaction>;
   isLoading?: boolean;
   title?: string;
+  autoScanMode?: 'camera' | 'gallery';
 };
 
 export default function TransactionFormContent({
@@ -101,6 +102,7 @@ export default function TransactionFormContent({
   initialData,
   isLoading = false,
   title = 'Add Transaction',
+  autoScanMode,
 }: Props) {
   const { colors } = useTheme();
   const { currencySymbol } = useCurrency();
@@ -163,6 +165,7 @@ export default function TransactionFormContent({
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
+  const autoScanTriggeredRef = useRef(false);
 
   // Fetch categories based on transaction type
   // Pass the actual type to the API (asset, liability, income, expense)
@@ -427,6 +430,25 @@ export default function TransactionFormContent({
     }
   };
 
+  useEffect(() => {
+    if (autoScanTriggeredRef.current) return;
+    if (!autoScanMode || initialData?.id) return;
+    if (formData.receipt || formData.receipt_path || formData.items.length > 0) return;
+
+    autoScanTriggeredRef.current = true;
+    if (autoScanMode === 'camera') {
+      void handleCaptureReceipt();
+      return;
+    }
+    void handleScanReceipt();
+  }, [
+    autoScanMode,
+    initialData?.id,
+    formData.receipt,
+    formData.receipt_path,
+    formData.items.length,
+  ]);
+
   // Item management functions
   const addItem = () => {
     const newItem: TransactionItemData = {
@@ -537,7 +559,7 @@ export default function TransactionFormContent({
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
         style={styles.keyboardView}
       >
         {/* Header */}

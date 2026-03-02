@@ -48,6 +48,7 @@ export default function TransactionModalScreen() {
     receipt_uri?: string; // Receipt file URI from chat
     receipt_type?: string; // 'image', 'pdf', 'csv', etc
     receipt_name?: string; // Filename
+    scan_mode?: string; // 'camera' | 'gallery'
   }>();
   const [statusAlert, setStatusAlert] = React.useState<StatusAlertState>({
     visible: false,
@@ -451,6 +452,11 @@ export default function TransactionModalScreen() {
         initialData={initialData}
         isLoading={isLoading}
         title={params.id ? 'Edit Transaction' : 'Add Transaction'}
+        autoScanMode={
+          params.scan_mode === 'camera' || params.scan_mode === 'gallery'
+            ? params.scan_mode
+            : undefined
+        }
       />
 
       <Portal>
