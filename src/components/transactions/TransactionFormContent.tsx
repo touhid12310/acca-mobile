@@ -10,6 +10,7 @@ import {
   Linking,
   Alert,
   ActivityIndicator,
+  Modal as RNModal,
 } from 'react-native';
 import {
   Text,
@@ -27,6 +28,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useQuery } from '@tanstack/react-query';
 import { WebView } from 'react-native-webview';
 
@@ -166,6 +168,10 @@ export default function TransactionFormContent({
   const [processingStage, setProcessingStage] = useState('');
   const [isInitialized, setIsInitialized] = useState(false);
   const autoScanTriggeredRef = useRef(false);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraVisible, setCameraVisible] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<CameraType>('back');
 
   // Fetch categories based on transaction type
   // Pass the actual type to the API (asset, liability, income, expense)
@@ -402,31 +408,40 @@ export default function TransactionFormContent({
     }
   };
 
-  // Handle camera capture for AI processing
-  const handleCaptureReceipt = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is needed to capture receipts');
-      return;
+  const handleOpenCamera = async () => {
+    if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission();
+      if (!permission.granted) {
+        Alert.alert('Permission Required', 'Camera permission is needed to capture receipts');
+        return;
+      }
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-    });
+    setCameraFacing('back');
+    setCameraVisible(true);
+  };
 
-    if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
+  const handleCaptureReceipt = async () => {
+    try {
+      const captured = await cameraRef.current?.takePictureAsync({
+        quality: 0.8,
+      });
+
+      if (!captured?.uri) {
+        return;
+      }
+
       const file = {
-        uri: asset.uri,
-        type: asset.mimeType || 'image/jpeg',
+        uri: captured.uri,
+        type: 'image/jpeg',
         name: 'receipt.jpg',
       };
 
-      // Store the receipt for display
+      setCameraVisible(false);
       updateField('receipt', file);
-
-      // Process with AI
       await processReceiptWithAI(file);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
     }
   };
 
@@ -437,7 +452,7 @@ export default function TransactionFormContent({
 
     autoScanTriggeredRef.current = true;
     if (autoScanMode === 'camera') {
-      void handleCaptureReceipt();
+      void handleOpenCamera();
       return;
     }
     void handleScanReceipt();
@@ -612,7 +627,7 @@ export default function TransactionFormContent({
                     <Button
                       mode="contained"
                       icon="camera"
-                      onPress={handleCaptureReceipt}
+                      onPress={handleOpenCamera}
                       style={styles.scanButton}
                       compact
                     >
@@ -1069,6 +1084,58 @@ export default function TransactionFormContent({
         </View>
       </KeyboardAvoidingView>
 
+      <RNModal
+        visible={cameraVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setCameraVisible(false)}
+      >
+        <View style={styles.cameraOverlay}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.cameraView}
+            facing={cameraFacing}
+          />
+
+          <TouchableOpacity
+            style={styles.cameraCloseButton}
+            onPress={() => setCameraVisible(false)}
+          >
+            <MaterialCommunityIcons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+
+          <View style={styles.cameraBottomBar}>
+            <TouchableOpacity
+              style={styles.cameraActionButton}
+              onPress={async () => {
+                setCameraVisible(false);
+                await handleScanReceipt();
+              }}
+            >
+              <MaterialCommunityIcons name="image-multiple" size={24} color="#fff" />
+              <Text style={styles.cameraActionLabel}>Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.captureButton}
+              onPress={handleCaptureReceipt}
+            >
+              <View style={styles.captureButtonInner} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cameraActionButton}
+              onPress={() =>
+                setCameraFacing((prev) => (prev === 'back' ? 'front' : 'back'))
+              }
+            >
+              <MaterialCommunityIcons name="camera-flip" size={24} color="#fff" />
+              <Text style={styles.cameraActionLabel}>Flip</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </RNModal>
+
       {/* Category Picker Modal */}
       <Portal>
         <Modal
@@ -1232,6 +1299,60 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+  cameraOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  cameraView: {
+    flex: 1,
+  },
+  cameraCloseButton: {
+    position: 'absolute',
+    top: 56,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  cameraBottomBar: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cameraActionButton: {
+    width: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraActionLabel: {
+    color: '#fff',
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  captureButton: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 4,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  captureButtonInner: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: '#fff',
   },
   header: {
     flexDirection: 'row',
