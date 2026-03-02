@@ -144,26 +144,8 @@ export default function MoreScreen() {
       ],
     },
     {
-      title: 'Account',
+      title: 'Security & Privacy',
       items: [
-        {
-          icon: 'account-edit',
-          label: 'Edit Profile',
-          description: 'Update your profile & photo',
-          onPress: () => router.push('/profile'),
-        },
-        {
-          icon: 'lock',
-          label: 'Change Password',
-          description: 'Update your password',
-          onPress: () => router.push('/profile'),
-        },
-        {
-          icon: 'shield-key',
-          label: 'Two-Factor Auth',
-          description: 'Add extra security',
-          onPress: () => router.push('/profile'),
-        },
         {
           icon: 'shield-account',
           label: 'Login Activity',

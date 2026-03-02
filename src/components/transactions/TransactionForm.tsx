@@ -620,6 +620,8 @@ export default function TransactionForm({
                 placeholder="Add any additional notes..."
                 multiline
                 numberOfLines={3}
+                style={styles.notesInput}
+                contentStyle={styles.notesInputContent}
               />
             </View>
 
@@ -893,6 +895,13 @@ const styles = StyleSheet.create({
   amountInput: {
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  notesInput: {
+    minHeight: 96,
+  },
+  notesInputContent: {
+    paddingTop: 12,
+    textAlignVertical: 'top',
   },
   pickerButton: {
     flexDirection: 'row',
