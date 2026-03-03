@@ -322,7 +322,7 @@ export default function SchedulesScreen() {
           <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
         </TouchableOpacity>
         <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Repating transctions
+          Repeating Transactions
         </Text>
         <View style={{ width: 40 }} />
       </View>
@@ -449,8 +449,8 @@ export default function SchedulesScreen() {
                         {daysUntil < 0
                           ? `${Math.abs(daysUntil)} days overdue`
                           : daysUntil === 0
-                          ? 'Due today'
-                          : `${daysUntil} days left`}
+                            ? 'Due today'
+                            : `${daysUntil} days left`}
                       </Text>
                     )}
                   </View>
@@ -472,8 +472,8 @@ export default function SchedulesScreen() {
               onPress={openModal}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-              <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 8 }}>
-                Create Repeatings transctions
+              <Text style={styles.createFirstButtonText}>
+                Create Repeating Transactions
               </Text>
             </TouchableOpacity>
           </View>
@@ -837,10 +837,21 @@ const styles = StyleSheet.create({
   createFirstButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 999,
+    minHeight: 44,
     marginTop: 20,
+  },
+  createFirstButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    lineHeight: 20,
   },
   fab: {
     position: 'absolute',
