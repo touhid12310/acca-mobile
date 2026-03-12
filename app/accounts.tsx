@@ -285,43 +285,53 @@ export default function AccountsScreen() {
                   style={[styles.accountCard, { backgroundColor: colors.surface }]}
                   elevation={1}
                 >
-                  <TouchableOpacity
-                    style={styles.accountCardInner}
-                    onPress={() => handleAccountPress(account)}
-                    onLongPress={() => handleDelete(account)}
-                  >
-                    <View style={[styles.accountIcon, { backgroundColor: `${colors.primary}15` }]}>
-                      <MaterialCommunityIcons
-                        name={iconName as any}
-                        size={24}
-                        color={colors.primary}
-                      />
-                    </View>
-                    <View style={styles.accountInfo}>
-                      <Text variant="titleMedium" style={{ color: colors.onSurface }}>
-                        {account.account_name || 'Unnamed Account'}
-                      </Text>
-                      <View style={[styles.typeBadge, { backgroundColor: `${colors.primary}10` }]}>
-                        <Text variant="labelSmall" style={{ color: colors.primary }}>
-                          {accountType}
+                  <View style={styles.accountCardInner}>
+                    <TouchableOpacity
+                      style={styles.accountCardPressable}
+                      onPress={() => handleAccountPress(account)}
+                      onLongPress={() => handleDelete(account)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.accountIcon, { backgroundColor: `${colors.primary}15` }]}>
+                        <MaterialCommunityIcons
+                          name={iconName as any}
+                          size={24}
+                          color={colors.primary}
+                        />
+                      </View>
+                      <View style={styles.accountInfo}>
+                        <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+                          {account.account_name || 'Unnamed Account'}
+                        </Text>
+                        <View style={[styles.typeBadge, { backgroundColor: `${colors.primary}10` }]}>
+                          <Text variant="labelSmall" style={{ color: colors.primary }}>
+                            {accountType}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.balanceContainer}>
+                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                          Balance
+                        </Text>
+                        <Text
+                          variant="titleMedium"
+                          style={{
+                            color: balance >= 0 ? colors.tertiary : colors.error,
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          {formatAmount(balance)}
                         </Text>
                       </View>
-                    </View>
-                    <View style={styles.balanceContainer}>
-                      <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
-                        Balance
-                      </Text>
-                      <Text
-                        variant="titleMedium"
-                        style={{
-                          color: balance >= 0 ? colors.tertiary : colors.error,
-                          fontWeight: 'bold',
-                        }}
-                      >
-                        {formatAmount(balance)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDelete(account)}
+                      style={styles.deleteIconBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <MaterialCommunityIcons name="delete-outline" size={22} color={colors.error} />
+                    </TouchableOpacity>
+                  </View>
                 </Surface>
               );
             })}
@@ -486,6 +496,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 14,
+  },
+  accountCardPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteIconBtn: {
+    padding: 8,
+    marginLeft: 4,
   },
   accountIcon: {
     width: 48,

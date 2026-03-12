@@ -213,6 +213,14 @@ export default function AccountDetailScreen() {
   };
 
   const handleDelete = () => {
+    if (transactionsList.length > 0) {
+      Alert.alert(
+        'Cannot Delete',
+        'This account has transactions. Remove or reassign all transactions before deleting.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     Alert.alert(
       'Delete Account',
       `Are you sure you want to delete "${account?.account_name}"?`,
