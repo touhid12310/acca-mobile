@@ -191,7 +191,7 @@ export default function TransactionModalScreen() {
     };
   }, []);
 
-  // Fetch full transaction data when editing (to get expense_categories and payment_method)
+  // Fetch full transaction data when editing (to get transaction_categories and payment_method)
   const { data: fetchedTransaction, isLoading: isFetching } = useQuery({
     queryKey: ['transaction', params.id],
     queryFn: async () => {
@@ -217,12 +217,12 @@ export default function TransactionModalScreen() {
         // Use the fetched transaction data
         const tx = fetchedTransaction as any;
 
-        // Extract category from expense_categories if available
+        // Extract category from transaction_categories if available
         let categoryId = tx.category_id;
         let subcategoryId = tx.subcategory_id;
 
-        if (tx.expense_categories && tx.expense_categories.length > 0) {
-          const primaryCategory = tx.expense_categories[0];
+        if (tx.transaction_categories && tx.transaction_categories.length > 0) {
+          const primaryCategory = tx.transaction_categories[0];
           categoryId = primaryCategory.category_id;
           subcategoryId = primaryCategory.subcategory_id;
         }

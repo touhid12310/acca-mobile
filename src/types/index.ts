@@ -58,9 +58,9 @@ export interface TransactionItem {
   total: number;
 }
 
-export interface ExpenseCategory {
+export interface TransactionCategory {
   id: number;
-  expense_id: number;
+  transaction_id: number;
   category_id: number;
   subcategory_id?: number;
   category?: Category;
@@ -88,7 +88,7 @@ export interface Transaction {
   subcategory?: Subcategory;
   account?: Account;
   to_account?: Account;
-  expense_categories?: ExpenseCategory[]; // API returns categories in this array
+  transaction_categories?: TransactionCategory[];
   created_at?: string;
   updated_at?: string;
 }

@@ -121,7 +121,7 @@ export const dashboardService = {
           amount: toNumber(t.amount),
           type: t.type,
           date: t.date,
-          category: t.category?.name || t.expense_categories?.[0]?.category?.name || null,
+          category: t.category?.name || t.transaction_categories?.[0]?.category?.name || null,
         })),
         budgetSummary: null,
       };

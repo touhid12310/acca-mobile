@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "AccountE",
-    "slug": "acca-expo",
+    "name": "Accounte",
+    "slug": "accounte-expo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "acca",
+    "scheme": "accounte",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,11 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.acca.finance",
+      "bundleIdentifier": "com.accounte.finance",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "ACCA needs access to your microphone for voice recording features.",
-        "NSCameraUsageDescription": "ACCA needs access to your camera to capture receipts.",
-        "NSPhotoLibraryUsageDescription": "ACCA needs access to your photos to upload receipts."
+        "NSMicrophoneUsageDescription": "Accounte needs access to your microphone for voice recording features.",
+        "NSCameraUsageDescription": "Accounte needs access to your camera to capture receipts.",
+        "NSPhotoLibraryUsageDescription": "Accounte needs access to your photos to upload receipts."
       }
     },
     "android": {
@@ -27,7 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a73e8"
       },
-      "package": "com.acca.finance",
+      "package": "com.accounte.finance",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -48,14 +48,14 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow ACCA to access your microphone for voice recording."
+          "microphonePermission": "Allow Accounte to access your microphone for voice recording."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow ACCA to access your photos to upload receipts.",
-          "cameraPermission": "Allow ACCA to access your camera to capture receipts."
+          "photosPermission": "Allow Accounte to access your photos to upload receipts.",
+          "cameraPermission": "Allow Accounte to access your camera to capture receipts."
         }
       ],
       "expo-font",
@@ -63,8 +63,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow ACCA to access your microphone for voice transcription.",
-          "speechRecognitionPermission": "Allow ACCA to use speech recognition for live transcription."
+          "microphonePermission": "Allow Accounte to access your microphone for voice transcription.",
+          "speechRecognitionPermission": "Allow Accounte to use speech recognition for live transcription."
         }
       ]
     ],

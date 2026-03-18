@@ -149,7 +149,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | null>(null);
 
-const THEME_STORAGE_KEY = 'acca:theme_mode';
+const THEME_STORAGE_KEY = 'accounte:theme_mode';
 
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);

@@ -687,10 +687,10 @@ export default function AccountDetailScreen() {
                 const txType = item.type || 'expense';
                 const iconColor = getTransactionColor(txType);
                 const merchantName = item.merchant_name || item.description || 'Transaction';
-                // Get category name from expense_categories pivot table like web version
-                const expenseCategories = (item as any).expense_categories;
-                const categoryName = expenseCategories && expenseCategories.length > 0
-                  ? expenseCategories.map((ec: any) => ec.category?.name || '').filter(Boolean).join(', ')
+                // Get category name from transaction_categories pivot table like web version
+                const transactionCategories = (item as any).transaction_categories;
+                const categoryName = transactionCategories && transactionCategories.length > 0
+                  ? transactionCategories.map((ec: any) => ec.category?.name || '').filter(Boolean).join(', ')
                   : (item as any).category_name || (item as any).category || '';
                 const txDate = formatDate(item.date || (item as any).transaction_date || '');
 
@@ -780,13 +780,13 @@ export default function AccountDetailScreen() {
                     CSV Format Required:
                   </Text>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                    • Date, Description, Amount, Type, Payee, Reference
+                    â€¢ Date, Description, Amount, Type, Payee, Reference
                   </Text>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                    • Date format: YYYY-MM-DD
+                    â€¢ Date format: YYYY-MM-DD
                   </Text>
                   <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                    • Type: income, expense, or transfer
+                    â€¢ Type: income, expense, or transfer
                   </Text>
                 </View>
               </Surface>

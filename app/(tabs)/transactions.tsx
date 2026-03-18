@@ -263,13 +263,13 @@ export default function TransactionsScreen() {
   };
 
   const handleEditTransaction = (item: Transaction) => {
-    // Handle API structure: payment_method for account, expense_categories for category
-    // Category: check expense_categories array first, then fallback to category_id/category
+    // Handle API structure: payment_method for account, transaction_categories for category
+    // Category: check transaction_categories array first, then fallback to category_id/category
     let categoryId: number | undefined = item.category_id || item.category?.id;
     let subcategoryId: number | undefined = item.subcategory_id || item.subcategory?.id;
 
-    if (item.expense_categories && item.expense_categories.length > 0) {
-      const primaryCategory = item.expense_categories[0];
+    if (item.transaction_categories && item.transaction_categories.length > 0) {
+      const primaryCategory = item.transaction_categories[0];
       categoryId = primaryCategory.category_id;
       subcategoryId = primaryCategory.subcategory_id;
     }

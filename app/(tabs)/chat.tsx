@@ -35,10 +35,9 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import chatService from '../../src/services/chatService';
 import categoryService from '../../src/services/categoryService';
 import accountService from '../../src/services/accountService';
+import { buildFileUrl } from '../../src/config/api';
 import { ChatMessage, ExpenseCandidate, Category, Account } from '../../src/types';
 import { formatDate, toDateInputValue, todayDateInputValue } from '../../src/utils/date';
-
-const API_BASE_URL = 'https://acca-api.autoaiassistant.com/';
 
 type SpeechRecognitionModuleType = {
   addListener: (
@@ -75,22 +74,7 @@ const ensureAbsoluteUrl = (value?: string): string | null => {
     return value;
   }
 
-  // Convert localhost URLs to CDN URL
-  if (value.includes('localhost') || value.includes('127.0.0.1')) {
-    // Extract the path part after localhost
-    const match = value.match(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(\/.*)/i);
-    if (match && match[1]) {
-      const path = match[1].replace(/^\/+/, '');
-      return `${API_BASE_URL}${path}`;
-    }
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    return value;
-  }
-  const normalizedBase = API_BASE_URL.replace(/\/$/, '');
-  const normalizedPath = value.replace(/^\/+/, '');
-  return `${normalizedBase}/${normalizedPath}`;
+  return buildFileUrl(value);
 };
 
 // Helper to extract attachment from a message

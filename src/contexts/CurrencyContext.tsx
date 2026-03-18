@@ -39,7 +39,7 @@ interface FormatOptions {
 const CurrencyContext = createContext<CurrencyContextType | null>(null);
 
 const DEFAULT_CURRENCY = 'USD';
-const STORAGE_KEY = 'acca:selected_currency';
+const STORAGE_KEY = 'accounte:selected_currency';
 
 const AVAILABLE_CURRENCIES: Currency[] = CURRENCIES.map(({ code, name, symbol }) => ({
   code,

@@ -1,9 +1,22 @@
 import * as SecureStore from 'expo-secure-store';
 import { ApiResponse } from '../types';
 
+const DEFAULT_API_BASE_URL = 'https://api.accounte.com/api';
+
+const trimTrailingSlash = (value = '') => value.replace(/\/+$/, '');
+
+const ensureApiBaseUrl = (value?: string): string => {
+  const normalized = trimTrailingSlash(value || DEFAULT_API_BASE_URL);
+  return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+};
+
+const API_BASE_URL = ensureApiBaseUrl(process.env.EXPO_PUBLIC_API_URL);
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api$/, '');
+
 // API Configuration
 const API_CONFIG = {
-  BASE_URL: 'https://acca-api.autoaiassistant.com/api',
+  BASE_URL: API_BASE_URL,
+  FILE_BASE_URL,
   ENDPOINTS: {
     // Authentication
     LOGIN: '/login',
@@ -97,7 +110,7 @@ const API_CONFIG = {
 };
 
 // Storage key for auth token
-const AUTH_TOKEN_KEY = 'acca_auth_token';
+const AUTH_TOKEN_KEY = 'accounte_auth_token';
 
 // Get auth token from secure storage
 export const getAuthToken = async (): Promise<string | null> => {
@@ -128,11 +141,17 @@ export const removeAuthToken = async (): Promise<void> => {
 
 // Build full API URL
 export const buildApiUrl = (endpoint: string): string => {
-  return `${API_CONFIG.BASE_URL}${endpoint}`;
-};
+  if (!endpoint) {
+    return API_CONFIG.BASE_URL;
+  }
 
-// CDN/File base URL (without /api)
-export const FILE_BASE_URL = 'https://acca-api.autoaiassistant.com';
+  if (/^https?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${API_CONFIG.BASE_URL}${normalizedEndpoint}`;
+};
 
 // Build full URL for files (receipts, images, etc.)
 export const buildFileUrl = (path: string | null | undefined): string | null => {
@@ -148,6 +167,14 @@ export const buildFileUrl = (path: string | null | undefined): string | null => 
   // Local file URI (from camera/gallery)
   if (path.startsWith('file://') || path.startsWith('content://')) {
     return path;
+  }
+
+  if (path.includes('localhost') || path.includes('127.0.0.1')) {
+    const match = path.match(/https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(\/.*)/i);
+    if (match && match[1]) {
+      const normalizedLocalPath = match[1].replace(/^\/+/, '');
+      return `${FILE_BASE_URL}/${normalizedLocalPath}`;
+    }
   }
 
   // Relative path - prepend base URL

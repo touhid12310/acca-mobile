@@ -1,5 +1,5 @@
 /**
- * Date utilities for the ACCA app
+ * Date utilities for the Accounte app
  */
 
 /**

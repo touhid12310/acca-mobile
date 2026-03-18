@@ -25,7 +25,7 @@ import { WebView } from 'react-native-webview';
 import { useAuth } from '../src/contexts/AuthContext';
 import { useTheme } from '../src/contexts/ThemeContext';
 import authService from '../src/services/authService';
-import API_CONFIG, { getAuthToken } from '../src/config/api';
+import { buildApiUrl, getAuthToken } from '../src/config/api';
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
@@ -145,7 +145,7 @@ export default function ProfileScreen() {
         type,
       } as any);
 
-      const response = await fetch(`${API_CONFIG.BASE_URL}/profile/picture`, {
+      const response = await fetch(buildApiUrl('/profile/picture'), {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -178,7 +178,7 @@ export default function ProfileScreen() {
         onPress: async () => {
           try {
             const token = await getAuthToken();
-            const response = await fetch(`${API_CONFIG.BASE_URL}/profile/picture`, {
+            const response = await fetch(buildApiUrl('/profile/picture'), {
               method: 'DELETE',
               headers: {
                 'Authorization': `Bearer ${token}`,
