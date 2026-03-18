@@ -17,9 +17,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.accounte.finance",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Accounte needs access to your microphone for voice recording features.",
+        "NSMicrophoneUsageDescription": "Allow Accounte to access your microphone for voice transcription.",
         "NSCameraUsageDescription": "Accounte needs access to your camera to capture receipts.",
-        "NSPhotoLibraryUsageDescription": "Accounte needs access to your photos to upload receipts."
+        "NSPhotoLibraryUsageDescription": "Accounte needs access to your photos to upload receipts.",
+        "NSSpeechRecognitionUsageDescription": "Allow Accounte to use speech recognition for live transcription."
       }
     },
     "android": {
@@ -74,8 +75,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1ae7615a-87b2-48cc-9c8c-0bf288e62a8f"
+        "projectId": "dbbbcf0f-926a-4e11-afc1-f2f4552a71a8"
       }
-    }
+    },
+    "owner": "touhid12310"
   }
 }
