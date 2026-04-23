@@ -6,11 +6,13 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { Text, TextInput, Button, HelperText } from 'react-native-paper';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -101,18 +103,18 @@ export default function LoginScreen() {
         >
           {/* Logo/Header */}
           <View style={styles.header}>
-            <View
-              style={[
-                styles.logoContainer,
-                { backgroundColor: colors.primaryContainer },
-              ]}
+            <LinearGradient
+              colors={['#c1c957', 'rgba(110, 157, 231, 0.66)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logoBadge}
             >
-              <MaterialCommunityIcons
-                name="wallet"
-                size={48}
-                color={colors.primary}
+              <Image
+                source={require('../../assets/logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
               />
-            </View>
+            </LinearGradient>
             <Text variant="headlineMedium" style={[styles.title, { color: colors.onSurface }]}>
               Welcome Back
             </Text>
@@ -258,6 +260,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  logoBadge: {
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(110, 157, 231, 0.35)',
+    shadowColor: '#6e9de7',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 4,
+  },
   keyboardView: {
     flex: 1,
   },
@@ -277,6 +292,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+  },
+  logoImage: {
+    width: 200,
+    height: 44,
   },
   title: {
     fontWeight: 'bold',
