@@ -1122,7 +1122,7 @@ export default function ReportsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
+      edges={['top']}
     >
       <View style={styles.header}>
         <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>

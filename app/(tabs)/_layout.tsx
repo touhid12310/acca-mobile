@@ -1,26 +1,10 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { View, StyleSheet, Platform, Image } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { useTheme } from '../../src/contexts/ThemeContext';
-
-const LogoHeaderTitle = () => (
-  <LinearGradient
-    colors={['#c1c957', 'rgba(110, 157, 231, 0.66)']}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={styles.logoBadge}
-  >
-    <Image
-      source={require('../../assets/logo.png')}
-      style={styles.logoImage}
-      resizeMode="contain"
-    />
-  </LinearGradient>
-);
 
 type IconNames = {
   focused: string;
@@ -79,18 +63,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        headerTitle: () => <LogoHeaderTitle />,
-        headerTitleAlign: 'center',
-        headerStyle: {
-          backgroundColor: colors.surface,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.outlineVariant,
-          height: 52 + insets.top,
-        },
-        headerStatusBarHeight: insets.top,
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.onSurfaceVariant,
         tabBarStyle: {
@@ -175,16 +148,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
-  },
-  logoBadge: {
-    borderRadius: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(110, 157, 231, 0.35)',
-  },
-  logoImage: {
-    width: 110,
-    height: 22,
   },
 });

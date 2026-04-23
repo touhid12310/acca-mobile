@@ -382,7 +382,7 @@ export default function TransactionsScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
+      edges={['top']}
     >
       {/* Header */}
       <View style={styles.header}>

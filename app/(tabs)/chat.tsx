@@ -1164,7 +1164,7 @@ export default function ChatScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
+      edges={['top']}
     >
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: colors.outlineVariant }]}>

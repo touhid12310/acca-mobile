@@ -241,7 +241,7 @@ export default function MoreScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={[]}
+      edges={['top']}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
