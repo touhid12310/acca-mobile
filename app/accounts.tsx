@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -8,7 +8,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-} from 'react-native';
+} from "react-native";
 import {
   Text,
   Surface,
@@ -18,28 +18,35 @@ import {
   Modal,
   TextInput,
   Button,
-} from 'react-native-paper';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+} from "react-native-paper";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
-import { useTheme } from '../src/contexts/ThemeContext';
-import { useCurrency } from '../src/contexts/CurrencyContext';
-import accountService from '../src/services/accountService';
-import { Account } from '../src/types';
+import { useTheme } from "../src/contexts/ThemeContext";
+import { useCurrency } from "../src/contexts/CurrencyContext";
+import { BrandedHeader } from "../src/components";
+import accountService from "../src/services/accountService";
+import { Account } from "../src/types";
 
 // Helper function to extracts detailed validation errors from API response
 const formatApiError = (result: any): string => {
   const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || 'Request failed';
+  let errorMsg = errorData?.message || result.error || "Request failed";
 
   // Check for Laravel validation errors
   const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === 'object') {
+  if (validationErrors && typeof validationErrors === "object") {
     const errorDetails = Object.entries(validationErrors)
-      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-      .join('\n');
+      .map(
+        ([field, msgs]) =>
+          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
+      )
+      .join("\n");
     if (errorDetails) {
       errorMsg = `${errorMsg}\n\n${errorDetails}`;
     }
@@ -49,27 +56,30 @@ const formatApiError = (result: any): string => {
 };
 
 const accountTypeOptions = [
-  { value: 'Cash', label: 'Cash' },
-  { value: 'Bank Account', label: 'Bank Account' },
-  { value: 'Savings Account', label: 'Savings' },
-  { value: 'Credit Card', label: 'Credit Card' },
-  { value: 'Mobile Banking/e-Wallet', label: 'e-Wallet' },
-  { value: 'Loan Account', label: 'Loan' },
-  { value: 'Investment Account', label: 'Investment' },
-  { value: 'Digital Bank Account', label: 'Digital Bank' },
-  { value: 'Prepaid Card', label: 'Prepaid' },
-  { value: 'Other', label: 'Other' },
+  { value: "Cash", label: "Cash" },
+  { value: "Bank Account", label: "Bank Account" },
+  { value: "Savings Account", label: "Savings" },
+  { value: "Credit Card", label: "Credit Card" },
+  { value: "Mobile Banking/e-Wallet", label: "e-Wallet" },
+  { value: "Loan Account", label: "Loan" },
+  { value: "Investment Account", label: "Investment" },
+  { value: "Digital Bank Account", label: "Digital Bank" },
+  { value: "Prepaid Card", label: "Prepaid" },
+  { value: "Other", label: "Other" },
 ];
 
-const getAccountIcon = (type: string = ''): string => {
+const getAccountIcon = (type: string = ""): string => {
   const normalized = type.toLowerCase();
-  if (normalized.includes('cash')) return 'cash';
-  if (normalized.includes('credit') || normalized.includes('card')) return 'credit-card';
-  if (normalized.includes('wallet') || normalized.includes('mobile')) return 'wallet';
-  if (normalized.includes('savings') || normalized.includes('piggy')) return 'piggy-bank';
-  if (normalized.includes('investment')) return 'chart-line';
-  if (normalized.includes('loan')) return 'hand-coin';
-  return 'bank';
+  if (normalized.includes("cash")) return "cash";
+  if (normalized.includes("credit") || normalized.includes("card"))
+    return "credit-card";
+  if (normalized.includes("wallet") || normalized.includes("mobile"))
+    return "wallet";
+  if (normalized.includes("savings") || normalized.includes("piggy"))
+    return "piggy-bank";
+  if (normalized.includes("investment")) return "chart-line";
+  if (normalized.includes("loan")) return "hand-coin";
+  return "bank";
 };
 
 export default function AccountsScreen() {
@@ -80,9 +90,9 @@ export default function AccountsScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [formData, setFormData] = useState({
-    account_name: '',
-    account_type: 'Bank Account' as string,
-    balance: '',
+    account_name: "",
+    account_type: "Bank Account" as string,
+    balance: "",
   });
 
   const {
@@ -91,7 +101,7 @@ export default function AccountsScreen() {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['accounts'],
+    queryKey: ["accounts"],
     queryFn: async () => {
       const result = await accountService.getAll();
       if (result.success && result.data) {
@@ -113,11 +123,11 @@ export default function AccountsScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       closeModal();
     },
-    onError: (error: Error) => Alert.alert('Error', error.message),
+    onError: (error: Error) => Alert.alert("Error", error.message),
   });
 
   const deleteMutation = useMutation({
@@ -127,17 +137,17 @@ export default function AccountsScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
-    onError: (error: Error) => Alert.alert('Error', error.message),
+    onError: (error: Error) => Alert.alert("Error", error.message),
   });
 
   const openAddModal = () => {
     setFormData({
-      account_name: '',
-      account_type: 'Bank Account',
-      balance: '',
+      account_name: "",
+      account_type: "Bank Account",
+      balance: "",
     });
     setModalVisible(true);
   };
@@ -148,7 +158,7 @@ export default function AccountsScreen() {
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
-      Alert.alert('Error', 'Please enter an account name');
+      Alert.alert("Error", "Please enter an account name");
       return;
     }
     createMutation.mutate(formData);
@@ -156,16 +166,16 @@ export default function AccountsScreen() {
 
   const handleDelete = (account: Account) => {
     Alert.alert(
-      'Delete Account',
+      "Delete Account",
       `Are you sure you want to delete "${account.account_name}"?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: () => deleteMutation.mutate(account.id),
         },
-      ]
+      ],
     );
   };
 
@@ -175,26 +185,32 @@ export default function AccountsScreen() {
 
   // Calculate stats
   const viewAccounts = accounts || [];
-  const totalBalance = viewAccounts.reduce(
-    (sum: number, acc: Account) => {
-      const balance = parseFloat(String(acc.current_balance ?? acc.balance ?? 0));
-      return sum + balance;
-    },
-    0
-  );
+  const totalBalance = viewAccounts.reduce((sum: number, acc: Account) => {
+    const balance = parseFloat(String(acc.current_balance ?? acc.balance ?? 0));
+    return sum + balance;
+  }, 0);
   const accountsCount = viewAccounts.length;
-  const uniqueTypes = new Set(viewAccounts.map((acc: Account) => acc.type || acc.account_type || 'Other')).size;
-  const topAccount = viewAccounts.length > 0
-    ? viewAccounts.reduce((prev: Account, current: Account) => {
-      const prevBalance = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
-      const currBalance = parseFloat(String(current.current_balance ?? current.balance ?? 0));
-      return currBalance > prevBalance ? current : prev;
-    }, viewAccounts[0])
-    : null;
+  const uniqueTypes = new Set(
+    viewAccounts.map((acc: Account) => acc.type || acc.account_type || "Other"),
+  ).size;
+  const topAccount =
+    viewAccounts.length > 0
+      ? viewAccounts.reduce((prev: Account, current: Account) => {
+          const prevBalance = parseFloat(
+            String(prev.current_balance ?? prev.balance ?? 0),
+          );
+          const currBalance = parseFloat(
+            String(current.current_balance ?? current.balance ?? 0),
+          );
+          return currBalance > prevBalance ? current : prev;
+        }, viewAccounts[0])
+      : null;
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -203,17 +219,15 @@ export default function AccountsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
-        </TouchableOpacity>
-        <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Accounts
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top"]}
+    >
+      <BrandedHeader
+        title="Accounts"
+        subtitle="Manage balances and payment sources"
+        showBack
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -227,42 +241,116 @@ export default function AccountsScreen() {
       >
         {/* Stats Section */}
         <View style={styles.statsGrid}>
-          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
-            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.primary}15` }]}>
-              <MaterialCommunityIcons name="wallet" size={20} color={colors.primary} />
+          <Surface
+            style={[styles.statCard, { backgroundColor: colors.surface }]}
+            elevation={1}
+          >
+            <View
+              style={[
+                styles.statIconWrapper,
+                { backgroundColor: `${colors.primary}15` },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="wallet"
+                size={20}
+                color={colors.primary}
+              />
             </View>
-            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Total Balance</Text>
-            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              Total Balance
+            </Text>
+            <Text
+              variant="titleMedium"
+              style={{ color: colors.onSurface, fontWeight: "bold" }}
+            >
               {formatAmount(totalBalance)}
             </Text>
           </Surface>
 
-          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
-            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.tertiary}15` }]}>
-              <MaterialCommunityIcons name="bank" size={20} color={colors.tertiary} />
+          <Surface
+            style={[styles.statCard, { backgroundColor: colors.surface }]}
+            elevation={1}
+          >
+            <View
+              style={[
+                styles.statIconWrapper,
+                { backgroundColor: `${colors.tertiary}15` },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="bank"
+                size={20}
+                color={colors.tertiary}
+              />
             </View>
-            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Accounts</Text>
-            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              Accounts
+            </Text>
+            <Text
+              variant="titleMedium"
+              style={{ color: colors.onSurface, fontWeight: "bold" }}
+            >
               {accountsCount}
             </Text>
           </Surface>
 
-          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
-            <View style={[styles.statIconWrapper, { backgroundColor: `${colors.secondary}15` }]}>
-              <MaterialCommunityIcons name="star" size={20} color={colors.secondary} />
+          <Surface
+            style={[styles.statCard, { backgroundColor: colors.surface }]}
+            elevation={1}
+          >
+            <View
+              style={[
+                styles.statIconWrapper,
+                { backgroundColor: `${colors.secondary}15` },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="star"
+                size={20}
+                color={colors.secondary}
+              />
             </View>
-            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Top Account</Text>
-            <Text variant="titleSmall" style={{ color: colors.onSurface, fontWeight: '600' }} numberOfLines={1}>
-              {topAccount?.account_name || '-'}
+            <Text
+              variant="labelSmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              Top Account
+            </Text>
+            <Text
+              variant="titleSmall"
+              style={{ color: colors.onSurface, fontWeight: "600" }}
+              numberOfLines={1}
+            >
+              {topAccount?.account_name || "-"}
             </Text>
           </Surface>
 
-          <Surface style={[styles.statCard, { backgroundColor: colors.surface }]} elevation={1}>
-            <View style={[styles.statIconWrapper, { backgroundColor: '#F59E0B15' }]}>
+          <Surface
+            style={[styles.statCard, { backgroundColor: colors.surface }]}
+            elevation={1}
+          >
+            <View
+              style={[styles.statIconWrapper, { backgroundColor: "#F59E0B15" }]}
+            >
               <MaterialCommunityIcons name="shape" size={20} color="#F59E0B" />
             </View>
-            <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Types</Text>
-            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+            <Text
+              variant="labelSmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              Types
+            </Text>
+            <Text
+              variant="titleMedium"
+              style={{ color: colors.onSurface, fontWeight: "bold" }}
+            >
               {uniqueTypes}
             </Text>
           </Surface>
@@ -271,18 +359,27 @@ export default function AccountsScreen() {
         {/* Accounts List */}
         {viewAccounts.length > 0 ? (
           <View>
-            <Text variant="titleMedium" style={{ color: colors.onSurface, marginBottom: 12 }}>
+            <Text
+              variant="titleMedium"
+              style={{ color: colors.onSurface, marginBottom: 12 }}
+            >
               All Accounts
             </Text>
             {viewAccounts.map((account: Account) => {
-              const accountType = account.type || account.account_type || 'Other';
-              const balance = parseFloat(String(account.current_balance ?? account.balance ?? 0));
+              const accountType =
+                account.type || account.account_type || "Other";
+              const balance = parseFloat(
+                String(account.current_balance ?? account.balance ?? 0),
+              );
               const iconName = getAccountIcon(accountType);
 
               return (
                 <Surface
                   key={account.id}
-                  style={[styles.accountCard, { backgroundColor: colors.surface }]}
+                  style={[
+                    styles.accountCard,
+                    { backgroundColor: colors.surface },
+                  ]}
                   elevation={1}
                 >
                   <View style={styles.accountCardInner}>
@@ -292,7 +389,12 @@ export default function AccountsScreen() {
                       onLongPress={() => handleDelete(account)}
                       activeOpacity={0.7}
                     >
-                      <View style={[styles.accountIcon, { backgroundColor: `${colors.primary}15` }]}>
+                      <View
+                        style={[
+                          styles.accountIcon,
+                          { backgroundColor: `${colors.primary}15` },
+                        ]}
+                      >
                         <MaterialCommunityIcons
                           name={iconName as any}
                           size={24}
@@ -300,24 +402,39 @@ export default function AccountsScreen() {
                         />
                       </View>
                       <View style={styles.accountInfo}>
-                        <Text variant="titleMedium" style={{ color: colors.onSurface }}>
-                          {account.account_name || 'Unnamed Account'}
+                        <Text
+                          variant="titleMedium"
+                          style={{ color: colors.onSurface }}
+                        >
+                          {account.account_name || "Unnamed Account"}
                         </Text>
-                        <View style={[styles.typeBadge, { backgroundColor: `${colors.primary}10` }]}>
-                          <Text variant="labelSmall" style={{ color: colors.primary }}>
+                        <View
+                          style={[
+                            styles.typeBadge,
+                            { backgroundColor: `${colors.primary}10` },
+                          ]}
+                        >
+                          <Text
+                            variant="labelSmall"
+                            style={{ color: colors.primary }}
+                          >
                             {accountType}
                           </Text>
                         </View>
                       </View>
                       <View style={styles.balanceContainer}>
-                        <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        <Text
+                          variant="labelSmall"
+                          style={{ color: colors.onSurfaceVariant }}
+                        >
                           Balance
                         </Text>
                         <Text
                           variant="titleMedium"
                           style={{
-                            color: balance >= 0 ? colors.tertiary : colors.error,
-                            fontWeight: 'bold',
+                            color:
+                              balance >= 0 ? colors.tertiary : colors.error,
+                            fontWeight: "bold",
                           }}
                         >
                           {formatAmount(balance)}
@@ -329,7 +446,11 @@ export default function AccountsScreen() {
                       style={styles.deleteIconBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <MaterialCommunityIcons name="delete-outline" size={22} color={colors.error} />
+                      <MaterialCommunityIcons
+                        name="delete-outline"
+                        size={22}
+                        color={colors.error}
+                      />
                     </TouchableOpacity>
                   </View>
                 </Surface>
@@ -338,11 +459,21 @@ export default function AccountsScreen() {
           </View>
         ) : (
           <View style={styles.emptyState}>
-            <MaterialCommunityIcons name="bank-off" size={64} color={colors.onSurfaceVariant} />
-            <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
+            <MaterialCommunityIcons
+              name="bank-off"
+              size={64}
+              color={colors.onSurfaceVariant}
+            />
+            <Text
+              variant="bodyLarge"
+              style={{ color: colors.onSurfaceVariant, marginTop: 16 }}
+            >
               No accounts yet
             </Text>
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, textAlign: "center" }}
+            >
               Tap the + button to add your first account
             </Text>
           </View>
@@ -351,7 +482,10 @@ export default function AccountsScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary, bottom: 16 + insets.bottom }]}
+        style={[
+          styles.fab,
+          { backgroundColor: colors.primary, bottom: 16 + insets.bottom },
+        ]}
         color={colors.onPrimary}
         onPress={openAddModal}
       />
@@ -361,20 +495,28 @@ export default function AccountsScreen() {
         <Modal
           visible={modalVisible}
           onDismiss={closeModal}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+            <Text
+              variant="titleLarge"
+              style={{ color: colors.onSurface, marginBottom: 16 }}
+            >
               Add Account
             </Text>
 
             <TextInput
               label="Account Name"
               value={formData.account_name}
-              onChangeText={(text) => setFormData({ ...formData, account_name: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, account_name: text })
+              }
               mode="outlined"
               style={styles.input}
             />
@@ -382,13 +524,18 @@ export default function AccountsScreen() {
             <TextInput
               label="Initial Balance"
               value={formData.balance}
-              onChangeText={(text) => setFormData({ ...formData, balance: text })}
+              onChangeText={(text) =>
+                setFormData({ ...formData, balance: text })
+              }
               mode="outlined"
               keyboardType="decimal-pad"
               style={styles.input}
             />
 
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+            >
               Account Type
             </Text>
             <ScrollView
@@ -403,17 +550,28 @@ export default function AccountsScreen() {
                   style={[
                     styles.typeChip,
                     {
-                      backgroundColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
-                      borderColor: formData.account_type === option.value ? colors.primary : colors.surfaceVariant,
+                      backgroundColor:
+                        formData.account_type === option.value
+                          ? colors.primary
+                          : colors.surfaceVariant,
+                      borderColor:
+                        formData.account_type === option.value
+                          ? colors.primary
+                          : colors.surfaceVariant,
                     },
                   ]}
-                  onPress={() => setFormData({ ...formData, account_type: option.value })}
+                  onPress={() =>
+                    setFormData({ ...formData, account_type: option.value })
+                  }
                 >
                   <Text
                     style={{
-                      color: formData.account_type === option.value ? '#fff' : colors.onSurfaceVariant,
+                      color:
+                        formData.account_type === option.value
+                          ? "#fff"
+                          : colors.onSurfaceVariant,
                       fontSize: 12,
-                      fontWeight: '500',
+                      fontWeight: "500",
                     }}
                   >
                     {option.label}
@@ -423,7 +581,9 @@ export default function AccountsScreen() {
             </ScrollView>
 
             <View style={styles.modalButtons}>
-              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button mode="text" onPress={closeModal}>
+                Cancel
+              </Button>
               <Button
                 mode="contained"
                 onPress={handleSave}
@@ -444,9 +604,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     paddingBottom: 8,
   },
@@ -455,7 +615,7 @@ const styles = StyleSheet.create({
     marginLeft: -8,
   },
   title: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   scrollContent: {
     padding: 16,
@@ -463,17 +623,17 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginBottom: 20,
   },
   statCard: {
-    width: '48%',
+    width: "48%",
     flexGrow: 1,
     padding: 12,
     borderRadius: 12,
@@ -483,24 +643,24 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 4,
   },
   accountCard: {
     borderRadius: 12,
     marginBottom: 10,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   accountCardInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 14,
   },
   accountCardPressable: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   deleteIconBtn: {
     padding: 8,
@@ -510,8 +670,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   accountInfo: {
@@ -519,20 +679,20 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   typeBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
   balanceContainer: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 64,
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     bottom: 16,
   },
@@ -540,7 +700,7 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
-    maxHeight: '70%',
+    maxHeight: "70%",
   },
   input: {
     marginBottom: 12,
@@ -552,8 +712,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 8,
     marginTop: 16,
   },

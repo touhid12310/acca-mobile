@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   StyleSheet,
@@ -10,7 +10,7 @@ import {
   Image,
   Alert,
   Keyboard,
-} from 'react-native';
+} from "react-native";
 import {
   Text,
   Surface,
@@ -20,29 +20,41 @@ import {
   Portal,
   Modal,
   Divider,
-} from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { router } from 'expo-router';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+} from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import { router } from "expo-router";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 
-import { useTheme } from '../../src/contexts/ThemeContext';
-import { useCurrency } from '../../src/contexts/CurrencyContext';
-import { useAuth } from '../../src/contexts/AuthContext';
-import chatService from '../../src/services/chatService';
-import categoryService from '../../src/services/categoryService';
-import accountService from '../../src/services/accountService';
-import { buildFileUrl } from '../../src/config/api';
-import { ChatMessage, ExpenseCandidate, Category, Account } from '../../src/types';
-import { formatDate, toDateInputValue, todayDateInputValue } from '../../src/utils/date';
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { useCurrency } from "../../src/contexts/CurrencyContext";
+import { useAuth } from "../../src/contexts/AuthContext";
+import { BrandedHeader } from "../../src/components";
+import chatService from "../../src/services/chatService";
+import categoryService from "../../src/services/categoryService";
+import accountService from "../../src/services/accountService";
+import { buildFileUrl } from "../../src/config/api";
+import {
+  ChatMessage,
+  ExpenseCandidate,
+  Category,
+  Account,
+} from "../../src/types";
+import {
+  formatDate,
+  toDateInputValue,
+  todayDateInputValue,
+} from "../../src/utils/date";
 
 type SpeechRecognitionModuleType = {
   addListener: (
     eventName: string,
-    listener: (event: any) => void
+    listener: (event: any) => void,
   ) => { remove: () => void };
   abort: () => void;
   stop: () => void;
@@ -55,22 +67,26 @@ let SpeechRecognitionModule: SpeechRecognitionModuleType | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const speechRecognitionPackage = require('expo-speech-recognition');
+  const speechRecognitionPackage = require("expo-speech-recognition");
   SpeechRecognitionModule =
-    (speechRecognitionPackage?.ExpoSpeechRecognitionModule as
-      | SpeechRecognitionModuleType
-      | null) ?? null;
+    (speechRecognitionPackage?.ExpoSpeechRecognitionModule as SpeechRecognitionModuleType | null) ??
+    null;
 } catch (error) {
   SpeechRecognitionModule = null;
 }
 
 // Helper to ensure absolute URL for images - converts localhost to CDN URL
 const ensureAbsoluteUrl = (value?: string): string | null => {
-  if (!value || typeof value !== 'string') return null;
+  if (!value || typeof value !== "string") return null;
   // Return local URIs as-is (file://, content://, blob:, data:)
-  if (value.startsWith('blob:') || value.startsWith('data:') ||
-      value.startsWith('file:') || value.startsWith('content:') ||
-      value.startsWith('ph://') || value.startsWith('assets-library:')) {
+  if (
+    value.startsWith("blob:") ||
+    value.startsWith("data:") ||
+    value.startsWith("file:") ||
+    value.startsWith("content:") ||
+    value.startsWith("ph://") ||
+    value.startsWith("assets-library:")
+  ) {
     return value;
   }
 
@@ -78,7 +94,9 @@ const ensureAbsoluteUrl = (value?: string): string | null => {
 };
 
 // Helper to extract attachment from a message
-const getMessageAttachment = (message: ChatMessage): { url: string; name: string; isImage: boolean } | null => {
+const getMessageAttachment = (
+  message: ChatMessage,
+): { url: string; name: string; isImage: boolean } | null => {
   const metadata = message.metadata || {};
 
   // Try different paths for image/file URL
@@ -92,11 +110,16 @@ const getMessageAttachment = (message: ChatMessage): { url: string; name: string
   for (const candidate of candidates) {
     const url = ensureAbsoluteUrl(candidate);
     if (url) {
-      const fileName = message.file_name || (metadata as any).receipt_name || 'attachment';
-      const mimeType = (message.file_mime || (metadata as any).receipt_mime || '').toLowerCase();
-      const normalizedUrl = url.split('?')[0];
+      const fileName =
+        message.file_name || (metadata as any).receipt_name || "attachment";
+      const mimeType = (
+        message.file_mime ||
+        (metadata as any).receipt_mime ||
+        ""
+      ).toLowerCase();
+      const normalizedUrl = url.split("?")[0];
       const isImage =
-        mimeType.startsWith('image/') ||
+        mimeType.startsWith("image/") ||
         /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(fileName) ||
         /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(normalizedUrl);
       return { url, name: fileName, isImage };
@@ -108,7 +131,7 @@ const getMessageAttachment = (message: ChatMessage): { url: string; name: string
 // Helper to find related attachment for an assistant message (looks at preceding user messages)
 const findRelatedAttachment = (
   targetMessage: ChatMessage,
-  allMessages: ChatMessage[]
+  allMessages: ChatMessage[],
 ): { url: string; name: string; isImage: boolean } | null => {
   // First check if the target message itself has an attachment
   const directAttachment = getMessageAttachment(targetMessage);
@@ -140,12 +163,15 @@ const findRelatedAttachment = (
 
 const normalizeTranscriptText = (value?: string): string => {
   if (!value) {
-    return '';
+    return "";
   }
-  return value.replace(/\s+/g, ' ').trim();
+  return value.replace(/\s+/g, " ").trim();
 };
 
-const mergeTranscriptText = (existingText: string, incomingText: string): string => {
+const mergeTranscriptText = (
+  existingText: string,
+  incomingText: string,
+): string => {
   const existing = normalizeTranscriptText(existingText);
   const incoming = normalizeTranscriptText(incomingText);
 
@@ -165,16 +191,16 @@ const mergeTranscriptText = (existingText: string, incomingText: string): string
     return incoming;
   }
 
-  const existingWords = existing.split(' ');
-  const incomingWords = incoming.split(' ');
+  const existingWords = existing.split(" ");
+  const incomingWords = incoming.split(" ");
   const maxOverlap = Math.min(existingWords.length, incomingWords.length);
 
   for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
-    const tail = existingWords.slice(-overlap).join(' ').toLowerCase();
-    const head = incomingWords.slice(0, overlap).join(' ').toLowerCase();
+    const tail = existingWords.slice(-overlap).join(" ").toLowerCase();
+    const head = incomingWords.slice(0, overlap).join(" ").toLowerCase();
 
     if (tail === head) {
-      const suffix = incomingWords.slice(overlap).join(' ');
+      const suffix = incomingWords.slice(overlap).join(" ");
       return normalizeTranscriptText(`${existing} ${suffix}`);
     }
   }
@@ -182,7 +208,10 @@ const mergeTranscriptText = (existingText: string, incomingText: string): string
   return normalizeTranscriptText(`${existing} ${incoming}`);
 };
 
-const combineInputAndTranscript = (baseText: string, transcriptText: string): string => {
+const combineInputAndTranscript = (
+  baseText: string,
+  transcriptText: string,
+): string => {
   const base = normalizeTranscriptText(baseText);
   const transcript = normalizeTranscriptText(transcriptText);
 
@@ -198,38 +227,46 @@ const combineInputAndTranscript = (baseText: string, transcriptText: string): st
 };
 
 const getCandidateIdentity = (candidate: ExpenseCandidate): string => {
-  const merchant = (candidate.merchant_name || '').trim().toLowerCase();
-  const date = (candidate.date || '').trim().toLowerCase();
-  const type = (candidate.type || '').trim().toLowerCase();
-  const category = (candidate.category || '').trim().toLowerCase();
+  const merchant = (candidate.merchant_name || "").trim().toLowerCase();
+  const date = (candidate.date || "").trim().toLowerCase();
+  const type = (candidate.type || "").trim().toLowerCase();
+  const category = (candidate.category || "").trim().toLowerCase();
   const paymentMethod = (
     candidate.payment_method_label ||
     candidate.payment_method ||
-    ''
+    ""
   )
     .toString()
     .trim()
     .toLowerCase();
-  const notes = (candidate.notes || '').trim().toLowerCase();
+  const notes = (candidate.notes || "").trim().toLowerCase();
   const numericAmount =
-    typeof candidate.amount === 'string'
+    typeof candidate.amount === "string"
       ? parseFloat(candidate.amount)
       : candidate.amount;
   const amount =
-    typeof numericAmount === 'number' && Number.isFinite(numericAmount)
+    typeof numericAmount === "number" && Number.isFinite(numericAmount)
       ? numericAmount.toFixed(2)
-      : '0.00';
+      : "0.00";
 
-  const semanticIdentity = [merchant, amount, date, type, category, paymentMethod, notes]
+  const semanticIdentity = [
+    merchant,
+    amount,
+    date,
+    type,
+    category,
+    paymentMethod,
+    notes,
+  ]
     .filter(Boolean)
-    .join('|');
+    .join("|");
 
   // Use semantic fields for dedupe. Fall back to id only if everything is empty.
   if (semanticIdentity) {
     return semanticIdentity;
   }
 
-  return candidate.id ? `id:${candidate.id}` : '';
+  return candidate.id ? `id:${candidate.id}` : "";
 };
 
 const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
@@ -247,7 +284,7 @@ const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
 
   while (queue.length) {
     const current = queue.shift();
-    if (!current || typeof current !== 'object' || visited.has(current)) {
+    if (!current || typeof current !== "object" || visited.has(current)) {
       continue;
     }
     visited.add(current);
@@ -257,7 +294,7 @@ const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
     }
 
     Object.values(current).forEach((value) => {
-      if (value && typeof value === 'object') {
+      if (value && typeof value === "object") {
         queue.push(value);
       }
     });
@@ -267,14 +304,14 @@ const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
 };
 
 const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
-  id: 'welcome',
+  id: "welcome",
   is_user: false,
   message:
     "Hello! I'm your finance assistant. You can upload receipts, CSVs, or ask me for quick reports.",
   metadata: {
     suggested_actions: [
-      'Show me a report for the last 3 days',
-      'Help me record a new expense',
+      "Show me a report for the last 3 days",
+      "Help me record a new expense",
     ],
   },
 };
@@ -286,15 +323,19 @@ export default function ChatScreen() {
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<RNTextInput>(null);
-  const voiceBaseInputRef = useRef('');
-  const voiceFinalTranscriptRef = useRef('');
-  const voiceInterimTranscriptRef = useRef('');
+  const voiceBaseInputRef = useRef("");
+  const voiceFinalTranscriptRef = useRef("");
+  const voiceInterimTranscriptRef = useRef("");
   const voiceStopRequestedRef = useRef(false);
-  const previewTapLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewTapLockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const lastHistoryErrorRef = useRef<string | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([DEFAULT_WELCOME_MESSAGE]);
-  const [inputText, setInputText] = useState('');
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    DEFAULT_WELCOME_MESSAGE,
+  ]);
+  const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     uri: string;
     name: string;
@@ -304,22 +345,24 @@ export default function ChatScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
-  const [previewCandidate, setPreviewCandidate] = useState<ExpenseCandidate | null>(
-    null
-  );
-  const [isOpeningTransactionModal, setIsOpeningTransactionModal] = useState(false);
+  const [previewCandidate, setPreviewCandidate] =
+    useState<ExpenseCandidate | null>(null);
+  const [isOpeningTransactionModal, setIsOpeningTransactionModal] =
+    useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [selectedChatDate, setSelectedChatDate] = useState<string>(
-    todayDateInputValue()
+    todayDateInputValue(),
   );
   const [showChatDatePicker, setShowChatDatePicker] = useState(false);
 
   const applyVoiceTextToInput = useCallback(() => {
     const voiceText = mergeTranscriptText(
       voiceFinalTranscriptRef.current,
-      voiceInterimTranscriptRef.current
+      voiceInterimTranscriptRef.current,
     );
-    setInputText(combineInputAndTranscript(voiceBaseInputRef.current, voiceText));
+    setInputText(
+      combineInputAndTranscript(voiceBaseInputRef.current, voiceText),
+    );
   }, []);
 
   useEffect(() => {
@@ -327,65 +370,73 @@ export default function ChatScreen() {
       return;
     }
 
-    const startSub = SpeechRecognitionModule.addListener('start', () => {
+    const startSub = SpeechRecognitionModule.addListener("start", () => {
       setIsRecording(true);
       setIsTranscribing(false);
     });
 
-    const resultSub = SpeechRecognitionModule.addListener('result', (event: any) => {
-      const transcript = normalizeTranscriptText(event?.results?.[0]?.transcript);
-      if (!transcript) {
-        return;
-      }
+    const resultSub = SpeechRecognitionModule.addListener(
+      "result",
+      (event: any) => {
+        const transcript = normalizeTranscriptText(
+          event?.results?.[0]?.transcript,
+        );
+        if (!transcript) {
+          return;
+        }
 
-      if (event?.isFinal) {
+        if (event?.isFinal) {
+          voiceFinalTranscriptRef.current = mergeTranscriptText(
+            voiceFinalTranscriptRef.current,
+            transcript,
+          );
+          voiceInterimTranscriptRef.current = "";
+        } else {
+          voiceInterimTranscriptRef.current = transcript;
+        }
+
+        applyVoiceTextToInput();
+      },
+    );
+
+    const endSub = SpeechRecognitionModule.addListener("end", () => {
+      setIsRecording(false);
+      setIsTranscribing(false);
+      voiceFinalTranscriptRef.current = mergeTranscriptText(
+        voiceFinalTranscriptRef.current,
+        voiceInterimTranscriptRef.current,
+      );
+      voiceInterimTranscriptRef.current = "";
+      applyVoiceTextToInput();
+      voiceStopRequestedRef.current = false;
+    });
+
+    const errorSub = SpeechRecognitionModule.addListener(
+      "error",
+      (event: any) => {
+        setIsRecording(false);
+        setIsTranscribing(false);
         voiceFinalTranscriptRef.current = mergeTranscriptText(
           voiceFinalTranscriptRef.current,
-          transcript
+          voiceInterimTranscriptRef.current,
         );
-        voiceInterimTranscriptRef.current = '';
-      } else {
-        voiceInterimTranscriptRef.current = transcript;
-      }
+        voiceInterimTranscriptRef.current = "";
+        applyVoiceTextToInput();
 
-      applyVoiceTextToInput();
-    });
+        if (
+          !voiceStopRequestedRef.current &&
+          event?.error !== "aborted" &&
+          event?.error !== "no-speech"
+        ) {
+          Alert.alert(
+            "Voice input error",
+            event?.message || "Unable to transcribe your speech right now.",
+          );
+        }
 
-    const endSub = SpeechRecognitionModule.addListener('end', () => {
-      setIsRecording(false);
-      setIsTranscribing(false);
-      voiceFinalTranscriptRef.current = mergeTranscriptText(
-        voiceFinalTranscriptRef.current,
-        voiceInterimTranscriptRef.current
-      );
-      voiceInterimTranscriptRef.current = '';
-      applyVoiceTextToInput();
-      voiceStopRequestedRef.current = false;
-    });
-
-    const errorSub = SpeechRecognitionModule.addListener('error', (event: any) => {
-      setIsRecording(false);
-      setIsTranscribing(false);
-      voiceFinalTranscriptRef.current = mergeTranscriptText(
-        voiceFinalTranscriptRef.current,
-        voiceInterimTranscriptRef.current
-      );
-      voiceInterimTranscriptRef.current = '';
-      applyVoiceTextToInput();
-
-      if (
-        !voiceStopRequestedRef.current &&
-        event?.error !== 'aborted' &&
-        event?.error !== 'no-speech'
-      ) {
-        Alert.alert(
-          'Voice input error',
-          event?.message || 'Unable to transcribe your speech right now.'
-        );
-      }
-
-      voiceStopRequestedRef.current = false;
-    });
+        voiceStopRequestedRef.current = false;
+      },
+    );
 
     return () => {
       startSub.remove();
@@ -412,20 +463,20 @@ export default function ChatScreen() {
   // Handle keyboard show/hide for Android
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         // Scroll to bottom when keyboard shows
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
-      }
+      },
     );
     const keyboardDidHideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
         setKeyboardHeight(0);
-      }
+      },
     );
 
     return () => {
@@ -435,12 +486,15 @@ export default function ChatScreen() {
   }, []);
 
   // Helper function to prepare transaction params for navigation (like web app)
-  const prepareTransactionParams = (candidate: ExpenseCandidate, receiptUri?: string) => {
-    const merchantName = candidate.merchant_name || 'Unknown';
+  const prepareTransactionParams = (
+    candidate: ExpenseCandidate,
+    receiptUri?: string,
+  ) => {
+    const merchantName = candidate.merchant_name || "Unknown";
     const amount = candidate.amount || 0;
-    const transactionType = candidate.type || 'expense';
+    const transactionType = candidate.type || "expense";
     const date = candidate.date || selectedChatDate;
-    const notes = candidate.notes || '';
+    const notes = candidate.notes || "";
 
     // Get IDs directly from candidate if available
     let categoryId = candidate.category_id;
@@ -471,7 +525,9 @@ export default function ChatScreen() {
 
     // If payment_method_id not provided but payment_method name is, try to match from loaded accounts
     if (!accountId && candidate.payment_method && paymentMethodsData) {
-      const paymentName = (candidate.payment_method as string).toLowerCase().trim();
+      const paymentName = (candidate.payment_method as string)
+        .toLowerCase()
+        .trim();
       for (const acc of paymentMethodsData) {
         if (acc.account_name.toLowerCase().trim() === paymentName) {
           accountId = acc.id;
@@ -481,7 +537,12 @@ export default function ChatScreen() {
     }
 
     // Prepare items - if candidate has items, use them; otherwise create a default item
-    let itemsToSend: Array<{ name: string; quantity: number; price: number; total: number }> = [];
+    let itemsToSend: Array<{
+      name: string;
+      quantity: number;
+      price: number;
+      total: number;
+    }> = [];
 
     if (Array.isArray(candidate.items) && candidate.items.length > 0) {
       itemsToSend = candidate.items.map((item, index) => {
@@ -497,31 +558,33 @@ export default function ChatScreen() {
       });
     } else {
       // Create a single default item for simple transactions (like web app)
-      itemsToSend = [{
-        name: merchantName,
-        quantity: 1,
-        price: amount,
-        total: amount,
-      }];
+      itemsToSend = [
+        {
+          name: merchantName,
+          quantity: 1,
+          price: amount,
+          total: amount,
+        },
+      ];
     }
 
     // Determine file type from URI
-    let receiptType = '';
-    let receiptName = 'receipt';
+    let receiptType = "";
+    let receiptName = "receipt";
     if (receiptUri) {
       const lowerUri = receiptUri.toLowerCase();
-      if (lowerUri.includes('.pdf')) {
-        receiptType = 'pdf';
-        receiptName = 'receipt.pdf';
-      } else if (lowerUri.includes('.csv')) {
-        receiptType = 'csv';
-        receiptName = 'receipt.csv';
+      if (lowerUri.includes(".pdf")) {
+        receiptType = "pdf";
+        receiptName = "receipt.pdf";
+      } else if (lowerUri.includes(".csv")) {
+        receiptType = "csv";
+        receiptName = "receipt.csv";
       } else if (lowerUri.match(/\.(jpg|jpeg|png|gif|webp|heic)/)) {
-        receiptType = 'image';
-        receiptName = 'receipt.jpg';
+        receiptType = "image";
+        receiptName = "receipt.jpg";
       } else {
-        receiptType = 'image'; // Default to image for most cases
-        receiptName = 'receipt.jpg';
+        receiptType = "image"; // Default to image for most cases
+        receiptName = "receipt.jpg";
       }
     }
 
@@ -529,14 +592,14 @@ export default function ChatScreen() {
       type: transactionType,
       amount: amount.toString(),
       merchant_name: merchantName,
-      description: '',
+      description: "",
       date: date,
-      category_id: categoryId?.toString() || '',
-      subcategory_id: subcategoryId?.toString() || '',
-      account_id: accountId?.toString() || '',
+      category_id: categoryId?.toString() || "",
+      subcategory_id: subcategoryId?.toString() || "",
+      account_id: accountId?.toString() || "",
       notes: notes,
       items: JSON.stringify(itemsToSend),
-      receipt_uri: receiptUri || '',
+      receipt_uri: receiptUri || "",
       receipt_type: receiptType,
       receipt_name: receiptName,
     };
@@ -544,7 +607,7 @@ export default function ChatScreen() {
 
   // Fetch categories for context
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories', 'forChat'],
+    queryKey: ["categories", "forChat"],
     queryFn: async () => {
       const result = await categoryService.getAll(undefined, true);
       if (result.success && result.data) {
@@ -561,7 +624,7 @@ export default function ChatScreen() {
 
   // Fetch payment methods for context
   const { data: paymentMethodsData } = useQuery({
-    queryKey: ['paymentMethods', 'forChat'],
+    queryKey: ["paymentMethods", "forChat"],
     queryFn: async () => {
       const result = await accountService.getPaymentMethods();
       if (result.success && result.data) {
@@ -583,7 +646,7 @@ export default function ChatScreen() {
     isFetching: isFetchingHistory,
     error: messagesHistoryError,
   } = useQuery({
-    queryKey: ['chat', 'messages', selectedChatDate],
+    queryKey: ["chat", "messages", selectedChatDate],
     retry: false,
     queryFn: async () => {
       const result = await chatService.getMessages(selectedChatDate);
@@ -592,7 +655,7 @@ export default function ChatScreen() {
         throw new Error(
           payload?.message ||
             result.error ||
-            'Unable to load chat history for this date.'
+            "Unable to load chat history for this date.",
         );
       }
 
@@ -624,14 +687,14 @@ export default function ChatScreen() {
     const message =
       messagesHistoryError instanceof Error
         ? messagesHistoryError.message
-        : 'Unable to load chat history for this date.';
+        : "Unable to load chat history for this date.";
 
     if (lastHistoryErrorRef.current === message) {
       return;
     }
 
     lastHistoryErrorRef.current = message;
-    Alert.alert('Chat date error', message);
+    Alert.alert("Chat date error", message);
   }, [messagesHistoryError]);
 
   // Send message mutation
@@ -649,10 +712,12 @@ export default function ChatScreen() {
         id: cat.id,
         name: cat.name,
         type: cat.type,
-        subcategories: cat.subcategories?.map((sub: { id: number; name: string }) => ({
-          id: sub.id,
-          name: sub.name,
-        })),
+        subcategories: cat.subcategories?.map(
+          (sub: { id: number; name: string }) => ({
+            id: sub.id,
+            name: sub.name,
+          }),
+        ),
       }));
 
       const paymentMethodContext = paymentMethodsData?.map((acc: Account) => ({
@@ -675,11 +740,19 @@ export default function ChatScreen() {
           data?: { user?: ChatMessage; assistant?: ChatMessage };
         };
         if (data.success && data.data?.user && data.data?.assistant) {
-          setMessages((prev) => [...prev, data.data!.user!, data.data!.assistant!]);
+          setMessages((prev) => [
+            ...prev,
+            data.data!.user!,
+            data.data!.assistant!,
+          ]);
         }
       }
       queryClient.invalidateQueries({
-        queryKey: ['chat', 'messages', variables.chatDate || todayDateInputValue()],
+        queryKey: [
+          "chat",
+          "messages",
+          variables.chatDate || todayDateInputValue(),
+        ],
       });
     },
   });
@@ -708,7 +781,7 @@ export default function ChatScreen() {
       setLastUploadedFileUri(file.uri);
     }
 
-    setInputText('');
+    setInputText("");
     setSelectedFile(null);
 
     // Add optimistic user message with file info
@@ -730,7 +803,7 @@ export default function ChatScreen() {
         chatDate: selectedChatDate,
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to send message. Please try again.');
+      Alert.alert("Error", "Failed to send message. Please try again.");
     } finally {
       setIsSending(false);
     }
@@ -739,8 +812,11 @@ export default function ChatScreen() {
   // Handle image picker
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera roll access to upload images.');
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Please grant camera roll access to upload images.",
+      );
       return;
     }
 
@@ -754,7 +830,7 @@ export default function ChatScreen() {
       setSelectedFile({
         uri: asset.uri,
         name: asset.fileName || `image-${Date.now()}.jpg`,
-        type: asset.mimeType || 'image/jpeg',
+        type: asset.mimeType || "image/jpeg",
       });
     }
   };
@@ -762,8 +838,11 @@ export default function ChatScreen() {
   // Handle camera
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please grant camera access to take photos.');
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Please grant camera access to take photos.",
+      );
       return;
     }
 
@@ -776,7 +855,7 @@ export default function ChatScreen() {
       setSelectedFile({
         uri: asset.uri,
         name: asset.fileName || `photo-${Date.now()}.jpg`,
-        type: asset.mimeType || 'image/jpeg',
+        type: asset.mimeType || "image/jpeg",
       });
     }
   };
@@ -785,7 +864,7 @@ export default function ChatScreen() {
   const handlePickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'text/csv', 'image/*'],
+        type: ["application/pdf", "text/csv", "image/*"],
         copyToCacheDirectory: true,
       });
 
@@ -794,7 +873,7 @@ export default function ChatScreen() {
         setSelectedFile({
           uri: asset.uri,
           name: asset.name,
-          type: asset.mimeType || 'application/octet-stream',
+          type: asset.mimeType || "application/octet-stream",
         });
       }
     } catch (error) {
@@ -807,39 +886,40 @@ export default function ChatScreen() {
     try {
       if (!SpeechRecognitionModule) {
         Alert.alert(
-          'Voice unavailable',
-          'Speech recognition needs a development build. Run npx expo run:android or npx expo run:ios.'
+          "Voice unavailable",
+          "Speech recognition needs a development build. Run npx expo run:android or npx expo run:ios.",
         );
         return;
       }
 
       if (!SpeechRecognitionModule.isRecognitionAvailable()) {
         Alert.alert(
-          'Not available',
-          'Speech recognition is not available on this device.'
+          "Not available",
+          "Speech recognition is not available on this device.",
         );
         return;
       }
 
-      const permission = await SpeechRecognitionModule.requestPermissionsAsync();
+      const permission =
+        await SpeechRecognitionModule.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(
-          'Permission needed',
-          'Please grant microphone and speech recognition permissions.'
+          "Permission needed",
+          "Please grant microphone and speech recognition permissions.",
         );
         return;
       }
 
       voiceBaseInputRef.current = normalizeTranscriptText(inputText);
-      voiceFinalTranscriptRef.current = '';
-      voiceInterimTranscriptRef.current = '';
+      voiceFinalTranscriptRef.current = "";
+      voiceInterimTranscriptRef.current = "";
       voiceStopRequestedRef.current = false;
 
       setIsRecording(true);
       setIsTranscribing(false);
 
       SpeechRecognitionModule.start({
-        lang: 'en-US',
+        lang: "en-US",
         interimResults: true,
         continuous: true,
         maxAlternatives: 1,
@@ -848,7 +928,7 @@ export default function ChatScreen() {
     } catch (error) {
       setIsRecording(false);
       setIsTranscribing(false);
-      Alert.alert('Error', 'Failed to start voice transcription.');
+      Alert.alert("Error", "Failed to start voice transcription.");
     }
   };
 
@@ -862,7 +942,7 @@ export default function ChatScreen() {
       voiceStopRequestedRef.current = false;
       setIsRecording(false);
       setIsTranscribing(false);
-      Alert.alert('Error', 'Failed to stop voice transcription.');
+      Alert.alert("Error", "Failed to stop voice transcription.");
     }
   };
 
@@ -891,7 +971,7 @@ export default function ChatScreen() {
 
   const handleChatDateChange = (event: DateTimePickerEvent, date?: Date) => {
     setShowChatDatePicker(false);
-    if (event.type === 'dismissed' || !date) {
+    if (event.type === "dismissed" || !date) {
       return;
     }
 
@@ -903,10 +983,14 @@ export default function ChatScreen() {
   };
 
   // Track receipt for preview modal
-  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<string | undefined>();
+  const [previewReceiptUrl, setPreviewReceiptUrl] = useState<
+    string | undefined
+  >();
 
   // Track the last uploaded file URI (to use as fallback for receipt)
-  const [lastUploadedFileUri, setLastUploadedFileUri] = useState<string | undefined>();
+  const [lastUploadedFileUri, setLastUploadedFileUri] = useState<
+    string | undefined
+  >();
 
   // Handle preview candidate
   const openPreview = (candidate: ExpenseCandidate, receiptUrl?: string) => {
@@ -937,7 +1021,9 @@ export default function ChatScreen() {
     return uniqueCandidates;
   };
 
-  const getCandidateReceiptUri = (messageId: string | number): string | undefined => {
+  const getCandidateReceiptUri = (
+    messageId: string | number,
+  ): string | undefined => {
     const msgIndex = messages.findIndex((msg) => msg.id === messageId);
     if (msgIndex > 0) {
       for (let i = msgIndex - 1; i >= 0; i -= 1) {
@@ -981,9 +1067,10 @@ export default function ChatScreen() {
     const suggestedActions = message.metadata?.suggested_actions || [];
     const attachment = getMessageAttachment(message);
     // For assistant messages with candidates, find the related user attachment
-    const relatedAttachment = !isUser && candidates.length > 0
-      ? findRelatedAttachment(message, messages)
-      : null;
+    const relatedAttachment =
+      !isUser && candidates.length > 0
+        ? findRelatedAttachment(message, messages)
+        : null;
     const displayAttachment = attachment || relatedAttachment;
     const hasImageAttachment = Boolean(displayAttachment?.isImage);
 
@@ -991,7 +1078,9 @@ export default function ChatScreen() {
       <View
         style={[
           styles.messageContainer,
-          isUser ? styles.userMessageContainer : styles.assistantMessageContainer,
+          isUser
+            ? styles.userMessageContainer
+            : styles.assistantMessageContainer,
         ]}
       >
         {/* Avatar */}
@@ -1016,7 +1105,10 @@ export default function ChatScreen() {
             hasImageAttachment && styles.imageMessageBubble,
             isUser
               ? [styles.userBubble, { backgroundColor: colors.primary }]
-              : [styles.assistantBubble, { backgroundColor: colors.surfaceVariant }],
+              : [
+                  styles.assistantBubble,
+                  { backgroundColor: colors.surfaceVariant },
+                ],
           ]}
         >
           {/* Attachment preview (for user messages with images) */}
@@ -1033,14 +1125,27 @@ export default function ChatScreen() {
 
           {/* Non-image attachment */}
           {displayAttachment && !displayAttachment.isImage && (
-            <View style={[styles.fileAttachment, { backgroundColor: isUser ? 'rgba(255,255,255,0.2)' : colors.surface }]}>
+            <View
+              style={[
+                styles.fileAttachment,
+                {
+                  backgroundColor: isUser
+                    ? "rgba(255,255,255,0.2)"
+                    : colors.surface,
+                },
+              ]}
+            >
               <MaterialCommunityIcons
                 name="file-document"
                 size={20}
-                color={isUser ? '#ffffff' : colors.primary}
+                color={isUser ? "#ffffff" : colors.primary}
               />
               <Text
-                style={{ color: isUser ? '#ffffff' : colors.onSurface, marginLeft: 8, flex: 1 }}
+                style={{
+                  color: isUser ? "#ffffff" : colors.onSurface,
+                  marginLeft: 8,
+                  flex: 1,
+                }}
                 numberOfLines={1}
               >
                 {displayAttachment.name}
@@ -1053,7 +1158,7 @@ export default function ChatScreen() {
             <Text
               style={[
                 styles.messageText,
-                { color: isUser ? '#ffffff' : colors.onSurface },
+                { color: isUser ? "#ffffff" : colors.onSurface },
               ]}
             >
               {message.message}
@@ -1066,20 +1171,37 @@ export default function ChatScreen() {
               {candidates.map((candidate, index) => (
                 <Surface
                   key={candidate.id || index}
-                  style={[styles.candidateCard, { backgroundColor: colors.surface }]}
+                  style={[
+                    styles.candidateCard,
+                    { backgroundColor: colors.surface },
+                  ]}
                   elevation={1}
                 >
                   <View style={styles.candidateHeader}>
                     <MaterialCommunityIcons
-                      name={candidate.type === 'income' ? 'arrow-down-circle' : 'arrow-up-circle'}
+                      name={
+                        candidate.type === "income"
+                          ? "arrow-down-circle"
+                          : "arrow-up-circle"
+                      }
                       size={24}
-                      color={candidate.type === 'income' ? colors.tertiary : colors.error}
+                      color={
+                        candidate.type === "income"
+                          ? colors.tertiary
+                          : colors.error
+                      }
                     />
                     <View style={styles.candidateInfo}>
-                      <Text variant="titleSmall" style={{ color: colors.onSurface }}>
-                        {candidate.merchant_name || 'Transaction'}
+                      <Text
+                        variant="titleSmall"
+                        style={{ color: colors.onSurface }}
+                      >
+                        {candidate.merchant_name || "Transaction"}
                       </Text>
-                      <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: colors.onSurfaceVariant }}
+                      >
                         {candidate.date || selectedChatDate}
                         {candidate.category && ` • ${candidate.category}`}
                       </Text>
@@ -1087,8 +1209,11 @@ export default function ChatScreen() {
                     <Text
                       variant="titleMedium"
                       style={{
-                        color: candidate.type === 'income' ? colors.tertiary : colors.error,
-                        fontWeight: '600',
+                        color:
+                          candidate.type === "income"
+                            ? colors.tertiary
+                            : colors.error,
+                        fontWeight: "600",
                       }}
                     >
                       {formatAmount(candidate.amount || 0)}
@@ -1104,17 +1229,22 @@ export default function ChatScreen() {
                       lockPreviewTap();
 
                       const receiptUri = getCandidateReceiptUri(message.id);
-                      const params = prepareTransactionParams(candidate, receiptUri);
+                      const params = prepareTransactionParams(
+                        candidate,
+                        receiptUri,
+                      );
 
                       router.push({
-                        pathname: '/transaction-modal',
+                        pathname: "/transaction-modal",
                         params,
                       });
                     }}
                     style={styles.previewButton}
                     disabled={isOpeningTransactionModal}
                   >
-                    {isOpeningTransactionModal ? 'Opening...' : 'Preview & Save'}
+                    {isOpeningTransactionModal
+                      ? "Opening..."
+                      : "Preview & Save"}
                   </Button>
                 </Surface>
               ))}
@@ -1164,52 +1294,63 @@ export default function ChatScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
+      edges={["top"]}
     >
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: colors.outlineVariant }]}>
-        <View style={styles.headerContent}>
-          <View style={[styles.headerIcon, { backgroundColor: colors.primaryContainer }]}>
-            <MaterialCommunityIcons name="robot" size={24} color={colors.primary} />
-          </View>
-          <View>
-            <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: '600' }}>
-              Finance Assistant
-            </Text>
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-              Ask about expenses, reports, or scan receipts
-            </Text>
-          </View>
-        </View>
-        <View style={[styles.statusDot, { backgroundColor: '#34a853' }]} />
-      </View>
+      <BrandedHeader
+        title="Finance Assistant"
+        subtitle="Ask about expenses, reports, or scan receipts"
+        right={
+          <View style={[styles.statusDot, { backgroundColor: "#34a853" }]} />
+        }
+      />
 
-      <View style={[styles.chatDateRow, { borderBottomColor: colors.outlineVariant }]}>
+      <View
+        style={[
+          styles.chatDateRow,
+          { borderBottomColor: colors.outlineVariant },
+        ]}
+      >
         <TouchableOpacity
-          style={[styles.chatDateButton, { backgroundColor: colors.surfaceVariant }]}
+          style={[
+            styles.chatDateButton,
+            { backgroundColor: colors.surfaceVariant },
+          ]}
           onPress={handleOpenChatDatePicker}
         >
-          <MaterialCommunityIcons name="calendar-month-outline" size={18} color={colors.primary} />
-          <Text style={[styles.chatDateText, { color: colors.onSurface }]}>{selectedChatDateLabel}</Text>
+          <MaterialCommunityIcons
+            name="calendar-month-outline"
+            size={18}
+            color={colors.primary}
+          />
+          <Text style={[styles.chatDateText, { color: colors.onSurface }]}>
+            {selectedChatDateLabel}
+          </Text>
         </TouchableOpacity>
 
         {!isTodayChatDate && (
           <TouchableOpacity
-            style={[styles.chatDateTodayButton, { borderColor: colors.outlineVariant }]}
+            style={[
+              styles.chatDateTodayButton,
+              { borderColor: colors.outlineVariant },
+            ]}
             onPress={handleResetChatDateToToday}
           >
-            <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>Today</Text>
+            <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+              Today
+            </Text>
           </TouchableOpacity>
         )}
 
-        {isFetchingHistory && <ActivityIndicator size="small" color={colors.primary} />}
+        {isFetchingHistory && (
+          <ActivityIndicator size="small" color={colors.primary} />
+        )}
       </View>
 
       {/* Messages */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
@@ -1230,10 +1371,24 @@ export default function ChatScreen() {
         {/* Typing indicator */}
         {isSending && (
           <View style={styles.typingContainer}>
-            <View style={[styles.avatar, { backgroundColor: colors.primaryContainer }]}>
-              <MaterialCommunityIcons name="robot" size={16} color={colors.primary} />
+            <View
+              style={[
+                styles.avatar,
+                { backgroundColor: colors.primaryContainer },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="robot"
+                size={16}
+                color={colors.primary}
+              />
             </View>
-            <View style={[styles.typingBubble, { backgroundColor: colors.surfaceVariant }]}>
+            <View
+              style={[
+                styles.typingBubble,
+                { backgroundColor: colors.surfaceVariant },
+              ]}
+            >
               <ActivityIndicator size="small" color={colors.primary} />
               <Text style={{ color: colors.onSurfaceVariant, marginLeft: 8 }}>
                 Thinking...
@@ -1244,8 +1399,13 @@ export default function ChatScreen() {
 
         {/* Selected file preview */}
         {selectedFile && (
-          <View style={[styles.filePreview, { backgroundColor: colors.surfaceVariant }]}>
-            {selectedFile.type.startsWith('image/') ? (
+          <View
+            style={[
+              styles.filePreview,
+              { backgroundColor: colors.surfaceVariant },
+            ]}
+          >
+            {selectedFile.type.startsWith("image/") ? (
               <Image
                 source={{ uri: selectedFile.uri }}
                 style={styles.filePreviewImage}
@@ -1257,7 +1417,10 @@ export default function ChatScreen() {
                 color={colors.primary}
               />
             )}
-            <Text style={{ flex: 1, color: colors.onSurface, marginLeft: 8 }} numberOfLines={1}>
+            <Text
+              style={{ flex: 1, color: colors.onSurface, marginLeft: 8 }}
+              numberOfLines={1}
+            >
               {selectedFile.name}
             </Text>
             <IconButton
@@ -1273,36 +1436,66 @@ export default function ChatScreen() {
           style={[
             styles.inputContainer,
             { backgroundColor: colors.surface },
-            Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: keyboardHeight - 50 },
+            Platform.OS === "android" &&
+              keyboardHeight > 0 && { paddingBottom: keyboardHeight - 50 },
           ]}
           elevation={2}
         >
           {/* Quick actions */}
           <View style={styles.quickActionsRow}>
             <TouchableOpacity
-              style={[styles.quickActionChip, { backgroundColor: `${colors.error}15` }]}
-              onPress={() => handleQuickAction('Help me record a new expense')}
+              style={[
+                styles.quickActionChip,
+                { backgroundColor: `${colors.error}15` },
+              ]}
+              onPress={() => handleQuickAction("Help me record a new expense")}
             >
-              <MaterialCommunityIcons name="minus-circle" size={14} color={colors.error} />
-              <Text style={{ color: colors.error, fontSize: 11, marginLeft: 4 }}>
+              <MaterialCommunityIcons
+                name="minus-circle"
+                size={14}
+                color={colors.error}
+              />
+              <Text
+                style={{ color: colors.error, fontSize: 11, marginLeft: 4 }}
+              >
                 Expense
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.quickActionChip, { backgroundColor: `${colors.tertiary}15` }]}
-              onPress={() => handleQuickAction('Help me record new income')}
+              style={[
+                styles.quickActionChip,
+                { backgroundColor: `${colors.tertiary}15` },
+              ]}
+              onPress={() => handleQuickAction("Help me record new income")}
             >
-              <MaterialCommunityIcons name="plus-circle" size={14} color={colors.tertiary} />
-              <Text style={{ color: colors.tertiary, fontSize: 11, marginLeft: 4 }}>
+              <MaterialCommunityIcons
+                name="plus-circle"
+                size={14}
+                color={colors.tertiary}
+              />
+              <Text
+                style={{ color: colors.tertiary, fontSize: 11, marginLeft: 4 }}
+              >
                 Income
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.quickActionChip, { backgroundColor: `${colors.primary}15` }]}
-              onPress={() => handleQuickAction('Show me a report for the last week')}
+              style={[
+                styles.quickActionChip,
+                { backgroundColor: `${colors.primary}15` },
+              ]}
+              onPress={() =>
+                handleQuickAction("Show me a report for the last week")
+              }
             >
-              <MaterialCommunityIcons name="chart-bar" size={14} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 11, marginLeft: 4 }}>
+              <MaterialCommunityIcons
+                name="chart-bar"
+                size={14}
+                color={colors.primary}
+              />
+              <Text
+                style={{ color: colors.primary, fontSize: 11, marginLeft: 4 }}
+              >
                 Report
               </Text>
             </TouchableOpacity>
@@ -1344,9 +1537,17 @@ export default function ChatScreen() {
             />
 
             {/* Voice/Send button */}
-            {isRecording || isTranscribing || (!inputText.trim() && !selectedFile) ? (
+            {isRecording ||
+            isTranscribing ||
+            (!inputText.trim() && !selectedFile) ? (
               <IconButton
-                icon={isRecording ? 'stop' : isTranscribing ? 'loading' : 'microphone'}
+                icon={
+                  isRecording
+                    ? "stop"
+                    : isTranscribing
+                      ? "loading"
+                      : "microphone"
+                }
                 size={24}
                 onPress={toggleRecording}
                 iconColor={
@@ -1358,7 +1559,7 @@ export default function ChatScreen() {
                   backgroundColor:
                     isRecording || isTranscribing
                       ? `${colors.error}20`
-                      : 'transparent',
+                      : "transparent",
                 }}
                 disabled={isTranscribing}
               />
@@ -1376,16 +1577,23 @@ export default function ChatScreen() {
 
           {/* Recording indicator */}
           {(isRecording || isTranscribing) && (
-            <View style={[styles.recordingIndicator, { backgroundColor: `${colors.error}10` }]}>
+            <View
+              style={[
+                styles.recordingIndicator,
+                { backgroundColor: `${colors.error}10` },
+              ]}
+            >
               <MaterialCommunityIcons
-                name={isTranscribing ? 'loading' : 'microphone'}
+                name={isTranscribing ? "loading" : "microphone"}
                 size={16}
                 color={colors.error}
               />
-              <Text style={{ color: colors.error, marginLeft: 8, fontSize: 12 }}>
+              <Text
+                style={{ color: colors.error, marginLeft: 8, fontSize: 12 }}
+              >
                 {isTranscribing
-                  ? 'Finishing voice input...'
-                  : 'Listening... Tap stop when done'}
+                  ? "Finishing voice input..."
+                  : "Listening... Tap stop when done"}
               </Text>
             </View>
           )}
@@ -1407,27 +1615,33 @@ export default function ChatScreen() {
         <Modal
           visible={previewVisible}
           onDismiss={() => setPreviewVisible(false)}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
           {previewCandidate && (
             <View>
-              <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              <Text
+                variant="titleLarge"
+                style={{ color: colors.onSurface, marginBottom: 16 }}
+              >
                 Transaction Preview
               </Text>
 
               <View style={styles.previewRow}>
                 <Text style={{ color: colors.onSurfaceVariant }}>Type</Text>
-                <Text style={{ color: colors.onSurface, fontWeight: '500' }}>
+                <Text style={{ color: colors.onSurface, fontWeight: "500" }}>
                   {previewCandidate.type?.charAt(0).toUpperCase() +
-                    (previewCandidate.type?.slice(1) || '')}
+                    (previewCandidate.type?.slice(1) || "")}
                 </Text>
               </View>
               <Divider style={{ marginVertical: 8 }} />
 
               <View style={styles.previewRow}>
                 <Text style={{ color: colors.onSurfaceVariant }}>Merchant</Text>
-                <Text style={{ color: colors.onSurface, fontWeight: '500' }}>
-                  {previewCandidate.merchant_name || '-'}
+                <Text style={{ color: colors.onSurface, fontWeight: "500" }}>
+                  {previewCandidate.merchant_name || "-"}
                 </Text>
               </View>
               <Divider style={{ marginVertical: 8 }} />
@@ -1437,8 +1651,10 @@ export default function ChatScreen() {
                 <Text
                   style={{
                     color:
-                      previewCandidate.type === 'income' ? colors.tertiary : colors.error,
-                    fontWeight: '600',
+                      previewCandidate.type === "income"
+                        ? colors.tertiary
+                        : colors.error,
+                    fontWeight: "600",
                     fontSize: 18,
                   }}
                 >
@@ -1449,7 +1665,7 @@ export default function ChatScreen() {
 
               <View style={styles.previewRow}>
                 <Text style={{ color: colors.onSurfaceVariant }}>Date</Text>
-                <Text style={{ color: colors.onSurface, fontWeight: '500' }}>
+                <Text style={{ color: colors.onSurface, fontWeight: "500" }}>
                   {previewCandidate.date || selectedChatDate}
                 </Text>
               </View>
@@ -1457,8 +1673,8 @@ export default function ChatScreen() {
 
               <View style={styles.previewRow}>
                 <Text style={{ color: colors.onSurfaceVariant }}>Category</Text>
-                <Text style={{ color: colors.onSurface, fontWeight: '500' }}>
-                  {previewCandidate.category || '-'}
+                <Text style={{ color: colors.onSurface, fontWeight: "500" }}>
+                  {previewCandidate.category || "-"}
                 </Text>
               </View>
 
@@ -1466,8 +1682,17 @@ export default function ChatScreen() {
                 <>
                   <Divider style={{ marginVertical: 8 }} />
                   <View style={styles.previewRow}>
-                    <Text style={{ color: colors.onSurfaceVariant }}>Notes</Text>
-                    <Text style={{ color: colors.onSurface, fontWeight: '500', flex: 1, textAlign: 'right' }}>
+                    <Text style={{ color: colors.onSurfaceVariant }}>
+                      Notes
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.onSurface,
+                        fontWeight: "500",
+                        flex: 1,
+                        textAlign: "right",
+                      }}
+                    >
                       {previewCandidate.notes}
                     </Text>
                   </View>
@@ -1492,10 +1717,14 @@ export default function ChatScreen() {
                     setPreviewVisible(false);
                     if (previewCandidate) {
                       // Use previewReceiptUrl or fallback to lastUploadedFileUri
-                      const receiptUri = previewReceiptUrl || lastUploadedFileUri;
-                      const params = prepareTransactionParams(previewCandidate, receiptUri);
+                      const receiptUri =
+                        previewReceiptUrl || lastUploadedFileUri;
+                      const params = prepareTransactionParams(
+                        previewCandidate,
+                        receiptUri,
+                      );
                       router.push({
-                        pathname: '/transaction-modal',
+                        pathname: "/transaction-modal",
                         params,
                       });
                     }
@@ -1503,7 +1732,7 @@ export default function ChatScreen() {
                   style={{ flex: 1 }}
                   disabled={isOpeningTransactionModal}
                 >
-                  {isOpeningTransactionModal ? 'Opening...' : 'Edit & Save'}
+                  {isOpeningTransactionModal ? "Opening..." : "Edit & Save"}
                 </Button>
               </View>
             </View>
@@ -1522,23 +1751,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     borderBottomWidth: 1,
   },
   chatDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
   chatDateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     borderRadius: 12,
     paddingHorizontal: 12,
@@ -1547,7 +1776,7 @@ const styles = StyleSheet.create({
   },
   chatDateText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   chatDateTodayButton: {
     borderWidth: 1,
@@ -1556,15 +1785,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   headerIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   statusDot: {
@@ -1574,33 +1803,33 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   messagesList: {
     padding: 16,
     paddingBottom: 8,
   },
   messageContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 16,
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   userMessageContainer: {
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   assistantMessageContainer: {
-    justifyContent: 'flex-start',
+    justifyContent: "flex-start",
   },
   avatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   messageBubble: {
-    maxWidth: '75%',
+    maxWidth: "75%",
     borderRadius: 16,
     padding: 12,
   },
@@ -1621,14 +1850,14 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   messageImage: {
-    width: '100%',
+    width: "100%",
     height: 170,
     borderRadius: 8,
     marginBottom: 8,
   },
   fileAttachment: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 8,
     borderRadius: 8,
     marginBottom: 8,
@@ -1642,8 +1871,8 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   candidateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 8,
   },
   candidateInfo: {
@@ -1654,8 +1883,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   suggestedActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 12,
   },
@@ -1665,22 +1894,22 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   typingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 8,
   },
   typingBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginLeft: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
   },
   filePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginHorizontal: 16,
     marginBottom: 8,
     padding: 8,
@@ -1693,27 +1922,27 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     padding: 8,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 8,
+    paddingBottom: Platform.OS === "ios" ? 8 : 8,
   },
   quickActionsRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 8,
     paddingBottom: 8,
     gap: 8,
   },
   quickActionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
   },
   attachButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   textInput: {
     flex: 1,
@@ -1725,9 +1954,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 8,
     marginTop: 8,
     borderRadius: 8,
@@ -1738,13 +1967,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   previewRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 4,
   },
   modalButtons: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginTop: 24,
   },
 });

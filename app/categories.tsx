@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -6,7 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
-} from 'react-native';
+} from "react-native";
 import {
   Text,
   Surface,
@@ -17,16 +17,17 @@ import {
   TextInput,
   Button,
   Switch,
-} from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+} from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
-import { useTheme } from '../src/contexts/ThemeContext';
-import categoryService from '../src/services/categoryService';
+import { useTheme } from "../src/contexts/ThemeContext";
+import { BrandedHeader } from "../src/components";
+import categoryService from "../src/services/categoryService";
 
-type CategoryType = 'income' | 'expense' | 'asset' | 'liability';
+type CategoryType = "income" | "expense" | "asset" | "liability";
 
 interface Category {
   id: number;
@@ -51,14 +52,17 @@ interface Subcategory {
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
   const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || 'Request failed';
+  let errorMsg = errorData?.message || result.error || "Request failed";
 
   // Check for Laravel validation errors
   const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === 'object') {
+  if (validationErrors && typeof validationErrors === "object") {
     const errorDetails = Object.entries(validationErrors)
-      .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
-      .join('\n');
+      .map(
+        ([field, msgs]) =>
+          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
+      )
+      .join("\n");
     if (errorDetails) {
       errorMsg = `${errorMsg}\n\n${errorDetails}`;
     }
@@ -67,35 +71,38 @@ const formatApiError = (result: any): string => {
   return errorMsg;
 };
 
-const typeConfig: Record<CategoryType, { label: string; icon: string; color: string }> = {
-  income: { label: 'Income', icon: 'trending-up', color: '#10B981' },
-  expense: { label: 'Expense', icon: 'trending-down', color: '#EF4444' },
-  asset: { label: 'Asset', icon: 'domain', color: '#3B82F6' },
-  liability: { label: 'Liability', icon: 'credit-card', color: '#F59E0B' },
+const typeConfig: Record<
+  CategoryType,
+  { label: string; icon: string; color: string }
+> = {
+  income: { label: "Income", icon: "trending-up", color: "#10B981" },
+  expense: { label: "Expense", icon: "trending-down", color: "#EF4444" },
+  asset: { label: "Asset", icon: "domain", color: "#3B82F6" },
+  liability: { label: "Liability", icon: "credit-card", color: "#F59E0B" },
 };
 
 // Map invalid icon names to valid MaterialCommunityIcons
 const iconMapping: Record<string, string> = {
-  building: 'office-building',
-  award: 'trophy-award',
-  test: 'test-tube',
-  home: 'home',
-  car: 'car',
-  food: 'food',
-  shopping: 'shopping',
-  health: 'hospital-box',
-  education: 'school',
-  entertainment: 'movie',
-  travel: 'airplane',
-  utilities: 'flash',
-  salary: 'cash',
-  investment: 'chart-line',
-  gift: 'gift',
-  other: 'dots-horizontal',
+  building: "office-building",
+  award: "trophy-award",
+  test: "test-tube",
+  home: "home",
+  car: "car",
+  food: "food",
+  shopping: "shopping",
+  health: "hospital-box",
+  education: "school",
+  entertainment: "movie",
+  travel: "airplane",
+  utilities: "flash",
+  salary: "cash",
+  investment: "chart-line",
+  gift: "gift",
+  other: "dots-horizontal",
 };
 
 const getValidIcon = (icon?: string): string => {
-  if (!icon) return 'folder';
+  if (!icon) return "folder";
   // Check if it needs mapping
   if (iconMapping[icon.toLowerCase()]) {
     return iconMapping[icon.toLowerCase()];
@@ -107,19 +114,20 @@ export default function CategoriesScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
 
-  const [activeTab, setActiveTab] = useState<CategoryType>('income');
+  const [activeTab, setActiveTab] = useState<CategoryType>("income");
   const [modalVisible, setModalVisible] = useState(false);
   const [subcategoryModalVisible, setSubcategoryModalVisible] = useState(false);
-  const [selectedParentCategory, setSelectedParentCategory] = useState<Category | null>(null);
+  const [selectedParentCategory, setSelectedParentCategory] =
+    useState<Category | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
-    type: 'income' as CategoryType,
-    color: '#10B981',
+    name: "",
+    type: "income" as CategoryType,
+    color: "#10B981",
     is_active: true,
   });
   const [subcategoryFormData, setSubcategoryFormData] = useState({
-    name: '',
-    color: '#10B981',
+    name: "",
+    color: "#10B981",
     is_active: true,
   });
 
@@ -129,7 +137,7 @@ export default function CategoriesScreen() {
     refetch,
     isRefetching,
   } = useQuery({
-    queryKey: ['categories', 'tree'],
+    queryKey: ["categories", "tree"],
     queryFn: async () => {
       const result = await categoryService.getAll(null, true);
       if (result.success && result.data) {
@@ -153,14 +161,20 @@ export default function CategoriesScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
       closeModal();
     },
-    onError: (error: Error) => Alert.alert('Error', error.message),
+    onError: (error: Error) => Alert.alert("Error", error.message),
   });
 
   const createSubcategoryMutation = useMutation({
-    mutationFn: async ({ parentId, data }: { parentId: number; data: typeof subcategoryFormData }) => {
+    mutationFn: async ({
+      parentId,
+      data,
+    }: {
+      parentId: number;
+      data: typeof subcategoryFormData;
+    }) => {
       const result = await categoryService.createSubcategory({
         name: data.name,
         category_id: parentId,
@@ -171,14 +185,20 @@ export default function CategoriesScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
       closeSubcategoryModal();
     },
-    onError: (error: Error) => Alert.alert('Error', error.message),
+    onError: (error: Error) => Alert.alert("Error", error.message),
   });
 
   const deleteCategoryMutation = useMutation({
-    mutationFn: async ({ id, isSubcategory }: { id: number; isSubcategory: boolean }) => {
+    mutationFn: async ({
+      id,
+      isSubcategory,
+    }: {
+      id: number;
+      isSubcategory: boolean;
+    }) => {
       const result = isSubcategory
         ? await categoryService.deleteSubcategory(id)
         : await categoryService.delete(id);
@@ -186,14 +206,14 @@ export default function CategoriesScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
     },
-    onError: (error: Error) => Alert.alert('Error', error.message),
+    onError: (error: Error) => Alert.alert("Error", error.message),
   });
 
   const openModal = (type?: CategoryType) => {
     setFormData({
-      name: '',
+      name: "",
       type: type || activeTab,
       color: typeConfig[type || activeTab].color,
       is_active: true,
@@ -208,7 +228,7 @@ export default function CategoriesScreen() {
   const openSubcategoryModal = (parentCategory: Category) => {
     setSelectedParentCategory(parentCategory);
     setSubcategoryFormData({
-      name: '',
+      name: "",
       color: parentCategory.color || typeConfig[parentCategory.type].color,
       is_active: true,
     });
@@ -222,7 +242,7 @@ export default function CategoriesScreen() {
 
   const handleSaveCategory = () => {
     if (!formData.name.trim()) {
-      Alert.alert('Error', 'Please enter a category name');
+      Alert.alert("Error", "Please enter a category name");
       return;
     }
     createCategoryMutation.mutate(formData);
@@ -230,7 +250,7 @@ export default function CategoriesScreen() {
 
   const handleSaveSubcategory = () => {
     if (!subcategoryFormData.name.trim()) {
-      Alert.alert('Error', 'Please enter a subcategory name');
+      Alert.alert("Error", "Please enter a subcategory name");
       return;
     }
     if (!selectedParentCategory) return;
@@ -240,24 +260,29 @@ export default function CategoriesScreen() {
     });
   };
 
-  const handleDelete = (item: Category | Subcategory, isSubcategory: boolean) => {
+  const handleDelete = (
+    item: Category | Subcategory,
+    isSubcategory: boolean,
+  ) => {
     if ((item as Category).is_default) {
-      Alert.alert('Cannot Delete', 'Default categories cannot be deleted');
+      Alert.alert("Cannot Delete", "Default categories cannot be deleted");
       return;
     }
-    const itemType = isSubcategory ? 'subcategory' : 'category';
-    const hasSubcats = !isSubcategory && (item as Category).subcategories?.length;
+    const itemType = isSubcategory ? "subcategory" : "category";
+    const hasSubcats =
+      !isSubcategory && (item as Category).subcategories?.length;
     Alert.alert(
       `Delete ${itemType}`,
-      `Are you sure you want to delete "${item.name}"?${hasSubcats ? '\n\nWarning: This will also delete all subcategories.' : ''}`,
+      `Are you sure you want to delete "${item.name}"?${hasSubcats ? "\n\nWarning: This will also delete all subcategories." : ""}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteCategoryMutation.mutate({ id: item.id, isSubcategory }),
+          text: "Delete",
+          style: "destructive",
+          onPress: () =>
+            deleteCategoryMutation.mutate({ id: item.id, isSubcategory }),
         },
-      ]
+      ],
     );
   };
 
@@ -266,21 +291,28 @@ export default function CategoriesScreen() {
   const totalCategories = viewCategories.length;
   const totalSubcategories = viewCategories.reduce(
     (sum, cat) => sum + (cat.subcategories?.length || 0),
-    0
+    0,
   );
-  const incomeCount = viewCategories.filter((c) => c.type === 'income').length;
-  const expenseCount = viewCategories.filter((c) => c.type === 'expense').length;
-  const assetCount = viewCategories.filter((c) => c.type === 'asset').length;
-  const liabilityCount = viewCategories.filter((c) => c.type === 'liability').length;
+  const incomeCount = viewCategories.filter((c) => c.type === "income").length;
+  const expenseCount = viewCategories.filter(
+    (c) => c.type === "expense",
+  ).length;
+  const assetCount = viewCategories.filter((c) => c.type === "asset").length;
+  const liabilityCount = viewCategories.filter(
+    (c) => c.type === "liability",
+  ).length;
 
   // Filter categories by active tab
   const filteredCategories = viewCategories.filter((c) => c.type === activeTab);
 
-  const getTypeColor = (type: CategoryType) => typeConfig[type]?.color || colors.primary;
+  const getTypeColor = (type: CategoryType) =>
+    typeConfig[type]?.color || colors.primary;
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -289,43 +321,61 @@ export default function CategoriesScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
-        </TouchableOpacity>
-        <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Categories
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top"]}
+    >
+      <BrandedHeader
+        title="Categories"
+        subtitle="Organize income, expenses, assets, and liabilities"
+        showBack
+      />
 
       {/* Stats Section */}
       <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
         <View style={styles.statItem}>
-          <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: colors.onSurface, fontWeight: "bold" }}
+          >
             {totalCategories}
           </Text>
-          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Categories</Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+            Categories
+          </Text>
         </View>
         <View style={styles.statItem}>
-          <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: colors.onSurface, fontWeight: "bold" }}
+          >
             {totalSubcategories}
           </Text>
-          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Subcategories</Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+            Subcategories
+          </Text>
         </View>
         <View style={styles.statItem}>
-          <Text variant="titleMedium" style={{ color: '#10B981', fontWeight: 'bold' }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: "#10B981", fontWeight: "bold" }}
+          >
             {incomeCount}
           </Text>
-          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Income</Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+            Income
+          </Text>
         </View>
         <View style={styles.statItem}>
-          <Text variant="titleMedium" style={{ color: '#EF4444', fontWeight: 'bold' }}>
+          <Text
+            variant="titleMedium"
+            style={{ color: "#EF4444", fontWeight: "bold" }}
+          >
             {expenseCount}
           </Text>
-          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>Expense</Text>
+          <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+            Expense
+          </Text>
         </View>
       </View>
 
@@ -357,12 +407,12 @@ export default function CategoriesScreen() {
               <MaterialCommunityIcons
                 name={config.icon as any}
                 size={16}
-                color={isActive ? '#fff' : colors.onSurfaceVariant}
+                color={isActive ? "#fff" : colors.onSurfaceVariant}
               />
               <Text
                 style={{
-                  color: isActive ? '#fff' : colors.onSurface,
-                  fontWeight: '600',
+                  color: isActive ? "#fff" : colors.onSurface,
+                  fontWeight: "600",
                   fontSize: 13,
                   marginHorizontal: 6,
                 }}
@@ -373,15 +423,19 @@ export default function CategoriesScreen() {
                 style={[
                   styles.tabCount,
                   {
-                    backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : colors.surfaceVariant,
+                    backgroundColor: isActive
+                      ? "rgba(255,255,255,0.25)"
+                      : colors.surfaceVariant,
                   },
                 ]}
               >
-                <Text style={{
-                  color: isActive ? '#fff' : colors.onSurfaceVariant,
-                  fontSize: 11,
-                  fontWeight: '600'
-                }}>
+                <Text
+                  style={{
+                    color: isActive ? "#fff" : colors.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: "600",
+                  }}
+                >
                   {count}
                 </Text>
               </View>
@@ -406,16 +460,24 @@ export default function CategoriesScreen() {
             <Text variant="titleMedium" style={{ color: colors.onSurface }}>
               {typeConfig[activeTab].label} Categories
             </Text>
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+            <Text
+              variant="bodySmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
               {filteredCategories.length} categories
             </Text>
           </View>
           <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: getTypeColor(activeTab) }]}
+            style={[
+              styles.addButton,
+              { backgroundColor: getTypeColor(activeTab) },
+            ]}
             onPress={() => openModal(activeTab)}
           >
             <MaterialCommunityIcons name="plus" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 4 }}>Add</Text>
+            <Text style={{ color: "#fff", fontWeight: "600", marginLeft: 4 }}>
+              Add
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -427,16 +489,28 @@ export default function CategoriesScreen() {
               elevation={1}
             >
               <TouchableOpacity
-                onLongPress={() => !category.is_default && handleDelete(category, false)}
+                onLongPress={() =>
+                  !category.is_default && handleDelete(category, false)
+                }
               >
                 <View style={styles.categoryHeader}>
                   <View
                     style={[
                       styles.categoryColor,
-                      { backgroundColor: category.color || getTypeColor(category.type) },
+                      {
+                        backgroundColor:
+                          category.color || getTypeColor(category.type),
+                      },
                     ]}
                   />
-                  <View style={[styles.categoryIcon, { backgroundColor: `${category.color || getTypeColor(category.type)}15` }]}>
+                  <View
+                    style={[
+                      styles.categoryIcon,
+                      {
+                        backgroundColor: `${category.color || getTypeColor(category.type)}15`,
+                      },
+                    ]}
+                  >
                     <MaterialCommunityIcons
                       name={getValidIcon(category.icon) as any}
                       size={20}
@@ -444,89 +518,143 @@ export default function CategoriesScreen() {
                     />
                   </View>
                   <View style={styles.categoryInfo}>
-                    <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+                    <Text
+                      variant="titleMedium"
+                      style={{ color: colors.onSurface }}
+                    >
                       {category.name}
                     </Text>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {category.subcategories && category.subcategories.length > 0
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: colors.onSurfaceVariant }}
+                    >
+                      {category.subcategories &&
+                      category.subcategories.length > 0
                         ? `${category.subcategories.length} subcategories`
-                        : 'No subcategories'}
+                        : "No subcategories"}
                     </Text>
                   </View>
                   {category.is_default && (
-                    <View style={[styles.defaultBadge, { backgroundColor: colors.surfaceVariant }]}>
-                      <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                    <View
+                      style={[
+                        styles.defaultBadge,
+                        { backgroundColor: colors.surfaceVariant },
+                      ]}
+                    >
+                      <Text
+                        variant="labelSmall"
+                        style={{ color: colors.onSurfaceVariant }}
+                      >
                         Default
                       </Text>
                     </View>
                   )}
                   <View style={styles.categoryActions}>
                     <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: `${colors.primary}15` }]}
+                      style={[
+                        styles.actionButton,
+                        { backgroundColor: `${colors.primary}15` },
+                      ]}
                       onPress={() => openSubcategoryModal(category)}
                     >
-                      <MaterialCommunityIcons name="plus" size={18} color={colors.primary} />
+                      <MaterialCommunityIcons
+                        name="plus"
+                        size={18}
+                        color={colors.primary}
+                      />
                     </TouchableOpacity>
                     <View
                       style={[
                         styles.statusDot,
-                        { backgroundColor: category.is_active !== false ? colors.tertiary : colors.error },
+                        {
+                          backgroundColor:
+                            category.is_active !== false
+                              ? colors.tertiary
+                              : colors.error,
+                        },
                       ]}
                     />
                   </View>
                 </View>
 
                 {/* Subcategories */}
-                {category.subcategories && category.subcategories.length > 0 && (
-                  <View style={[styles.subcategoriesContainer, { borderTopColor: colors.surfaceVariant }]}>
-                    {category.subcategories.map((sub, index) => (
-                      <TouchableOpacity
-                        key={sub.id}
-                        style={[
-                          styles.subcategoryItem,
-                          { borderBottomColor: colors.surfaceVariant },
-                          index === category.subcategories!.length - 1 && { borderBottomWidth: 0 },
-                        ]}
-                        onLongPress={() => handleDelete(sub, true)}
-                      >
-                        <View
+                {category.subcategories &&
+                  category.subcategories.length > 0 && (
+                    <View
+                      style={[
+                        styles.subcategoriesContainer,
+                        { borderTopColor: colors.surfaceVariant },
+                      ]}
+                    >
+                      {category.subcategories.map((sub, index) => (
+                        <TouchableOpacity
+                          key={sub.id}
                           style={[
-                            styles.subcategoryColor,
-                            { backgroundColor: sub.color || category.color || getTypeColor(category.type) },
+                            styles.subcategoryItem,
+                            { borderBottomColor: colors.surfaceVariant },
+                            index === category.subcategories!.length - 1 && {
+                              borderBottomWidth: 0,
+                            },
                           ]}
-                        />
-                        <Text variant="bodyMedium" style={{ color: colors.onSurface, flex: 1 }}>
-                          {sub.name}
-                        </Text>
-                        <View
-                          style={[
-                            styles.statusDot,
-                            { backgroundColor: sub.is_active !== false ? colors.tertiary : colors.error },
-                          ]}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
+                          onLongPress={() => handleDelete(sub, true)}
+                        >
+                          <View
+                            style={[
+                              styles.subcategoryColor,
+                              {
+                                backgroundColor:
+                                  sub.color ||
+                                  category.color ||
+                                  getTypeColor(category.type),
+                              },
+                            ]}
+                          />
+                          <Text
+                            variant="bodyMedium"
+                            style={{ color: colors.onSurface, flex: 1 }}
+                          >
+                            {sub.name}
+                          </Text>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              {
+                                backgroundColor:
+                                  sub.is_active !== false
+                                    ? colors.tertiary
+                                    : colors.error,
+                              },
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
               </TouchableOpacity>
             </Surface>
           ))
         ) : (
           <View style={styles.emptyState}>
             <MaterialCommunityIcons
-              name={(typeConfig[activeTab]?.icon || 'folder') as any}
+              name={(typeConfig[activeTab]?.icon || "folder") as any}
               size={64}
               color={colors.onSurfaceVariant}
             />
-            <Text variant="bodyLarge" style={{ color: colors.onSurfaceVariant, marginTop: 16 }}>
+            <Text
+              variant="bodyLarge"
+              style={{ color: colors.onSurfaceVariant, marginTop: 16 }}
+            >
               No {typeConfig[activeTab].label.toLowerCase()} categories yet
             </Text>
             <TouchableOpacity
-              style={[styles.createButton, { backgroundColor: getTypeColor(activeTab) }]}
+              style={[
+                styles.createButton,
+                { backgroundColor: getTypeColor(activeTab) },
+              ]}
               onPress={() => openModal(activeTab)}
             >
               <MaterialCommunityIcons name="plus" size={18} color="#fff" />
-              <Text style={{ color: '#fff', fontWeight: '600', marginLeft: 4 }}>
+              <Text style={{ color: "#fff", fontWeight: "600", marginLeft: 4 }}>
                 Create First {typeConfig[activeTab].label}
               </Text>
             </TouchableOpacity>
@@ -546,10 +674,16 @@ export default function CategoriesScreen() {
         <Modal
           visible={modalVisible}
           onDismiss={closeModal}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+            <Text
+              variant="titleLarge"
+              style={{ color: colors.onSurface, marginBottom: 16 }}
+            >
               Create New Category
             </Text>
 
@@ -561,7 +695,10 @@ export default function CategoriesScreen() {
               style={styles.input}
             />
 
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}>
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+            >
               Type
             </Text>
             <View style={styles.typeButtons}>
@@ -571,20 +708,39 @@ export default function CategoriesScreen() {
                   style={[
                     styles.typeButton,
                     {
-                      backgroundColor: formData.type === type ? `${typeConfig[type].color}20` : colors.surfaceVariant,
-                      borderColor: formData.type === type ? typeConfig[type].color : 'transparent',
+                      backgroundColor:
+                        formData.type === type
+                          ? `${typeConfig[type].color}20`
+                          : colors.surfaceVariant,
+                      borderColor:
+                        formData.type === type
+                          ? typeConfig[type].color
+                          : "transparent",
                     },
                   ]}
-                  onPress={() => setFormData({ ...formData, type, color: typeConfig[type].color })}
+                  onPress={() =>
+                    setFormData({
+                      ...formData,
+                      type,
+                      color: typeConfig[type].color,
+                    })
+                  }
                 >
                   <MaterialCommunityIcons
                     name={typeConfig[type].icon as any}
                     size={16}
-                    color={formData.type === type ? typeConfig[type].color : colors.onSurfaceVariant}
+                    color={
+                      formData.type === type
+                        ? typeConfig[type].color
+                        : colors.onSurfaceVariant
+                    }
                   />
                   <Text
                     style={{
-                      color: formData.type === type ? typeConfig[type].color : colors.onSurfaceVariant,
+                      color:
+                        formData.type === type
+                          ? typeConfig[type].color
+                          : colors.onSurfaceVariant,
                       fontSize: 11,
                       marginLeft: 2,
                     }}
@@ -596,15 +752,21 @@ export default function CategoriesScreen() {
             </View>
 
             <View style={styles.switchRow}>
-              <Text variant="bodyMedium" style={{ color: colors.onSurface }}>Active</Text>
+              <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                Active
+              </Text>
               <Switch
                 value={formData.is_active}
-                onValueChange={(value) => setFormData({ ...formData, is_active: value })}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, is_active: value })
+                }
               />
             </View>
 
             <View style={styles.modalButtons}>
-              <Button mode="text" onPress={closeModal}>Cancel</Button>
+              <Button mode="text" onPress={closeModal}>
+                Cancel
+              </Button>
               <Button
                 mode="contained"
                 onPress={handleSaveCategory}
@@ -623,13 +785,22 @@ export default function CategoriesScreen() {
         <Modal
           visible={subcategoryModalVisible}
           onDismiss={closeSubcategoryModal}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 4 }}>
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 4 }}
+          >
             Create Subcategory
           </Text>
           {selectedParentCategory && (
-            <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+            >
               Under: {selectedParentCategory.name}
             </Text>
           )}
@@ -637,21 +808,32 @@ export default function CategoriesScreen() {
           <TextInput
             label="Subcategory Name *"
             value={subcategoryFormData.name}
-            onChangeText={(text) => setSubcategoryFormData({ ...subcategoryFormData, name: text })}
+            onChangeText={(text) =>
+              setSubcategoryFormData({ ...subcategoryFormData, name: text })
+            }
             mode="outlined"
             style={styles.input}
           />
 
           <View style={styles.switchRow}>
-            <Text variant="bodyMedium" style={{ color: colors.onSurface }}>Active</Text>
+            <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+              Active
+            </Text>
             <Switch
               value={subcategoryFormData.is_active}
-              onValueChange={(value) => setSubcategoryFormData({ ...subcategoryFormData, is_active: value })}
+              onValueChange={(value) =>
+                setSubcategoryFormData({
+                  ...subcategoryFormData,
+                  is_active: value,
+                })
+              }
             />
           </View>
 
           <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeSubcategoryModal}>Cancel</Button>
+            <Button mode="text" onPress={closeSubcategoryModal}>
+              Cancel
+            </Button>
             <Button
               mode="contained"
               onPress={handleSaveSubcategory}
@@ -671,9 +853,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     paddingBottom: 8,
   },
@@ -682,18 +864,18 @@ const styles = StyleSheet.create({
     marginLeft: -8,
   },
   title: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+    flexDirection: "row",
+    justifyContent: "space-around",
     paddingVertical: 12,
     marginHorizontal: 16,
     borderRadius: 12,
     marginBottom: 12,
   },
   statItem: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   tabsScrollView: {
     flexGrow: 0,
@@ -704,11 +886,11 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 8,
     gap: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   tabChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     height: 44,
     paddingLeft: 14,
     paddingRight: 8,
@@ -720,8 +902,8 @@ const styles = StyleSheet.create({
     height: 26,
     paddingHorizontal: 6,
     borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
     padding: 16,
@@ -729,18 +911,18 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   tabHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -748,11 +930,11 @@ const styles = StyleSheet.create({
   categoryCard: {
     borderRadius: 12,
     marginBottom: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
   },
   categoryColor: {
@@ -765,8 +947,8 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   categoryInfo: {
@@ -779,16 +961,16 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   categoryActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
   actionButton: {
     padding: 8,
     width: 32,
     height: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   statusDot: {
     width: 8,
@@ -800,8 +982,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   subcategoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
@@ -813,19 +995,19 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   emptyState: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 64,
   },
   createButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
     marginTop: 16,
   },
   fab: {
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     bottom: 16,
   },
@@ -833,34 +1015,34 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   input: {
     marginBottom: 12,
   },
   typeButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 16,
   },
   typeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
   },
   switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
   },
   modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 8,
     marginTop: 8,
   },

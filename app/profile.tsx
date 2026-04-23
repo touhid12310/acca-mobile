@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-} from 'react-native';
+} from "react-native";
 import {
   Text,
   Surface,
@@ -15,17 +15,18 @@ import {
   Portal,
   Modal,
   ActivityIndicator,
-} from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import { WebView } from 'react-native-webview';
+} from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { WebView } from "react-native-webview";
 
-import { useAuth } from '../src/contexts/AuthContext';
-import { useTheme } from '../src/contexts/ThemeContext';
-import authService from '../src/services/authService';
-import { buildApiUrl, getAuthToken } from '../src/config/api';
+import { useAuth } from "../src/contexts/AuthContext";
+import { useTheme } from "../src/contexts/ThemeContext";
+import { BrandedHeader } from "../src/components";
+import authService from "../src/services/authService";
+import { buildApiUrl, getAuthToken } from "../src/config/api";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
@@ -33,39 +34,44 @@ export default function ProfileScreen() {
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
-    name: '',
-    email: '',
-    mobile: '',
+    name: "",
+    email: "",
+    mobile: "",
   });
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
-  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(
+    null,
+  );
 
   // Password form state
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
-    current_password: '',
-    password: '',
-    password_confirmation: '',
+    current_password: "",
+    password: "",
+    password_confirmation: "",
   });
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
 
   // 2FA state
   const [twoFactorModalVisible, setTwoFactorModalVisible] = useState(false);
-  const [twoFactorStatus, setTwoFactorStatus] = useState({ enabled: false, setup: false });
-  const [qrCode, setQrCode] = useState('');
-  const [secretKey, setSecretKey] = useState('');
-  const [twoFactorCode, setTwoFactorCode] = useState('');
-  const [disablePassword, setDisablePassword] = useState('');
+  const [twoFactorStatus, setTwoFactorStatus] = useState({
+    enabled: false,
+    setup: false,
+  });
+  const [qrCode, setQrCode] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [disablePassword, setDisablePassword] = useState("");
   const [showVerifyStep, setShowVerifyStep] = useState(false);
   const [is2FALoading, setIs2FALoading] = useState(false);
 
   useEffect(() => {
     if (user) {
       setProfileForm({
-        name: user.name || '',
-        email: user.email || '',
-        mobile: (user as any).mobile || '',
+        name: user.name || "",
+        email: user.email || "",
+        mobile: (user as any).mobile || "",
       });
       setProfilePictureUrl((user as any).profile_picture_url || null);
     }
@@ -78,7 +84,8 @@ export default function ProfileScreen() {
       if (result.success && result.data) {
         const data = result.data as any;
         setTwoFactorStatus({
-          enabled: data.data?.two_factor_enabled || data.two_factor_enabled || false,
+          enabled:
+            data.data?.two_factor_enabled || data.two_factor_enabled || false,
           setup: data.data?.two_factor_setup || data.two_factor_setup || false,
         });
       }
@@ -89,7 +96,7 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!profileForm.name.trim()) {
-      Alert.alert('Error', 'Name is required');
+      Alert.alert("Error", "Name is required");
       return;
     }
 
@@ -97,23 +104,27 @@ export default function ProfileScreen() {
     try {
       const result = await authService.updateProfile(profileForm);
       if (result.success) {
-        Alert.alert('Success', 'Profile updated successfully');
+        Alert.alert("Success", "Profile updated successfully");
         await checkAuthStatus();
       } else {
-        Alert.alert('Error', result.error || 'Failed to update profile');
+        Alert.alert("Error", result.error || "Failed to update profile");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred while updating profile');
+      Alert.alert("Error", "An error occurred while updating profile");
     } finally {
       setIsProfileSaving(false);
     }
   };
 
   const handlePickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permissionResult =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Please allow access to your photo library');
+      Alert.alert(
+        "Permission Required",
+        "Please allow access to your photo library",
+      );
       return;
     }
 
@@ -135,20 +146,20 @@ export default function ProfileScreen() {
       const token = await getAuthToken();
       const formData = new FormData();
 
-      const filename = imageUri.split('/').pop() || 'profile.jpg';
+      const filename = imageUri.split("/").pop() || "profile.jpg";
       const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      const type = match ? `image/${match[1]}` : "image/jpeg";
 
-      formData.append('profile_picture', {
+      formData.append("profile_picture", {
         uri: imageUri,
         name: filename,
         type,
       } as any);
 
-      const response = await fetch(buildApiUrl('/profile/picture'), {
-        method: 'POST',
+      const response = await fetch(buildApiUrl("/profile/picture"), {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: formData,
       });
@@ -156,66 +167,79 @@ export default function ProfileScreen() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        Alert.alert('Success', 'Profile picture updated');
-        setProfilePictureUrl(data.data?.profile_picture_url || data.profile_picture_url);
+        Alert.alert("Success", "Profile picture updated");
+        setProfilePictureUrl(
+          data.data?.profile_picture_url || data.profile_picture_url,
+        );
         await checkAuthStatus();
       } else {
-        Alert.alert('Error', data.message || 'Failed to upload picture');
+        Alert.alert("Error", data.message || "Failed to upload picture");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred while uploading');
+      Alert.alert("Error", "An error occurred while uploading");
     } finally {
       setIsUploadingPicture(false);
     }
   };
 
   const handleRemoveProfilePicture = async () => {
-    Alert.alert('Remove Photo', 'Are you sure you want to remove your profile photo?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const token = await getAuthToken();
-            const response = await fetch(buildApiUrl('/profile/picture'), {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-            });
+    Alert.alert(
+      "Remove Photo",
+      "Are you sure you want to remove your profile photo?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await getAuthToken();
+              const response = await fetch(buildApiUrl("/profile/picture"), {
+                method: "DELETE",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+              });
 
-            const data = await response.json();
+              const data = await response.json();
 
-            if (response.ok && data.success) {
-              Alert.alert('Success', 'Profile picture removed');
-              setProfilePictureUrl(null);
-              await checkAuthStatus();
-            } else {
-              Alert.alert('Error', data.message || 'Failed to remove picture');
+              if (response.ok && data.success) {
+                Alert.alert("Success", "Profile picture removed");
+                setProfilePictureUrl(null);
+                await checkAuthStatus();
+              } else {
+                Alert.alert(
+                  "Error",
+                  data.message || "Failed to remove picture",
+                );
+              }
+            } catch (error) {
+              Alert.alert("Error", "An error occurred");
             }
-          } catch (error) {
-            Alert.alert('Error', 'An error occurred');
-          }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const handleChangePassword = async () => {
-    if (!passwordForm.current_password || !passwordForm.password || !passwordForm.password_confirmation) {
-      Alert.alert('Error', 'All fields are required');
+    if (
+      !passwordForm.current_password ||
+      !passwordForm.password ||
+      !passwordForm.password_confirmation
+    ) {
+      Alert.alert("Error", "All fields are required");
       return;
     }
 
     if (passwordForm.password.length < 8) {
-      Alert.alert('Error', 'New password must be at least 8 characters');
+      Alert.alert("Error", "New password must be at least 8 characters");
       return;
     }
 
     if (passwordForm.password !== passwordForm.password_confirmation) {
-      Alert.alert('Error', 'Passwords do not match');
+      Alert.alert("Error", "Passwords do not match");
       return;
     }
 
@@ -223,18 +247,18 @@ export default function ProfileScreen() {
     try {
       const result = await authService.changePassword(passwordForm);
       if (result.success) {
-        Alert.alert('Success', 'Password changed successfully');
+        Alert.alert("Success", "Password changed successfully");
         setPasswordModalVisible(false);
         setPasswordForm({
-          current_password: '',
-          password: '',
-          password_confirmation: '',
+          current_password: "",
+          password: "",
+          password_confirmation: "",
         });
       } else {
-        Alert.alert('Error', result.error || 'Failed to change password');
+        Alert.alert("Error", result.error || "Failed to change password");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred while changing password');
+      Alert.alert("Error", "An error occurred while changing password");
     } finally {
       setIsPasswordSaving(false);
     }
@@ -246,15 +270,15 @@ export default function ProfileScreen() {
       const result = await authService.setupTwoFactor();
       if (result.success && result.data) {
         const data = result.data as any;
-        setQrCode(data.data?.qr_code || data.qr_code || '');
-        setSecretKey(data.data?.manual_entry_key || data.secret || '');
+        setQrCode(data.data?.qr_code || data.qr_code || "");
+        setSecretKey(data.data?.manual_entry_key || data.secret || "");
         setShowVerifyStep(false);
         setTwoFactorModalVisible(true);
       } else {
-        Alert.alert('Error', 'Failed to setup 2FA');
+        Alert.alert("Error", "Failed to setup 2FA");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      Alert.alert("Error", "An error occurred");
     } finally {
       setIs2FALoading(false);
     }
@@ -262,7 +286,7 @@ export default function ProfileScreen() {
 
   const handleVerifyTwoFactor = async () => {
     if (twoFactorCode.length !== 6) {
-      Alert.alert('Error', 'Please enter a valid 6-digit code');
+      Alert.alert("Error", "Please enter a valid 6-digit code");
       return;
     }
 
@@ -270,15 +294,15 @@ export default function ProfileScreen() {
     try {
       const result = await authService.verifyTwoFactor(twoFactorCode);
       if (result.success) {
-        Alert.alert('Success', 'Two-factor authentication enabled');
+        Alert.alert("Success", "Two-factor authentication enabled");
         setTwoFactorModalVisible(false);
-        setTwoFactorCode('');
+        setTwoFactorCode("");
         loadTwoFactorStatus();
       } else {
-        Alert.alert('Error', result.error || 'Invalid verification code');
+        Alert.alert("Error", result.error || "Invalid verification code");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      Alert.alert("Error", "An error occurred");
     } finally {
       setIs2FALoading(false);
     }
@@ -286,7 +310,7 @@ export default function ProfileScreen() {
 
   const handleDisableTwoFactor = async () => {
     if (!disablePassword) {
-      Alert.alert('Error', 'Please enter your password');
+      Alert.alert("Error", "Please enter your password");
       return;
     }
 
@@ -294,15 +318,15 @@ export default function ProfileScreen() {
     try {
       const result = await authService.disableTwoFactor(disablePassword);
       if (result.success) {
-        Alert.alert('Success', 'Two-factor authentication disabled');
+        Alert.alert("Success", "Two-factor authentication disabled");
         setTwoFactorModalVisible(false);
-        setDisablePassword('');
+        setDisablePassword("");
         loadTwoFactorStatus();
       } else {
-        Alert.alert('Error', result.error || 'Failed to disable 2FA');
+        Alert.alert("Error", result.error || "Failed to disable 2FA");
       }
     } catch (error) {
-      Alert.alert('Error', 'An error occurred');
+      Alert.alert("Error", "An error occurred");
     } finally {
       setIs2FALoading(false);
     }
@@ -310,38 +334,59 @@ export default function ProfileScreen() {
 
   const getInitials = (name: string) => {
     return name
-      .split(' ')
+      .split(" ")
       .map((part) => part.charAt(0))
-      .join('')
+      .join("")
       .toUpperCase()
       .slice(0, 2);
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.onSurface} />
-        </TouchableOpacity>
-        <Text variant="headlineSmall" style={[styles.title, { color: colors.onSurface }]}>
-          Profile Settings
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      edges={["top"]}
+    >
+      <BrandedHeader
+        title="Profile Settings"
+        subtitle="Update account details and security"
+        showBack
+      />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Picture Section */}
-        <Surface style={[styles.section, { backgroundColor: colors.surface }]} elevation={1}>
+        <Surface
+          style={[styles.section, { backgroundColor: colors.surface }]}
+          elevation={1}
+        >
           <View style={styles.avatarSection}>
-            <TouchableOpacity onPress={handlePickImage} disabled={isUploadingPicture}>
+            <TouchableOpacity
+              onPress={handlePickImage}
+              disabled={isUploadingPicture}
+            >
               <View style={styles.avatarContainer}>
                 {profilePictureUrl ? (
-                  <Image source={{ uri: profilePictureUrl }} style={styles.avatar} />
+                  <Image
+                    source={{ uri: profilePictureUrl }}
+                    style={styles.avatar}
+                  />
                 ) : (
-                  <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primaryContainer }]}>
-                    <Text style={{ color: colors.primary, fontSize: 32, fontWeight: 'bold' }}>
-                      {getInitials(user?.name || 'User')}
+                  <View
+                    style={[
+                      styles.avatarPlaceholder,
+                      { backgroundColor: colors.primaryContainer },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontSize: 32,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      {getInitials(user?.name || "User")}
                     </Text>
                   </View>
                 )}
@@ -350,8 +395,17 @@ export default function ProfileScreen() {
                     <ActivityIndicator color="#fff" size="large" />
                   </View>
                 )}
-                <View style={[styles.cameraButton, { backgroundColor: colors.primary }]}>
-                  <MaterialCommunityIcons name="camera" size={16} color="#fff" />
+                <View
+                  style={[
+                    styles.cameraButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="camera"
+                    size={16}
+                    color="#fff"
+                  />
                 </View>
               </View>
             </TouchableOpacity>
@@ -379,15 +433,23 @@ export default function ProfileScreen() {
         </Surface>
 
         {/* Profile Form */}
-        <Surface style={[styles.section, { backgroundColor: colors.surface }]} elevation={1}>
-          <Text variant="titleMedium" style={{ color: colors.onSurface, marginBottom: 16 }}>
+        <Surface
+          style={[styles.section, { backgroundColor: colors.surface }]}
+          elevation={1}
+        >
+          <Text
+            variant="titleMedium"
+            style={{ color: colors.onSurface, marginBottom: 16 }}
+          >
             Personal Information
           </Text>
 
           <TextInput
             label="Full Name"
             value={profileForm.name}
-            onChangeText={(text) => setProfileForm({ ...profileForm, name: text })}
+            onChangeText={(text) =>
+              setProfileForm({ ...profileForm, name: text })
+            }
             mode="outlined"
             style={styles.input}
           />
@@ -395,7 +457,9 @@ export default function ProfileScreen() {
           <TextInput
             label="Email Address"
             value={profileForm.email}
-            onChangeText={(text) => setProfileForm({ ...profileForm, email: text })}
+            onChangeText={(text) =>
+              setProfileForm({ ...profileForm, email: text })
+            }
             mode="outlined"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -405,7 +469,9 @@ export default function ProfileScreen() {
           <TextInput
             label="Phone Number"
             value={profileForm.mobile}
-            onChangeText={(text) => setProfileForm({ ...profileForm, mobile: text })}
+            onChangeText={(text) =>
+              setProfileForm({ ...profileForm, mobile: text })
+            }
             mode="outlined"
             keyboardType="phone-pad"
             style={styles.input}
@@ -423,8 +489,14 @@ export default function ProfileScreen() {
         </Surface>
 
         {/* Security Section */}
-        <Surface style={[styles.section, { backgroundColor: colors.surface }]} elevation={1}>
-          <Text variant="titleMedium" style={{ color: colors.onSurface, marginBottom: 16 }}>
+        <Surface
+          style={[styles.section, { backgroundColor: colors.surface }]}
+          elevation={1}
+        >
+          <Text
+            variant="titleMedium"
+            style={{ color: colors.onSurface, marginBottom: 16 }}
+          >
             Security
           </Text>
 
@@ -432,16 +504,34 @@ export default function ProfileScreen() {
             style={[styles.securityItem, { borderColor: colors.outline }]}
             onPress={() => setPasswordModalVisible(true)}
           >
-            <View style={[styles.securityIcon, { backgroundColor: `${colors.primary}15` }]}>
-              <MaterialCommunityIcons name="lock" size={24} color={colors.primary} />
+            <View
+              style={[
+                styles.securityIcon,
+                { backgroundColor: `${colors.primary}15` },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="lock"
+                size={24}
+                color={colors.primary}
+              />
             </View>
             <View style={styles.securityContent}>
-              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>Change Password</Text>
-              <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                Change Password
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{ color: colors.onSurfaceVariant }}
+              >
                 Update your account password
               </Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={24}
+              color={colors.onSurfaceVariant}
+            />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -454,23 +544,49 @@ export default function ProfileScreen() {
               }
             }}
           >
-            <View style={[styles.securityIcon, { backgroundColor: twoFactorStatus.enabled ? `${colors.tertiary}15` : `${colors.primary}15` }]}>
+            <View
+              style={[
+                styles.securityIcon,
+                {
+                  backgroundColor: twoFactorStatus.enabled
+                    ? `${colors.tertiary}15`
+                    : `${colors.primary}15`,
+                },
+              ]}
+            >
               <MaterialCommunityIcons
                 name="shield-key"
                 size={24}
-                color={twoFactorStatus.enabled ? colors.tertiary : colors.primary}
+                color={
+                  twoFactorStatus.enabled ? colors.tertiary : colors.primary
+                }
               />
             </View>
             <View style={styles.securityContent}>
-              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>Two-Factor Authentication</Text>
-              <Text variant="bodySmall" style={{ color: twoFactorStatus.enabled ? colors.tertiary : colors.onSurfaceVariant }}>
-                {twoFactorStatus.enabled ? 'Enabled - Tap to disable' : 'Add extra security to your account'}
+              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                Two-Factor Authentication
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{
+                  color: twoFactorStatus.enabled
+                    ? colors.tertiary
+                    : colors.onSurfaceVariant,
+                }}
+              >
+                {twoFactorStatus.enabled
+                  ? "Enabled - Tap to disable"
+                  : "Add extra security to your account"}
               </Text>
             </View>
             {is2FALoading ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <MaterialCommunityIcons name="chevron-right" size={24} color={colors.onSurfaceVariant} />
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color={colors.onSurfaceVariant}
+              />
             )}
           </TouchableOpacity>
         </Surface>
@@ -481,16 +597,24 @@ export default function ProfileScreen() {
         <Modal
           visible={passwordModalVisible}
           onDismiss={() => setPasswordModalVisible(false)}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 16 }}
+          >
             Change Password
           </Text>
 
           <TextInput
             label="Current Password"
             value={passwordForm.current_password}
-            onChangeText={(text) => setPasswordForm({ ...passwordForm, current_password: text })}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, current_password: text })
+            }
             mode="outlined"
             secureTextEntry
             style={styles.input}
@@ -499,7 +623,9 @@ export default function ProfileScreen() {
           <TextInput
             label="New Password"
             value={passwordForm.password}
-            onChangeText={(text) => setPasswordForm({ ...passwordForm, password: text })}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, password: text })
+            }
             mode="outlined"
             secureTextEntry
             style={styles.input}
@@ -508,14 +634,18 @@ export default function ProfileScreen() {
           <TextInput
             label="Confirm New Password"
             value={passwordForm.password_confirmation}
-            onChangeText={(text) => setPasswordForm({ ...passwordForm, password_confirmation: text })}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, password_confirmation: text })
+            }
             mode="outlined"
             secureTextEntry
             style={styles.input}
           />
 
           <View style={styles.modalButtons}>
-            <Button mode="text" onPress={() => setPasswordModalVisible(false)}>Cancel</Button>
+            <Button mode="text" onPress={() => setPasswordModalVisible(false)}>
+              Cancel
+            </Button>
             <Button
               mode="contained"
               onPress={handleChangePassword}
@@ -534,17 +664,26 @@ export default function ProfileScreen() {
           onDismiss={() => {
             setTwoFactorModalVisible(false);
             setShowVerifyStep(false);
-            setTwoFactorCode('');
-            setDisablePassword('');
+            setTwoFactorCode("");
+            setDisablePassword("");
           }}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
           {twoFactorStatus.enabled ? (
             <>
-              <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              <Text
+                variant="titleLarge"
+                style={{ color: colors.onSurface, marginBottom: 16 }}
+              >
                 Disable Two-Factor Auth
               </Text>
-              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
+              <Text
+                variant="bodyMedium"
+                style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+              >
                 Enter your password to disable two-factor authentication.
               </Text>
 
@@ -558,7 +697,12 @@ export default function ProfileScreen() {
               />
 
               <View style={styles.modalButtons}>
-                <Button mode="text" onPress={() => setTwoFactorModalVisible(false)}>Cancel</Button>
+                <Button
+                  mode="text"
+                  onPress={() => setTwoFactorModalVisible(false)}
+                >
+                  Cancel
+                </Button>
                 <Button
                   mode="contained"
                   buttonColor={colors.error}
@@ -571,26 +715,40 @@ export default function ProfileScreen() {
             </>
           ) : showVerifyStep ? (
             <>
-              <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              <Text
+                variant="titleLarge"
+                style={{ color: colors.onSurface, marginBottom: 16 }}
+              >
                 Verify Code
               </Text>
-              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
+              <Text
+                variant="bodyMedium"
+                style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+              >
                 Enter the 6-digit code from your authenticator app.
               </Text>
 
               <TextInput
                 label="Verification Code"
                 value={twoFactorCode}
-                onChangeText={(text) => setTwoFactorCode(text.replace(/\D/g, '').slice(0, 6))}
+                onChangeText={(text) =>
+                  setTwoFactorCode(text.replace(/\D/g, "").slice(0, 6))
+                }
                 mode="outlined"
                 keyboardType="number-pad"
                 maxLength={6}
                 style={styles.input}
-                contentStyle={{ textAlign: 'center', letterSpacing: 8, fontSize: 24 }}
+                contentStyle={{
+                  textAlign: "center",
+                  letterSpacing: 8,
+                  fontSize: 24,
+                }}
               />
 
               <View style={styles.modalButtons}>
-                <Button mode="text" onPress={() => setShowVerifyStep(false)}>Back</Button>
+                <Button mode="text" onPress={() => setShowVerifyStep(false)}>
+                  Back
+                </Button>
                 <Button
                   mode="contained"
                   onPress={handleVerifyTwoFactor}
@@ -602,11 +760,18 @@ export default function ProfileScreen() {
             </>
           ) : (
             <>
-              <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+              <Text
+                variant="titleLarge"
+                style={{ color: colors.onSurface, marginBottom: 16 }}
+              >
                 Setup Two-Factor Auth
               </Text>
-              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}>
-                Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
+              <Text
+                variant="bodyMedium"
+                style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+              >
+                Scan this QR code with your authenticator app (Google
+                Authenticator, Authy, etc.)
               </Text>
 
               {qrCode ? (
@@ -644,12 +809,19 @@ export default function ProfileScreen() {
                       showsVerticalScrollIndicator={false}
                     />
                   </View>
-                  <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant, marginTop: 12 }}>
+                  <Text
+                    variant="labelSmall"
+                    style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
+                  >
                     Manual Entry Key:
                   </Text>
                   <Text
                     variant="bodyMedium"
-                    style={{ color: colors.onSurface, fontFamily: 'monospace', marginTop: 4 }}
+                    style={{
+                      color: colors.onSurface,
+                      fontFamily: "monospace",
+                      marginTop: 4,
+                    }}
                     selectable
                   >
                     {secretKey}
@@ -660,7 +832,12 @@ export default function ProfileScreen() {
               )}
 
               <View style={styles.modalButtons}>
-                <Button mode="text" onPress={() => setTwoFactorModalVisible(false)}>Cancel</Button>
+                <Button
+                  mode="text"
+                  onPress={() => setTwoFactorModalVisible(false)}
+                >
+                  Cancel
+                </Button>
                 <Button
                   mode="contained"
                   onPress={() => setShowVerifyStep(true)}
@@ -681,9 +858,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 16,
     paddingBottom: 8,
   },
@@ -692,7 +869,7 @@ const styles = StyleSheet.create({
     marginLeft: -8,
   },
   title: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   scrollContent: {
     padding: 16,
@@ -704,10 +881,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   avatarSection: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
     marginBottom: 12,
   },
   avatar: {
@@ -719,32 +896,32 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   uploadingOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: "rgba(0,0,0,0.5)",
     borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   cameraButton: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     right: 0,
     width: 32,
     height: 32,
     borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   avatarActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
   },
   input: {
@@ -754,8 +931,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   securityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 12,
     borderWidth: 1,
     borderRadius: 12,
@@ -765,8 +942,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   securityContent: {
@@ -776,31 +953,31 @@ const styles = StyleSheet.create({
     margin: 20,
     padding: 20,
     borderRadius: 16,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     gap: 8,
     marginTop: 16,
   },
   qrContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     padding: 16,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
     borderRadius: 12,
     marginBottom: 16,
   },
   qrCodeWrapper: {
     width: 200,
     height: 200,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   qrWebView: {
     width: 200,
     height: 200,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
 });

@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import React, { useState } from "react";
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Image,
+} from "react-native";
 import {
   Text,
   Surface,
@@ -11,15 +18,16 @@ import {
   Button,
   RadioButton,
   TextInput,
-} from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+} from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
-import { useAuth } from '../../src/contexts/AuthContext';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import { useCurrency } from '../../src/contexts/CurrencyContext';
-import { getInitials } from '../../src/utils/format';
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { useCurrency } from "../../src/contexts/CurrencyContext";
+import { BrandedHeader } from "../../src/components";
+import { getInitials } from "../../src/utils/format";
 
 type MenuSection = {
   title: string;
@@ -38,32 +46,28 @@ type MenuItem = {
 export default function MoreScreen() {
   const { user, logout } = useAuth();
   const { colors, themeMode, setThemeMode, toggleTheme, isDark } = useTheme();
-  const {
-    currency,
-    availableCurrencies,
-    updateCurrency,
-    isCurrencyUpdating,
-  } = useCurrency();
+  const { currency, availableCurrencies, updateCurrency, isCurrencyUpdating } =
+    useCurrency();
 
   const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
-  const [currencySearch, setCurrencySearch] = useState('');
+  const [currencySearch, setCurrencySearch] = useState("");
 
   const filteredCurrencies = availableCurrencies.filter(
     (curr) =>
       curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
-      curr.label.toLowerCase().includes(currencySearch.toLowerCase())
+      curr.label.toLowerCase().includes(currencySearch.toLowerCase()),
   );
 
   const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert("Logout", "Are you sure you want to logout?", [
+      { text: "Cancel", style: "cancel" },
       {
-        text: 'Logout',
-        style: 'destructive',
+        text: "Logout",
+        style: "destructive",
         onPress: async () => {
           await logout();
-          router.replace('/(auth)/login');
+          router.replace("/(auth)/login");
         },
       },
     ]);
@@ -71,58 +75,63 @@ export default function MoreScreen() {
 
   const menuSections: MenuSection[] = [
     {
-      title: 'Finance Management',
+      title: "Finance Management",
       items: [
         {
-          icon: 'bank',
-          label: 'Accounts',
-          description: 'Manage your bank accounts',
-          onPress: () => router.push('/accounts'),
+          icon: "bank",
+          label: "Accounts",
+          description: "Manage your bank accounts",
+          onPress: () => router.push("/accounts"),
         },
         {
-          icon: 'target',
-          label: 'Budgets',
-          description: 'Set and track budgets',
-          onPress: () => router.push('/budgets'),
+          icon: "target",
+          label: "Budgets",
+          description: "Set and track budgets",
+          onPress: () => router.push("/budgets"),
         },
         {
-          icon: 'flag',
-          label: 'Goals',
-          description: 'Savings goals tracker',
-          onPress: () => router.push('/goals'),
+          icon: "flag",
+          label: "Goals",
+          description: "Savings goals tracker",
+          onPress: () => router.push("/goals"),
         },
         {
-          icon: 'credit-card',
-          label: 'Loans',
-          description: 'Track loan payments',
-          onPress: () => router.push('/loans'),
+          icon: "credit-card",
+          label: "Loans",
+          description: "Track loan payments",
+          onPress: () => router.push("/loans"),
         },
         {
-          icon: 'calendar-check',
-          label: 'Schedules',
-          description: 'Recurring bills reminder',
-          onPress: () => router.push('/schedules'),
+          icon: "calendar-check",
+          label: "Schedules",
+          description: "Recurring bills reminder",
+          onPress: () => router.push("/schedules"),
         },
         {
-          icon: 'tag-multiple',
-          label: 'Categories',
-          description: 'Manage transaction categories',
-          onPress: () => router.push('/categories'),
+          icon: "tag-multiple",
+          label: "Categories",
+          description: "Manage transaction categories",
+          onPress: () => router.push("/categories"),
         },
       ],
     },
     {
-      title: 'Preferences',
+      title: "Preferences",
       items: [
         {
-          icon: 'palette',
-          label: 'Theme',
-          description: themeMode === 'system' ? 'System default' : themeMode === 'dark' ? 'Dark mode' : 'Light mode',
+          icon: "palette",
+          label: "Theme",
+          description:
+            themeMode === "system"
+              ? "System default"
+              : themeMode === "dark"
+                ? "Dark mode"
+                : "Light mode",
           onPress: () => setThemeModalVisible(true),
           rightElement: (
             <View style={styles.themePreview}>
               <MaterialCommunityIcons
-                name={isDark ? 'weather-night' : 'weather-sunny'}
+                name={isDark ? "weather-night" : "weather-sunny"}
                 size={20}
                 color={colors.onSurfaceVariant}
               />
@@ -130,63 +139,63 @@ export default function MoreScreen() {
           ),
         },
         {
-          icon: 'currency-usd',
-          label: 'Currency',
+          icon: "currency-usd",
+          label: "Currency",
           description: currency,
           onPress: () => setCurrencyModalVisible(true),
         },
         {
-          icon: 'bell',
-          label: 'Notifications',
-          description: 'Manage notification settings',
+          icon: "bell",
+          label: "Notifications",
+          description: "Manage notification settings",
           onPress: () => {},
         },
       ],
     },
     {
-      title: 'Security & Privacy',
+      title: "Security & Privacy",
       items: [
         {
-          icon: 'shield-account',
-          label: 'Login Activity',
-          description: 'Manage active sessions',
-          onPress: () => router.push('/sessions'),
+          icon: "shield-account",
+          label: "Login Activity",
+          description: "Manage active sessions",
+          onPress: () => router.push("/sessions"),
         },
         {
-          icon: 'download',
-          label: 'Export Data',
-          description: 'Download your data',
+          icon: "download",
+          label: "Export Data",
+          description: "Download your data",
           onPress: () => {},
         },
       ],
     },
     {
-      title: 'Support',
+      title: "Support",
       items: [
         {
-          icon: 'help-circle',
-          label: 'Help & FAQ',
+          icon: "help-circle",
+          label: "Help & FAQ",
           onPress: () => {},
         },
         {
-          icon: 'message-text',
-          label: 'Contact Support',
+          icon: "message-text",
+          label: "Contact Support",
           onPress: () => {},
         },
         {
-          icon: 'information',
-          label: 'About',
-          description: 'Version 1.0.0',
+          icon: "information",
+          label: "About",
+          description: "Version 1.0.0",
           onPress: () => {},
         },
       ],
     },
     {
-      title: '',
+      title: "",
       items: [
         {
-          icon: 'logout',
-          label: 'Logout',
+          icon: "logout",
+          label: "Logout",
           color: colors.error,
           onPress: handleLogout,
         },
@@ -221,7 +230,10 @@ export default function MoreScreen() {
             {item.label}
           </Text>
           {item.description && (
-            <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+            <Text
+              variant="bodySmall"
+              style={{ color: colors.onSurfaceVariant }}
+            >
               {item.description}
             </Text>
           )}
@@ -241,14 +253,16 @@ export default function MoreScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
+      edges={["top"]}
     >
+      <BrandedHeader title="More" subtitle="Profile, preferences, and tools" />
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Header */}
-        <TouchableOpacity onPress={() => router.push('/profile')}>
+        <TouchableOpacity onPress={() => router.push("/profile")}>
           <Surface
             style={[styles.profileCard, { backgroundColor: colors.surface }]}
             elevation={1}
@@ -261,17 +275,20 @@ export default function MoreScreen() {
             ) : (
               <Avatar.Text
                 size={64}
-                label={getInitials(user?.name || 'User')}
+                label={getInitials(user?.name || "User")}
                 style={{ backgroundColor: colors.primaryContainer }}
                 labelStyle={{ color: colors.primary }}
               />
             )}
             <View style={styles.profileInfo}>
               <Text variant="titleLarge" style={{ color: colors.onSurface }}>
-                {user?.name || 'User'}
+                {user?.name || "User"}
               </Text>
-              <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>
-                {user?.email || 'No email'}
+              <Text
+                variant="bodyMedium"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                {user?.email || "No email"}
               </Text>
             </View>
             <View style={styles.editProfileButton}>
@@ -290,7 +307,10 @@ export default function MoreScreen() {
             {section.title && (
               <Text
                 variant="labelLarge"
-                style={[styles.sectionTitle, { color: colors.onSurfaceVariant }]}
+                style={[
+                  styles.sectionTitle,
+                  { color: colors.onSurfaceVariant },
+                ]}
               >
                 {section.title}
               </Text>
@@ -300,7 +320,11 @@ export default function MoreScreen() {
               elevation={1}
             >
               {section.items.map((item, itemIndex) =>
-                renderMenuItem(item, itemIndex, itemIndex === section.items.length - 1)
+                renderMenuItem(
+                  item,
+                  itemIndex,
+                  itemIndex === section.items.length - 1,
+                ),
               )}
             </Surface>
           </View>
@@ -312,22 +336,28 @@ export default function MoreScreen() {
         <Modal
           visible={themeModalVisible}
           onDismiss={() => setThemeModalVisible(false)}
-          contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 16 }}
+          >
             Choose Theme
           </Text>
           <RadioButton.Group
             value={themeMode}
             onValueChange={(value) => {
-              setThemeMode(value as 'light' | 'dark' | 'system');
+              setThemeMode(value as "light" | "dark" | "system");
               setThemeModalVisible(false);
             }}
           >
             <TouchableOpacity
               style={styles.radioItem}
               onPress={() => {
-                setThemeMode('light');
+                setThemeMode("light");
                 setThemeModalVisible(false);
               }}
             >
@@ -336,7 +366,9 @@ export default function MoreScreen() {
                 size={24}
                 color={colors.onSurface}
               />
-              <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}>
+              <Text
+                style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}
+              >
                 Light
               </Text>
               <RadioButton value="light" />
@@ -344,7 +376,7 @@ export default function MoreScreen() {
             <TouchableOpacity
               style={styles.radioItem}
               onPress={() => {
-                setThemeMode('dark');
+                setThemeMode("dark");
                 setThemeModalVisible(false);
               }}
             >
@@ -353,7 +385,9 @@ export default function MoreScreen() {
                 size={24}
                 color={colors.onSurface}
               />
-              <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}>
+              <Text
+                style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}
+              >
                 Dark
               </Text>
               <RadioButton value="dark" />
@@ -361,7 +395,7 @@ export default function MoreScreen() {
             <TouchableOpacity
               style={styles.radioItem}
               onPress={() => {
-                setThemeMode('system');
+                setThemeMode("system");
                 setThemeModalVisible(false);
               }}
             >
@@ -370,7 +404,9 @@ export default function MoreScreen() {
                 size={24}
                 color={colors.onSurface}
               />
-              <Text style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}>
+              <Text
+                style={{ color: colors.onSurface, flex: 1, marginLeft: 12 }}
+              >
                 System Default
               </Text>
               <RadioButton value="system" />
@@ -385,11 +421,18 @@ export default function MoreScreen() {
           visible={currencyModalVisible}
           onDismiss={() => {
             setCurrencyModalVisible(false);
-            setCurrencySearch('');
+            setCurrencySearch("");
           }}
-          contentContainerStyle={[styles.modal, styles.currencyModal, { backgroundColor: colors.surface }]}
+          contentContainerStyle={[
+            styles.modal,
+            styles.currencyModal,
+            { backgroundColor: colors.surface },
+          ]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 12 }}>
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 12 }}
+          >
             Choose Currency
           </Text>
           <TextInput
@@ -399,7 +442,14 @@ export default function MoreScreen() {
             mode="outlined"
             dense
             left={<TextInput.Icon icon="magnify" />}
-            right={currencySearch ? <TextInput.Icon icon="close" onPress={() => setCurrencySearch('')} /> : null}
+            right={
+              currencySearch ? (
+                <TextInput.Icon
+                  icon="close"
+                  onPress={() => setCurrencySearch("")}
+                />
+              ) : null
+            }
             style={{ marginBottom: 12 }}
           />
           <ScrollView style={styles.currencyList}>
@@ -408,21 +458,27 @@ export default function MoreScreen() {
                 key={curr.code}
                 style={[
                   styles.currencyItem,
-                  currency === curr.code && { backgroundColor: colors.primaryContainer },
+                  currency === curr.code && {
+                    backgroundColor: colors.primaryContainer,
+                  },
                 ]}
                 onPress={async () => {
                   await updateCurrency(curr.code);
                   setCurrencyModalVisible(false);
-                  setCurrencySearch('');
+                  setCurrencySearch("");
                 }}
                 disabled={isCurrencyUpdating}
               >
-                <Text style={{ color: colors.onSurface, fontSize: 18, width: 40 }}>
+                <Text
+                  style={{ color: colors.onSurface, fontSize: 18, width: 40 }}
+                >
                   {curr.symbol}
                 </Text>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: colors.onSurface }}>{curr.code}</Text>
-                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                  <Text
+                    style={{ color: colors.onSurfaceVariant, fontSize: 12 }}
+                  >
                     {curr.label}
                   </Text>
                 </View>
@@ -436,15 +492,20 @@ export default function MoreScreen() {
               </TouchableOpacity>
             ))}
             {filteredCurrencies.length === 0 && (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text style={{ color: colors.onSurfaceVariant }}>No currencies found</Text>
+              <View style={{ padding: 20, alignItems: "center" }}>
+                <Text style={{ color: colors.onSurfaceVariant }}>
+                  No currencies found
+                </Text>
               </View>
             )}
           </ScrollView>
-          <Button mode="text" onPress={() => {
-            setCurrencyModalVisible(false);
-            setCurrencySearch('');
-          }}>
+          <Button
+            mode="text"
+            onPress={() => {
+              setCurrencyModalVisible(false);
+              setCurrencySearch("");
+            }}
+          >
             Cancel
           </Button>
         </Modal>
@@ -462,8 +523,8 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   profileCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
     borderRadius: 16,
     marginBottom: 20,
@@ -486,32 +547,32 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: 8,
     marginLeft: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   menuSection: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
   },
   menuItemIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   menuItemContent: {
     flex: 1,
   },
   themePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   modal: {
     margin: 20,
@@ -519,19 +580,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   currencyModal: {
-    maxHeight: '70%',
+    maxHeight: "70%",
   },
   radioItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
   },
   currencyList: {
     maxHeight: 400,
   },
   currencyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 8,

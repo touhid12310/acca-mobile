@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   View,
   StyleSheet,
@@ -6,24 +6,27 @@ import {
   RefreshControl,
   TouchableOpacity,
   Image,
-} from 'react-native';
+} from "react-native";
 import {
   Text,
   Card,
   ActivityIndicator,
   Surface,
   Divider,
-} from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+} from "react-native-paper";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { router } from "expo-router";
 
-import { useAuth } from '../../src/contexts/AuthContext';
-import { useTheme } from '../../src/contexts/ThemeContext';
-import { useCurrency } from '../../src/contexts/CurrencyContext';
-import dashboardService, { DashboardData } from '../../src/services/dashboardService';
-import { formatRelativeTime } from '../../src/utils/date';
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { useCurrency } from "../../src/contexts/CurrencyContext";
+import { BrandedHeader } from "../../src/components";
+import dashboardService, {
+  DashboardData,
+} from "../../src/services/dashboardService";
+import { formatRelativeTime } from "../../src/utils/date";
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -36,18 +39,18 @@ export default function DashboardScreen() {
     isRefetching,
     refetch,
   } = useQuery<DashboardData>({
-    queryKey: ['dashboard'],
+    queryKey: ["dashboard"],
     queryFn: async (): Promise<DashboardData> => {
       const result = await dashboardService.getDashboardData();
       if (result.success && result.data) {
         // Handle wrapped response { data: DashboardData, message?: string }
         const data = result.data as DashboardData | { data: DashboardData };
-        if ('totalBalance' in data) {
+        if ("totalBalance" in data) {
           return data;
         }
         return (data as { data: DashboardData }).data;
       }
-      throw new Error(result.error || 'Failed to load dashboard');
+      throw new Error(result.error || "Failed to load dashboard");
     },
   });
 
@@ -55,9 +58,9 @@ export default function DashboardScreen() {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
   };
 
   const StatCard = ({
@@ -71,13 +74,15 @@ export default function DashboardScreen() {
     value: string;
     icon: string;
     color: string;
-    trend?: 'up' | 'down' | null;
+    trend?: "up" | "down" | null;
   }) => (
     <Surface
       style={[styles.statCard, { backgroundColor: colors.surface }]}
       elevation={1}
     >
-      <View style={[styles.statIconContainer, { backgroundColor: `${color}20` }]}>
+      <View
+        style={[styles.statIconContainer, { backgroundColor: `${color}20` }]}
+      >
         <MaterialCommunityIcons name={icon as never} size={24} color={color} />
       </View>
       <View style={styles.statContent}>
@@ -96,9 +101,9 @@ export default function DashboardScreen() {
           </Text>
           {trend && (
             <MaterialCommunityIcons
-              name={trend === 'up' ? 'trending-up' : 'trending-down'}
+              name={trend === "up" ? "trending-up" : "trending-down"}
               size={18}
-              color={trend === 'up' ? colors.tertiary : colors.error}
+              color={trend === "up" ? colors.tertiary : colors.error}
             />
           )}
         </View>
@@ -118,9 +123,7 @@ export default function DashboardScreen() {
     color: string;
   }) => (
     <TouchableOpacity style={styles.quickAction} onPress={onPress}>
-      <View
-        style={[styles.quickActionIcon, { backgroundColor: `${color}20` }]}
-      >
+      <View style={[styles.quickActionIcon, { backgroundColor: `${color}20` }]}>
         <MaterialCommunityIcons name={icon as never} size={24} color={color} />
       </View>
       <Text
@@ -147,7 +150,7 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top']}
+      edges={["top"]}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -161,40 +164,33 @@ export default function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text
-              variant="titleMedium"
-              style={[styles.greeting, { color: colors.onSurfaceVariant }]}
+        <BrandedHeader
+          title={user?.name || "Dashboard"}
+          subtitle={`${getGreeting()}, welcome back`}
+          right={
+            <TouchableOpacity
+              style={[
+                styles.avatarContainer,
+                { backgroundColor: colors.primaryContainer },
+              ]}
+              onPress={() => router.push("/(tabs)/more")}
             >
-              {getGreeting()},
-            </Text>
-            <Text
-              variant="headlineSmall"
-              style={[styles.userName, { color: colors.onSurface }]}
-            >
-              {user?.name || 'User'}
-            </Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.avatarContainer, { backgroundColor: colors.primaryContainer }]}
-            onPress={() => router.push('/(tabs)/more')}
-          >
-            {user?.profile_picture_url ? (
-              <Image
-                source={{ uri: user.profile_picture_url }}
-                style={styles.avatarImage}
-              />
-            ) : (
-              <MaterialCommunityIcons
-                name="account"
-                size={28}
-                color={colors.primary}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
+              {user?.profile_picture_url ? (
+                <Image
+                  source={{ uri: user.profile_picture_url }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <MaterialCommunityIcons
+                  name="account"
+                  size={28}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+          }
+          style={styles.brandedHeader}
+        />
 
         {/* Net Worth Card */}
         <Card
@@ -261,19 +257,34 @@ export default function DashboardScreen() {
               icon="plus-circle"
               label="Add Expense"
               color={colors.error}
-              onPress={() => router.push({ pathname: '/transaction-modal', params: { type: 'expense' } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/transaction-modal",
+                  params: { type: "expense" },
+                })
+              }
             />
             <QuickAction
               icon="cash-plus"
               label="Add Income"
               color={colors.tertiary}
-              onPress={() => router.push({ pathname: '/transaction-modal', params: { type: 'income' } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/transaction-modal",
+                  params: { type: "income" },
+                })
+              }
             />
             <QuickAction
               icon="bank-transfer"
               label="Transfer"
               color={colors.primary}
-              onPress={() => router.push({ pathname: '/transaction-modal', params: { type: 'transfer' } })}
+              onPress={() =>
+                router.push({
+                  pathname: "/transaction-modal",
+                  params: { type: "transfer" },
+                })
+              }
             />
             <QuickAction
               icon="camera"
@@ -281,8 +292,8 @@ export default function DashboardScreen() {
               color="#9c27b0"
               onPress={() =>
                 router.push({
-                  pathname: '/transaction-modal',
-                  params: { type: 'expense', scan_mode: 'camera' },
+                  pathname: "/transaction-modal",
+                  params: { type: "expense", scan_mode: "camera" },
                 })
               }
             />
@@ -298,16 +309,22 @@ export default function DashboardScreen() {
             >
               Recent Transactions
             </Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/transactions')}>
+            <TouchableOpacity
+              onPress={() => router.push("/(tabs)/transactions")}
+            >
               <Text style={{ color: colors.primary }}>See All</Text>
             </TouchableOpacity>
           </View>
 
           <Surface
-            style={[styles.transactionsList, { backgroundColor: colors.surface }]}
+            style={[
+              styles.transactionsList,
+              { backgroundColor: colors.surface },
+            ]}
             elevation={1}
           >
-            {stats?.recentTransactions && stats.recentTransactions.length > 0 ? (
+            {stats?.recentTransactions &&
+            stats.recentTransactions.length > 0 ? (
               stats.recentTransactions.slice(0, 5).map((transaction, index) => (
                 <React.Fragment key={transaction.id}>
                   <TouchableOpacity
@@ -321,7 +338,7 @@ export default function DashboardScreen() {
                         styles.transactionIcon,
                         {
                           backgroundColor:
-                            transaction.type === 'income'
+                            transaction.type === "income"
                               ? `${colors.tertiary}20`
                               : `${colors.error}20`,
                         },
@@ -329,13 +346,13 @@ export default function DashboardScreen() {
                     >
                       <MaterialCommunityIcons
                         name={
-                          transaction.type === 'income'
-                            ? 'arrow-down-circle'
-                            : 'arrow-up-circle'
+                          transaction.type === "income"
+                            ? "arrow-down-circle"
+                            : "arrow-up-circle"
                         }
                         size={24}
                         color={
-                          transaction.type === 'income'
+                          transaction.type === "income"
                             ? colors.tertiary
                             : colors.error
                         }
@@ -347,8 +364,7 @@ export default function DashboardScreen() {
                         style={{ color: colors.onSurface }}
                         numberOfLines={1}
                       >
-                        {transaction.merchant_name ||
-                          'Transaction'}
+                        {transaction.merchant_name || "Transaction"}
                       </Text>
                       <Text
                         variant="bodySmall"
@@ -361,12 +377,12 @@ export default function DashboardScreen() {
                       variant="titleSmall"
                       style={{
                         color:
-                          transaction.type === 'income'
+                          transaction.type === "income"
                             ? colors.tertiary
                             : colors.error,
                       }}
                     >
-                      {transaction.type === 'income' ? '+' : '-'}
+                      {transaction.type === "income" ? "+" : "-"}
                       {formatAmount(transaction.amount)}
                     </Text>
                   </TouchableOpacity>
@@ -421,14 +437,17 @@ export default function DashboardScreen() {
                     {formatAmount(stats.budgetSummary.total_spent)}
                   </Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
+                <View style={{ alignItems: "flex-end" }}>
                   <Text
                     variant="bodySmall"
                     style={{ color: colors.onSurfaceVariant }}
                   >
                     Remaining
                   </Text>
-                  <Text variant="titleMedium" style={{ color: colors.tertiary }}>
+                  <Text
+                    variant="titleMedium"
+                    style={{ color: colors.tertiary }}
+                  >
                     {formatAmount(stats.budgetSummary.remaining)}
                   </Text>
                 </View>
@@ -448,7 +467,7 @@ export default function DashboardScreen() {
                         (stats.budgetSummary.total_spent /
                           stats.budgetSummary.total_budgeted) *
                           100,
-                        100
+                        100,
                       )}%`,
                     },
                   ]}
@@ -475,32 +494,36 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   scrollContent: {
     padding: 16,
     paddingBottom: 32,
   },
+  brandedHeader: {
+    marginHorizontal: 0,
+    marginTop: 0,
+  },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   greeting: {
     marginBottom: 2,
   },
   userName: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   avatarContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
   },
   avatarImage: {
     width: 48,
@@ -515,37 +538,37 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   netWorthLabel: {
-    color: 'rgba(255,255,255,0.8)',
+    color: "rgba(255,255,255,0.8)",
     fontSize: 14,
   },
   netWorthValue: {
-    color: '#ffffff',
+    color: "#ffffff",
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginVertical: 8,
   },
   netWorthMeta: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
   },
   netWorthMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   netWorthMetaText: {
-    color: 'rgba(255,255,255,0.8)',
+    color: "rgba(255,255,255,0.8)",
     fontSize: 12,
   },
   statsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginBottom: 20,
   },
   statCard: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
     borderRadius: 12,
   },
@@ -553,8 +576,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   statContent: {
@@ -564,60 +587,60 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   statValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   statValue: {
-    fontWeight: '600',
+    fontWeight: "600",
   },
   section: {
     marginBottom: 20,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
   sectionTitle: {
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 12,
   },
   quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   quickAction: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
   },
   quickActionIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   quickActionLabel: {
-    textAlign: 'center',
+    textAlign: "center",
   },
   transactionsList: {
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   transactionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 16,
   },
   transactionIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 12,
   },
   transactionInfo: {
@@ -626,24 +649,24 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     padding: 32,
-    alignItems: 'center',
+    alignItems: "center",
   },
   budgetCard: {
     padding: 16,
     borderRadius: 12,
   },
   budgetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   budgetProgress: {
     height: 8,
     borderRadius: 4,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   budgetProgressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
 });
