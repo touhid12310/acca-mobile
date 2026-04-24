@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Text,
   Dimensions,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
@@ -719,23 +720,28 @@ export default function DashboardScreen() {
                     ]}
                     hitSlop={4}
                   >
-                    <View
-                      style={[
-                        styles.quickActionIcon,
-                        { backgroundColor: `${action.color}25` },
-                      ]}
-                    >
-                      <Icon size={22} color={action.color} strokeWidth={2.2} />
+                    <View style={styles.quickActionInner}>
+                      <View
+                        style={[
+                          styles.quickActionIcon,
+                          { backgroundColor: `${action.color}25` },
+                        ]}
+                      >
+                        <Icon size={22} color={action.color} strokeWidth={2.2} />
+                      </View>
+                      <View style={styles.quickActionLabelWrap}>
+                        <Text
+                          style={[
+                            styles.quickActionLabel,
+                            { color: colors.onSurface },
+                            Platform.OS === "android" && styles.quickActionLabelAndroid,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {action.label}
+                        </Text>
+                      </View>
                     </View>
-                    <Text
-                      style={[
-                        styles.quickActionLabel,
-                        { color: colors.onSurface },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {action.label}
-                    </Text>
                   </Pressable>
                 );
               })}
@@ -1621,11 +1627,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 4,
+    gap: 2,
   },
   quickAction: {
     flex: 1,
-    minWidth: 0,
+    minWidth: 56,
+    alignSelf: "stretch",
+  },
+  quickActionInner: {
+    width: "100%",
+    flexDirection: "column",
     alignItems: "center",
   },
   quickActionIcon: {
@@ -1636,11 +1647,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 6,
   },
+  quickActionLabelWrap: {
+    width: "100%",
+    alignSelf: "stretch",
+  },
   quickActionLabel: {
     fontSize: 10.5,
     fontWeight: "600",
     textAlign: "center",
-    lineHeight: 13.5,
+    lineHeight: 14,
+    width: "100%",
+  },
+  quickActionLabelAndroid: {
+    includeFontPadding: false,
   },
   chartCard: {
     padding: spacing.lg,
