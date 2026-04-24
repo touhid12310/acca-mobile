@@ -138,6 +138,59 @@ export default function DashboardScreen() {
       ? stats?.monthlyExpenses || 0
       : periodTotals?.expenses || 0;
 
+  // Last month totals — for trend comparison
+  const lastMonthRange = React.useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+    return { start, end };
+  }, []);
+
+  const { data: lastMonthTotals } = useQuery<{
+    income: number;
+    expenses: number;
+  }>({
+    queryKey: [
+      "dashboard-last-month",
+      toApiDate(lastMonthRange.start),
+      toApiDate(lastMonthRange.end),
+    ],
+    queryFn: async () => {
+      const result = await transactionService.getAll({
+        start_date: toApiDate(lastMonthRange.start),
+        end_date: toApiDate(lastMonthRange.end),
+        per_page: 1000,
+      });
+      let rows: any[] = [];
+      if (result.success && result.data) {
+        const payload: any = result.data;
+        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
+        else if (Array.isArray(payload?.data)) rows = payload.data;
+        else if (Array.isArray(payload)) rows = payload;
+      }
+      let income = 0;
+      let expenses = 0;
+      for (const t of rows) {
+        const amount = parseFloat(String(t.amount)) || 0;
+        if (t.type === "income") income += amount;
+        else if (t.type === "expense") expenses += amount;
+      }
+      return { income, expenses };
+    },
+  });
+
+  const trend = React.useMemo(() => {
+    const prevNet =
+      (lastMonthTotals?.income || 0) - (lastMonthTotals?.expenses || 0);
+    const currNet = displayedIncome - displayedExpenses;
+    if (prevNet === 0) return null;
+    const change = ((currNet - prevNet) / Math.abs(prevNet)) * 100;
+    return {
+      pct: Math.abs(change).toFixed(1),
+      up: change >= 0,
+    };
+  }, [displayedIncome, displayedExpenses, lastMonthTotals]);
+
   if (isLoading) {
     return (
       <SafeAreaView
@@ -197,82 +250,110 @@ export default function DashboardScreen() {
           </Pressable>
         </View>
 
-        {/* Hero Balance Card */}
-        <View style={styles.heroWrap}>
-          <LinearGradient
-            colors={gradients.heroAccent as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.hero, shadow.lg]}
-          >
-            <View style={styles.heroHeader}>
-              <View style={styles.heroBadge}>
-                <Wallet size={12} color="#ffffff" strokeWidth={2.4} />
-                <Text style={styles.heroBadgeText}>Net Worth</Text>
-              </View>
-              <View style={styles.heroHeaderRight}>
-                <Pressable
-                  onPress={() => setPeriodModalVisible(true)}
-                  hitSlop={6}
-                  style={styles.heroPeriodBtn}
-                >
-                  <Text style={styles.heroPeriodText} numberOfLines={1}>
-                    {period.label}
-                  </Text>
-                  <ChevronDown
-                    size={14}
-                    color="rgba(255,255,255,0.9)"
-                    strokeWidth={2.4}
+        {/* Hero Balance Card — Premium card design */}
+        <View style={[styles.hero, shadow.lg]}>
+          {/* Decorative soft glow blobs */}
+          <View style={styles.heroGlowA} pointerEvents="none" />
+          <View style={styles.heroGlowB} pointerEvents="none" />
+
+          {/* Top row */}
+          <View style={styles.heroTop}>
+            <View style={styles.heroLabelCluster}>
+              <Text style={styles.heroLabel}>Total balance</Text>
+              <Pressable
+                onPress={() => setBalanceHidden((v) => !v)}
+                hitSlop={6}
+              >
+                {balanceHidden ? (
+                  <EyeOff
+                    size={15}
+                    color="rgba(255,255,255,0.7)"
+                    strokeWidth={2.2}
                   />
-                </Pressable>
-                <Pressable
-                  onPress={() => setBalanceHidden((v) => !v)}
-                  hitSlop={6}
-                  style={styles.heroEye}
+                ) : (
+                  <Eye
+                    size={15}
+                    color="rgba(255,255,255,0.7)"
+                    strokeWidth={2.2}
+                  />
+                )}
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={() => setPeriodModalVisible(true)}
+              hitSlop={6}
+              style={styles.heroPeriodBtn}
+            >
+              <Text style={styles.heroPeriodText} numberOfLines={1}>
+                {period.label}
+              </Text>
+              <ChevronDown
+                size={13}
+                color="rgba(255,255,255,0.9)"
+                strokeWidth={2.4}
+              />
+            </Pressable>
+          </View>
+
+          {/* Big balance */}
+          <Text style={styles.heroValue}>
+            {maskAmount(stats?.netWorth || 0)}
+          </Text>
+
+          {/* Trend */}
+          {trend && (
+            <View style={styles.heroTrend}>
+              <Text
+                style={[
+                  styles.heroTrendPct,
+                  { color: trend.up ? "#34d399" : "#f87171" },
+                ]}
+              >
+                {trend.up ? "↑" : "↓"} {trend.pct}%
+              </Text>
+              <Text style={styles.heroTrendText}>vs last month</Text>
+            </View>
+          )}
+
+          {/* Divider */}
+          <View style={styles.heroSeparator} />
+
+          {/* Bottom row: income/expense + view accounts */}
+          <View style={styles.heroBottom}>
+            <View style={styles.heroTotals}>
+              <View>
+                <Text style={styles.heroTotalLabel}>Income</Text>
+                <Text
+                  style={[styles.heroTotalValue, { color: "#34d399" }]}
+                  numberOfLines={1}
                 >
-                  {balanceHidden ? (
-                    <EyeOff size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
-                  ) : (
-                    <Eye size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
-                  )}
-                </Pressable>
+                  {maskAmount(displayedIncome)}
+                </Text>
+              </View>
+              <View style={styles.heroTotalsSpacer} />
+              <View>
+                <Text style={styles.heroTotalLabel}>Expenses</Text>
+                <Text
+                  style={[styles.heroTotalValue, { color: "#fb923c" }]}
+                  numberOfLines={1}
+                >
+                  {maskAmount(displayedExpenses)}
+                </Text>
               </View>
             </View>
-
-            <Text style={styles.heroValue}>
-              {maskAmount(stats?.netWorth || 0)}
-            </Text>
-
-            <View style={styles.heroFooter}>
-              <View style={styles.heroFooterItem}>
-                <View style={[styles.heroIconCircle, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
-                  <ArrowDownLeft size={13} color="#ffffff" strokeWidth={2.6} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.heroFooterLabel} numberOfLines={1}>
-                    Income
-                  </Text>
-                  <Text style={styles.heroFooterValue} numberOfLines={1}>
-                    {maskAmount(displayedIncome)}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.heroDivider} />
-              <View style={styles.heroFooterItem}>
-                <View style={[styles.heroIconCircle, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
-                  <ArrowUpRight size={13} color="#ffffff" strokeWidth={2.6} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.heroFooterLabel} numberOfLines={1}>
-                    Expense
-                  </Text>
-                  <Text style={styles.heroFooterValue} numberOfLines={1}>
-                    {maskAmount(displayedExpenses)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
+            <Pressable
+              onPress={() => router.push("/accounts")}
+              hitSlop={4}
+              style={styles.viewAccountsBtn}
+            >
+              <Text style={styles.viewAccountsText}>Accounts</Text>
+              <ChevronRight
+                size={14}
+                color="#ffffff"
+                strokeWidth={2.4}
+              />
+            </Pressable>
+          </View>
         </View>
 
         <PeriodModal
@@ -584,50 +665,57 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: radius.pill,
   },
-  heroWrap: {
-    borderRadius: radius.xxl,
-    overflow: "hidden",
-  },
   hero: {
+    backgroundColor: "#0f172a",
     borderRadius: radius.xxl,
-    padding: spacing.lg,
-    gap: spacing.md,
+    padding: spacing.xl,
     overflow: "hidden",
+    gap: 4,
   },
-  heroHeader: {
+  heroGlowA: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#6366f1",
+    opacity: 0.22,
+    top: -80,
+    right: -60,
+  },
+  heroGlowB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "#a855f7",
+    opacity: 0.18,
+    bottom: -40,
+    left: -30,
+  },
+  heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     gap: spacing.sm,
+    marginBottom: 6,
   },
-  heroHeaderRight: {
+  heroLabelCluster: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: 8,
   },
-  heroBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-  },
-  heroBadgeText: {
-    color: "#ffffff",
-    fontSize: 10.5,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+  heroLabel: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 13.5,
+    fontWeight: "500",
   },
   heroPeriodBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.1)",
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: radius.pill,
     maxWidth: 140,
   },
@@ -636,20 +724,69 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "700",
   },
-  heroEye: {
-    width: 30,
-    height: 30,
-    borderRadius: radius.pill,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   heroValue: {
     color: "#ffffff",
-    fontSize: 30,
+    fontSize: 34,
     fontWeight: "800",
     letterSpacing: -0.6,
     marginTop: 2,
+  },
+  heroTrend: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  heroTrendPct: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  heroTrendText: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 12.5,
+  },
+  heroSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginVertical: spacing.md,
+  },
+  heroBottom: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  heroTotals: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  heroTotalsSpacer: {
+    width: spacing.xl,
+  },
+  heroTotalLabel: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 11.5,
+    fontWeight: "500",
+  },
+  heroTotalValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    marginTop: 2,
+  },
+  viewAccountsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  viewAccountsText: {
+    color: "#ffffff",
+    fontSize: 12.5,
+    fontWeight: "600",
   },
   heroFooter: {
     flexDirection: "row",

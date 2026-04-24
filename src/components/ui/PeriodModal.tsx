@@ -9,14 +9,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Calendar, Check } from "lucide-react-native";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, shadow, spacing } from "../../constants/theme";
-import { Button } from "./Button";
 
 export type PeriodPreset =
   | "this_month"
@@ -216,7 +214,7 @@ export function PeriodModal({
             styles.sheet,
             {
               backgroundColor: colors.surface,
-              paddingBottom: Math.max(spacing.lg, insets.bottom + spacing.md),
+              paddingBottom: insets.bottom + spacing.xl,
             },
             shadow.lg,
           ]}
@@ -320,10 +318,7 @@ export function PeriodModal({
                 ]}
               >
                 <Text
-                  style={[
-                    styles.dateLabel,
-                    { color: colors.onSurfaceVariant },
-                  ]}
+                  style={[styles.dateLabel, { color: colors.onSurfaceVariant }]}
                 >
                   From
                 </Text>
@@ -346,10 +341,7 @@ export function PeriodModal({
                 ]}
               >
                 <Text
-                  style={[
-                    styles.dateLabel,
-                    { color: colors.onSurfaceVariant },
-                  ]}
+                  style={[styles.dateLabel, { color: colors.onSurfaceVariant }]}
                 >
                   To
                 </Text>
@@ -361,40 +353,25 @@ export function PeriodModal({
                 </Text>
               </Pressable>
             </View>
-
-            {/* Range preview */}
-            <View
-              style={[
-                styles.rangePreview,
-                { backgroundColor: colors.surfaceVariant },
-              ]}
-            >
-              <Calendar size={18} color={colors.primary} strokeWidth={2.2} />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[styles.rangeLabel, { color: colors.onSurfaceVariant }]}
-                >
-                  Selected range
-                </Text>
-                <Text
-                  style={[styles.rangeText, { color: colors.onSurface }]}
-                  numberOfLines={1}
-                >
-                  {formatRangeText(current)}
-                </Text>
-              </View>
-              <Check size={18} color={colors.primary} strokeWidth={2.4} />
-            </View>
           </ScrollView>
 
-          <Button
-            label="Apply"
-            variant="primary"
-            size="lg"
-            fullWidth
-            onPress={onClose}
-            style={{ alignSelf: "stretch", marginTop: spacing.md }}
-          />
+          <View style={styles.applyBar}>
+            <Pressable onPress={onClose}>
+              {({ pressed }) => (
+                <View
+                  style={[
+                    styles.applyBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={styles.applyBtnText}>Apply</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
 
           {pickerMode !== "none" && (
             <DateTimePicker
@@ -421,86 +398,85 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     maxHeight: "85%",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   handle: {
-    width: 40,
+    width: 36,
     height: 4,
     borderRadius: radius.pill,
     alignSelf: "center",
-    marginBottom: spacing.sm,
-    opacity: 0.6,
+    marginBottom: 6,
+    opacity: 0.5,
   },
   title: {
-    fontSize: 22,
+    fontSize: 19,
     fontWeight: "800",
     letterSpacing: -0.3,
+    marginBottom: 2,
   },
   content: {
-    gap: spacing.lg,
-    paddingBottom: spacing.md,
+    gap: spacing.md,
+    paddingBottom: spacing.sm,
   },
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    gap: 6,
   },
   chip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 9,
+    paddingVertical: 6,
     borderRadius: radius.pill,
   },
   chipText: {
-    fontSize: 13.5,
+    fontSize: 12.5,
   },
   sectionLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700",
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    marginTop: spacing.sm,
+    marginTop: 4,
   },
   rangeRow: {
     flexDirection: "row",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   dateField: {
     flex: 1,
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
     borderRadius: radius.lg,
     borderWidth: 1.5,
-    gap: 2,
+    gap: 1,
   },
   dateLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
   dateValue: {
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: "700",
   },
-  rangePreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
+  applyBar: {
+    paddingTop: spacing.md,
+  },
+  applyBtn: {
+    height: 52,
     borderRadius: radius.lg,
-    marginTop: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "stretch",
   },
-  rangeLabel: {
-    fontSize: 11,
+  applyBtnText: {
+    color: "#ffffff",
+    fontSize: 15,
     fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  rangeText: {
-    fontSize: 14.5,
-    fontWeight: "700",
-    marginTop: 2,
+    letterSpacing: 0.2,
   },
 });
