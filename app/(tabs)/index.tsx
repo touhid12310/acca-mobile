@@ -855,7 +855,7 @@ export default function DashboardScreen() {
         )}
 
         {/* Expense Breakdown */}
-        {pieData.length > 0 && (
+        {expenseByCategory !== undefined && (
           <View style={styles.section}>
             <View
               style={[
@@ -887,7 +887,8 @@ export default function DashboardScreen() {
               </Text>
 
               {/* Donut - centered */}
-              <View style={styles.donutWrap}>
+              {pieData.length > 0 ? (
+                <View style={styles.donutWrap}>
                 <PieChart
                   data={pieData}
                   donut
@@ -947,10 +948,37 @@ export default function DashboardScreen() {
                     </View>
                   )}
                 />
-              </View>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.breakdownEmptyState,
+                    { backgroundColor: colors.surfaceVariant },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.breakdownEmptyTitle,
+                      { color: colors.onSurface },
+                    ]}
+                  >
+                    No expenses found
+                  </Text>
+                  <Text
+                    style={[
+                      styles.breakdownEmptyText,
+                      { color: colors.onSurfaceVariant },
+                    ]}
+                  >
+                    Expense categories will appear for {breakdownLabel} once
+                    transactions are added.
+                  </Text>
+                </View>
+              )}
 
               {/* Legend — full width below the donut */}
-              <View style={styles.pieLegendGrid}>
+              {pieData.length > 0 && (
+                <View style={styles.pieLegendGrid}>
                 {pieData.map((slice, idx) => {
                   const pct =
                     totalExpenseForPie > 0
@@ -984,7 +1012,8 @@ export default function DashboardScreen() {
                     </View>
                   );
                 })}
-              </View>
+                </View>
+              )}
 
               {/* Leading category insight */}
               {pieData[0] && (
@@ -1601,6 +1630,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
+  },
+  breakdownEmptyState: {
+    minHeight: 190,
+    borderRadius: radius.xl,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+  },
+  breakdownEmptyTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  breakdownEmptyText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: "center",
   },
   pieCenterBox: {
     width: 106,
