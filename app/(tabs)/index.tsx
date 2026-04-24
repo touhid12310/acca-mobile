@@ -893,11 +893,11 @@ export default function DashboardScreen() {
                   data={pieData}
                   donut
                   radius={90}
-                  innerRadius={62}
+                  innerRadius={66}
                   showGradient
                   focusOnPress
-                  strokeColor={colors.surface}
-                  strokeWidth={2}
+                  strokeColor={isDark ? "rgba(15, 23, 42, 0.72)" : colors.surface}
+                  strokeWidth={1}
                   centerLabelComponent={() => (
                     <View
                       style={[
@@ -977,7 +977,7 @@ export default function DashboardScreen() {
               )}
 
               {/* Legend — full width below the donut */}
-              {pieData.length > 0 && (
+        {expenseByCategory !== undefined && (
                 <View style={styles.pieLegendGrid}>
                 {pieData.map((slice, idx) => {
                   const pct =
@@ -1209,7 +1209,11 @@ export default function DashboardScreen() {
         {/* AI Insights Teaser */}
         <Pressable onPress={() => router.push("/(tabs)/chat")}>
           <LinearGradient
-            colors={gradients.ocean as any}
+            colors={
+              isDark
+                ? (["#0f172a", "#1e293b"] as any)
+                : (gradients.ocean as any)
+            }
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.insightCard, shadow.md]}
@@ -1651,9 +1655,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   pieCenterBox: {
-    width: 106,
-    height: 106,
-    borderRadius: 53,
+    width: 98,
+    height: 98,
+    borderRadius: 49,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 8,
