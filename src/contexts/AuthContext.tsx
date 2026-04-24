@@ -8,6 +8,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { getAuthToken, saveAuthToken, removeAuthToken } from '../config/api';
 import authService from '../services/authService';
 import { User } from '../types';
@@ -63,6 +64,7 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,6 +78,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const savedToken = await getAuthToken();
 
       if (!savedToken) {
+        queryClient.clear();
         setLoading(false);
         setIsAuthenticated(false);
         setUser(null);
@@ -101,6 +104,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else if (result.status === 401 || result.status === 403) {
         // Token expired/invalid, clear auth data
         await removeAuthToken();
+        queryClient.clear();
         setToken(null);
         setUser(null);
         setIsAuthenticated(false);
@@ -146,6 +150,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const authToken = data.data.access_token;
           const userData = data.data.user;
 
+          queryClient.clear();
           await saveAuthToken(authToken);
           setToken(authToken);
           setUser(userData || null);
@@ -195,6 +200,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const userData = data.data?.user;
 
           if (authToken) {
+            queryClient.clear();
             await saveAuthToken(authToken);
             setToken(authToken);
             setUser(userData || null);
@@ -235,6 +241,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Logout failed, still clear local auth
     } finally {
       await removeAuthToken();
+      queryClient.clear();
       setToken(null);
       setUser(null);
       setIsAuthenticated(false);
@@ -251,6 +258,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     removeAuthToken();
+    queryClient.clear();
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
@@ -258,7 +266,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Show alert
     Alert.alert('Session Expired', message);
-  }, []);
+  }, [queryClient]);
 
   // Validate session with the server
   const validateSession = useCallback(async (): Promise<boolean> => {

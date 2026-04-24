@@ -933,6 +933,8 @@ export default function DashboardScreen() {
                           },
                         ]}
                         numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.6}
                       >
                         {maskAmount(totalExpenseForPie)}
                       </Text>
@@ -1673,10 +1675,12 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   pieCenterValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     letterSpacing: -0.4,
     marginTop: 3,
+    width: "100%",
+    textAlign: "center",
   },
   pieCenterPeriod: {
     fontSize: 11,
