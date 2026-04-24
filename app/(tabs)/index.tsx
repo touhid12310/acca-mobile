@@ -897,8 +897,11 @@ export default function DashboardScreen() {
                   innerRadius={66}
                   showGradient
                   focusOnPress
-                  strokeColor={isDark ? "rgba(15, 23, 42, 0.72)" : colors.surface}
-                  strokeWidth={1}
+                  innerCircleColor={
+                    isDark ? "rgba(15, 23, 42, 0.96)" : colors.background
+                  }
+                  strokeColor="transparent"
+                  strokeWidth={0}
                   centerLabelComponent={() => (
                     <View
                       style={[
