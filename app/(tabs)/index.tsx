@@ -89,6 +89,8 @@ export default function DashboardScreen() {
         <Text
           variant="bodySmall"
           style={[styles.statTitle, { color: colors.onSurfaceVariant }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
         >
           {title}
         </Text>
@@ -202,42 +204,20 @@ export default function DashboardScreen() {
             <Text style={styles.netWorthValue}>
               {formatAmount(stats?.netWorth || 0)}
             </Text>
-            <View style={styles.netWorthMeta}>
-              <View style={styles.netWorthMetaItem}>
-                <MaterialCommunityIcons
-                  name="arrow-up-circle"
-                  size={16}
-                  color="rgba(255,255,255,0.8)"
-                />
-                <Text style={styles.netWorthMetaText}>
-                  Income: {formatAmount(stats?.monthlyIncome || 0)}
-                </Text>
-              </View>
-              <View style={styles.netWorthMetaItem}>
-                <MaterialCommunityIcons
-                  name="arrow-down-circle"
-                  size={16}
-                  color="rgba(255,255,255,0.8)"
-                />
-                <Text style={styles.netWorthMetaText}>
-                  Expenses: {formatAmount(stats?.monthlyExpenses || 0)}
-                </Text>
-              </View>
-            </View>
           </Card.Content>
         </Card>
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
           <StatCard
-            title="This Month Income"
+            title="Monthly Income"
             value={formatAmount(stats?.monthlyIncome || 0)}
             icon="arrow-up-circle"
             color={colors.tertiary}
             trend="up"
           />
           <StatCard
-            title="This Month Expenses"
+            title="Monthly Expenses"
             value={formatAmount(stats?.monthlyExpenses || 0)}
             icon="arrow-down-circle"
             color={colors.error}
@@ -546,19 +526,6 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "bold",
     marginVertical: 8,
-  },
-  netWorthMeta: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  netWorthMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  netWorthMetaText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 12,
   },
   statsGrid: {
     flexDirection: "row",

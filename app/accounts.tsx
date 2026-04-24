@@ -89,6 +89,15 @@ export default function AccountsScreen() {
   const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
+  const [errorDialog, setErrorDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+  }>({
+    visible: false,
+    title: "",
+    message: "",
+  });
   const [formData, setFormData] = useState({
     account_name: "",
     account_type: "Bank Account" as string,
@@ -127,7 +136,12 @@ export default function AccountsScreen() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       closeModal();
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) =>
+      setErrorDialog({
+        visible: true,
+        title: "Unable to Save",
+        message: error.message,
+      }),
   });
 
   const deleteMutation = useMutation({
@@ -140,7 +154,12 @@ export default function AccountsScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) =>
+      setErrorDialog({
+        visible: true,
+        title: "Cannot Delete Account",
+        message: error.message,
+      }),
   });
 
   const openAddModal = () => {
@@ -441,17 +460,6 @@ export default function AccountsScreen() {
                         </Text>
                       </View>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDelete(account)}
-                      style={styles.deleteIconBtn}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <MaterialCommunityIcons
-                        name="delete-outline"
-                        size={22}
-                        color={colors.error}
-                      />
-                    </TouchableOpacity>
                   </View>
                 </Surface>
               );
@@ -595,6 +603,56 @@ export default function AccountsScreen() {
           </ScrollView>
         </Modal>
       </Portal>
+
+      <Portal>
+        <Modal
+          visible={errorDialog.visible}
+          onDismiss={() =>
+            setErrorDialog({ visible: false, title: "", message: "" })
+          }
+          contentContainerStyle={[
+            styles.errorModal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.errorIconWrap,
+              { backgroundColor: `${colors.error}14` },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="alert-circle-outline"
+              size={28}
+              color={colors.error}
+            />
+          </View>
+
+          <Text
+            variant="titleLarge"
+            style={[styles.errorTitle, { color: colors.onSurface }]}
+          >
+            {errorDialog.title}
+          </Text>
+
+          <Text
+            variant="bodyMedium"
+            style={[styles.errorText, { color: colors.onSurfaceVariant }]}
+          >
+            {errorDialog.message}
+          </Text>
+
+          <Button
+            mode="contained"
+            onPress={() =>
+              setErrorDialog({ visible: false, title: "", message: "" })
+            }
+            style={styles.errorButton}
+          >
+            Got it
+          </Button>
+        </Modal>
+      </Portal>
     </SafeAreaView>
   );
 }
@@ -662,10 +720,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  deleteIconBtn: {
-    padding: 8,
-    marginLeft: 4,
-  },
   accountIcon: {
     width: 48,
     height: 48,
@@ -716,5 +770,32 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 8,
     marginTop: 16,
+  },
+  errorModal: {
+    margin: 24,
+    padding: 24,
+    borderRadius: 24,
+    alignItems: "center",
+    gap: 14,
+  },
+  errorIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorTitle: {
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  errorText: {
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  errorButton: {
+    marginTop: 8,
+    minWidth: 120,
+    borderRadius: 14,
   },
 });

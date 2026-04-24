@@ -18,6 +18,8 @@ import {
   IconButton,
   Menu,
   Chip,
+  Portal,
+  Modal,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -95,6 +97,11 @@ export default function AccountDetailScreen() {
     account_name: "",
     account_type: "Bank Account",
     balance: "",
+  });
+  const [errorDialog, setErrorDialog] = useState({
+    visible: false,
+    title: "",
+    message: "",
   });
 
   // Reconcile state
@@ -198,7 +205,12 @@ export default function AccountDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["account", accountId] });
       Alert.alert("Success", "Account updated successfully");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) =>
+      setErrorDialog({
+        visible: true,
+        title: "Unable to Update",
+        message: error.message,
+      }),
   });
 
   const deleteMutation = useMutation({
@@ -211,7 +223,12 @@ export default function AccountDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       router.back();
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) =>
+      setErrorDialog({
+        visible: true,
+        title: "Cannot Delete Account",
+        message: error.message,
+      }),
   });
 
   const handleSave = () => {
@@ -224,11 +241,12 @@ export default function AccountDetailScreen() {
 
   const handleDelete = () => {
     if (transactionsList.length > 0) {
-      Alert.alert(
-        "Cannot Delete",
-        "This account has transactions. Remove or reassign all transactions before deleting.",
-        [{ text: "OK" }],
-      );
+      setErrorDialog({
+        visible: true,
+        title: "Cannot Delete Account",
+        message:
+          "This account has transactions. Remove or reassign all transactions before deleting.",
+      });
       return;
     }
     Alert.alert(
@@ -697,6 +715,53 @@ export default function AccountDetailScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <Portal>
+        <Modal
+          visible={errorDialog.visible}
+          onDismiss={() =>
+            setErrorDialog({ visible: false, title: "", message: "" })
+          }
+          contentContainerStyle={[
+            styles.errorModal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <View
+            style={[
+              styles.errorIconWrap,
+              { backgroundColor: `${colors.error}14` },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="alert-circle-outline"
+              size={28}
+              color={colors.error}
+            />
+          </View>
+          <Text
+            variant="titleLarge"
+            style={[styles.errorTitle, { color: colors.onSurface }]}
+          >
+            {errorDialog.title}
+          </Text>
+          <Text
+            variant="bodyMedium"
+            style={[styles.errorText, { color: colors.onSurfaceVariant }]}
+          >
+            {errorDialog.message}
+          </Text>
+          <Button
+            mode="contained"
+            onPress={() =>
+              setErrorDialog({ visible: false, title: "", message: "" })
+            }
+            style={styles.errorButton}
+          >
+            Got it
+          </Button>
+        </Modal>
+      </Portal>
 
       {/* Tab Content */}
       {activeTab === "transactions" && (
@@ -1696,5 +1761,32 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     marginTop: 12,
+  },
+  errorModal: {
+    margin: 24,
+    padding: 24,
+    borderRadius: 24,
+    alignItems: "center",
+    gap: 14,
+  },
+  errorIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  errorTitle: {
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  errorText: {
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  errorButton: {
+    marginTop: 8,
+    minWidth: 120,
+    borderRadius: 14,
   },
 });
