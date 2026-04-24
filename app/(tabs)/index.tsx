@@ -8,12 +8,13 @@ import {
   Image,
   ActivityIndicator,
   Text,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { BarChart } from "react-native-gifted-charts";
+import { LineChart, PieChart } from "react-native-gifted-charts";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -190,19 +191,47 @@ export default function DashboardScreen() {
     };
   }, [displayedIncome, displayedExpenses, lastMonthTotals]);
 
-  // Last 6 months cash flow for the 3D bar chart
+  // Cashflow trend (weekly / monthly / yearly)
+  type Granularity = "weekly" | "monthly" | "yearly";
+  const [granularity, setGranularity] = React.useState<Granularity>("monthly");
+
+  type SeriesKey = "income" | "expense" | "asset" | "liability";
+  const [activeSeries, setActiveSeries] = React.useState<Set<SeriesKey>>(
+    new Set(["income", "expense", "asset", "liability"]),
+  );
+  const toggleSeries = (k: SeriesKey) => {
+    setActiveSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  };
+
   const cashFlowRange = React.useMemo(() => {
     const now = new Date();
+    if (granularity === "weekly") {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7 * 6 + 1);
+      start.setHours(0, 0, 0, 0);
+      return { start, end: now };
+    }
+    if (granularity === "yearly") {
+      const start = new Date(now.getFullYear() - 5, 0, 1);
+      const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+      return { start, end };
+    }
     const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     return { start, end };
-  }, []);
+  }, [granularity]);
 
   const { data: cashFlow } = useQuery<
-    { month: string; income: number; expense: number }[]
+    { label: string; income: number; expense: number; asset: number; liability: number }[]
   >({
     queryKey: [
-      "dashboard-cashflow-6m",
+      "dashboard-cashflow",
+      granularity,
       toApiDate(cashFlowRange.start),
       toApiDate(cashFlowRange.end),
     ],
@@ -210,6 +239,184 @@ export default function DashboardScreen() {
       const result = await transactionService.getAll({
         start_date: toApiDate(cashFlowRange.start),
         end_date: toApiDate(cashFlowRange.end),
+        per_page: 5000,
+      });
+      let rows: any[] = [];
+      if (result.success && result.data) {
+        const payload: any = result.data;
+        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
+        else if (Array.isArray(payload?.data)) rows = payload.data;
+        else if (Array.isArray(payload)) rows = payload;
+      }
+
+      const MONTHS = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      const now = new Date();
+      const buckets: Array<{
+        label: string;
+        start: Date;
+        end: Date;
+        income: number;
+        expense: number;
+        asset: number;
+        liability: number;
+      }> = [];
+
+      if (granularity === "weekly") {
+        for (let i = 5; i >= 0; i--) {
+          const end = new Date(now);
+          end.setDate(end.getDate() - 7 * i);
+          const start = new Date(end);
+          start.setDate(start.getDate() - 6);
+          start.setHours(0, 0, 0, 0);
+          end.setHours(23, 59, 59);
+          buckets.push({
+            label: `${MONTHS[start.getMonth()]} ${start.getDate()}`,
+            start,
+            end,
+            income: 0,
+            expense: 0,
+            asset: 0,
+            liability: 0,
+          });
+        }
+      } else if (granularity === "yearly") {
+        for (let i = 5; i >= 0; i--) {
+          const year = now.getFullYear() - i;
+          const start = new Date(year, 0, 1);
+          const end = new Date(year, 11, 31, 23, 59, 59);
+          buckets.push({
+            label: String(year),
+            start,
+            end,
+            income: 0,
+            expense: 0,
+            asset: 0,
+            liability: 0,
+          });
+        }
+      } else {
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const start = new Date(d.getFullYear(), d.getMonth(), 1);
+          const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+          buckets.push({
+            label: MONTHS[d.getMonth()],
+            start,
+            end,
+            income: 0,
+            expense: 0,
+            asset: 0,
+            liability: 0,
+          });
+        }
+      }
+
+      for (const t of rows) {
+        const d = new Date(t.date);
+        const amount = parseFloat(String(t.amount)) || 0;
+        const bucket = buckets.find((b) => d >= b.start && d <= b.end);
+        if (!bucket) continue;
+        if (t.type === "income") bucket.income += amount;
+        else if (t.type === "expense") bucket.expense += amount;
+        else if (t.type === "asset") bucket.asset += amount;
+        else if (t.type === "liability") bucket.liability += amount;
+      }
+
+      return buckets.map(({ label, income, expense, asset, liability }) => ({
+        label,
+        income,
+        expense,
+        asset,
+        liability,
+      }));
+    },
+  });
+
+  const makeLineData = React.useCallback(
+    (key: SeriesKey) => {
+      if (!cashFlow) return [];
+      return cashFlow.map((b) => ({
+        value: b[key],
+        label: b.label,
+        labelTextStyle: {
+          color: colors.onSurfaceVariant,
+          fontSize: 10,
+        },
+      }));
+    },
+    [cashFlow, colors.onSurfaceVariant],
+  );
+
+  const chartMaxValue = React.useMemo(() => {
+    if (!cashFlow || cashFlow.length === 0) return 100;
+    let max = 0;
+    cashFlow.forEach((b) => {
+      if (activeSeries.has("income")) max = Math.max(max, b.income);
+      if (activeSeries.has("expense")) max = Math.max(max, b.expense);
+      if (activeSeries.has("asset")) max = Math.max(max, b.asset);
+      if (activeSeries.has("liability")) max = Math.max(max, b.liability);
+    });
+    return max === 0 ? 100 : Math.ceil((max * 1.2) / 100) * 100;
+  }, [cashFlow, activeSeries]);
+
+  const mtdNetCashflow = React.useMemo(() => {
+    if (!cashFlow || cashFlow.length === 0) return 0;
+    const last = cashFlow[cashFlow.length - 1];
+    return last.income - last.expense;
+  }, [cashFlow]);
+
+  // Expense breakdown granularity — independent of cashflow
+  const [breakdownGranularity, setBreakdownGranularity] =
+    React.useState<Granularity>("monthly");
+
+  const breakdownRange = React.useMemo(() => {
+    const now = new Date();
+    if (breakdownGranularity === "weekly") {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { start, end: now };
+    }
+    if (breakdownGranularity === "yearly") {
+      return {
+        start: new Date(now.getFullYear(), 0, 1),
+        end: new Date(now.getFullYear(), 11, 31, 23, 59, 59),
+      };
+    }
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59),
+    };
+  }, [breakdownGranularity]);
+
+  const breakdownLabel = React.useMemo(() => {
+    const MONTHS = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December",
+    ];
+    const now = new Date();
+    if (breakdownGranularity === "weekly") return "this week";
+    if (breakdownGranularity === "yearly") return String(now.getFullYear());
+    return MONTHS[now.getMonth()];
+  }, [breakdownGranularity]);
+
+  const { data: expenseByCategory } = useQuery<
+    { name: string; amount: number }[]
+  >({
+    queryKey: [
+      "dashboard-expense-breakdown",
+      breakdownGranularity,
+      toApiDate(breakdownRange.start),
+      toApiDate(breakdownRange.end),
+    ],
+    queryFn: async () => {
+      const result = await transactionService.getAll({
+        start_date: toApiDate(breakdownRange.start),
+        end_date: toApiDate(breakdownRange.end),
+        type: "expense",
         per_page: 2000,
       });
       let rows: any[] = [];
@@ -219,65 +426,48 @@ export default function DashboardScreen() {
         else if (Array.isArray(payload?.data)) rows = payload.data;
         else if (Array.isArray(payload)) rows = payload;
       }
-      const MONTHS = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-      ];
-      const now = new Date();
-      const buckets: { month: string; income: number; expense: number }[] = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        buckets.push({ month: MONTHS[d.getMonth()], income: 0, expense: 0 });
-      }
+      const totals = new Map<string, number>();
       for (const t of rows) {
-        const d = new Date(t.date);
-        const monthsBack =
-          (now.getFullYear() - d.getFullYear()) * 12 +
-          (now.getMonth() - d.getMonth());
-        if (monthsBack < 0 || monthsBack > 5) continue;
-        const idx = 5 - monthsBack;
+        if (t.type !== "expense") continue;
+        let categoryName = t.category?.name;
+        if (!categoryName && t.transaction_categories?.length > 0) {
+          categoryName = t.transaction_categories[0].category?.name;
+        }
+        categoryName = categoryName || "Uncategorized";
         const amount = parseFloat(String(t.amount)) || 0;
-        if (t.type === "income") buckets[idx].income += amount;
-        else if (t.type === "expense") buckets[idx].expense += amount;
+        totals.set(categoryName, (totals.get(categoryName) || 0) + amount);
       }
-      return buckets;
+      return Array.from(totals.entries())
+        .map(([name, amount]) => ({ name, amount }))
+        .sort((a, b) => b.amount - a.amount);
     },
   });
 
-  const chartData = React.useMemo(() => {
-    if (!cashFlow) return [];
-    const out: any[] = [];
-    cashFlow.forEach((b) => {
-      out.push({
-        value: b.income,
-        label: b.month,
-        frontColor: "#10b981",
-        gradientColor: "#34d399",
-        spacing: 2,
-        labelWidth: 44,
-        labelTextStyle: {
-          color: colors.onSurfaceVariant,
-          fontSize: 11,
-          fontWeight: "600",
-        },
-      });
-      out.push({
-        value: b.expense,
-        frontColor: "#f43f5e",
-        gradientColor: "#fb7185",
-      });
-    });
-    return out;
-  }, [cashFlow, colors.onSurfaceVariant]);
+  const categoryPalette = [
+    "#6366f1", "#ec4899", "#f59e0b", "#10b981", "#0ea5e9",
+    "#8b5cf6", "#f43f5e", "#fb923c", "#14b8a6", "#a855f7",
+  ];
 
-  const chartMaxValue = React.useMemo(() => {
-    if (!cashFlow || cashFlow.length === 0) return 1000;
-    let max = 0;
-    cashFlow.forEach((b) => {
-      max = Math.max(max, b.income, b.expense);
-    });
-    return max === 0 ? 1000 : Math.ceil((max * 1.15) / 100) * 100;
-  }, [cashFlow]);
+  const pieData = React.useMemo(() => {
+    if (!expenseByCategory || expenseByCategory.length === 0) return [];
+    const top = expenseByCategory.slice(0, 6);
+    const rest = expenseByCategory.slice(6);
+    const restTotal = rest.reduce((sum, c) => sum + c.amount, 0);
+    const final = restTotal > 0
+      ? [...top, { name: "Other", amount: restTotal }]
+      : top;
+    return final.map((c, idx) => ({
+      value: c.amount,
+      color: categoryPalette[idx % categoryPalette.length],
+      gradientCenterColor: categoryPalette[idx % categoryPalette.length],
+      text: c.name,
+    }));
+  }, [expenseByCategory]);
+
+  const totalExpenseForPie = React.useMemo(
+    () => (expenseByCategory || []).reduce((s, c) => s + c.amount, 0),
+    [expenseByCategory],
+  );
 
   if (isLoading) {
     return (
@@ -453,14 +643,9 @@ export default function DashboardScreen() {
           }}
         />
 
-        {/* Cash Flow Chart */}
+        {/* Cashflow Trend */}
         {cashFlow && cashFlow.length > 0 && (
           <View style={styles.section}>
-            <SectionHeader
-              title="Cash flow"
-              actionLabel="Reports"
-              onActionPress={() => router.push("/(tabs)/reports")}
-            />
             <View
               style={[
                 styles.chartCard,
@@ -468,70 +653,360 @@ export default function DashboardScreen() {
                 shadow.sm,
               ]}
             >
-              <View style={styles.chartLegend}>
-                <View style={styles.chartLegendItem}>
-                  <View
-                    style={[styles.chartDot, { backgroundColor: "#10b981" }]}
-                  />
+              {/* Header: title + granularity toggle */}
+              <View style={styles.chartHeader}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    style={[styles.chartTitle, { color: colors.onSurface }]}
+                  >
+                    Cashflow Trend
+                  </Text>
                   <Text
                     style={[
-                      styles.chartLegendText,
+                      styles.chartSubtitle,
                       { color: colors.onSurfaceVariant },
                     ]}
+                    numberOfLines={2}
                   >
-                    Income
+                    Income, expenses, assets & liabilities across last 6{" "}
+                    {granularity === "weekly"
+                      ? "weeks"
+                      : granularity === "yearly"
+                        ? "years"
+                        : "months"}
                   </Text>
                 </View>
-                <View style={styles.chartLegendItem}>
-                  <View
-                    style={[styles.chartDot, { backgroundColor: "#f43f5e" }]}
-                  />
-                  <Text
-                    style={[
-                      styles.chartLegendText,
-                      { color: colors.onSurfaceVariant },
-                    ]}
-                  >
-                    Expense
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.chartLegendLabel,
-                    { color: colors.onSurfaceVariant },
-                  ]}
-                >
-                  Last 6 months
-                </Text>
+                <GranularityToggle
+                  value={granularity}
+                  onChange={setGranularity}
+                />
               </View>
 
-              <BarChart
-                data={chartData}
-                barWidth={18}
-                spacing={22}
-                initialSpacing={10}
-                roundedTop
-                roundedBottom
-                isThreeD
-                side="right"
-                sideWidth={5}
-                isAnimated
-                animationDuration={700}
-                showGradient
-                maxValue={chartMaxValue}
-                noOfSections={4}
-                yAxisThickness={0}
-                xAxisThickness={0}
-                yAxisTextStyle={{
-                  color: colors.onSurfaceVariant,
-                  fontSize: 10,
-                }}
-                rulesType="solid"
-                rulesColor={colors.outlineVariant}
-                height={160}
-                hideYAxisText
-                disableScroll
-              />
+              {/* Series filter chips */}
+              <View style={styles.seriesChipsRow}>
+                {SERIES_DEFS.map((s) => {
+                  const active = activeSeries.has(s.key);
+                  return (
+                    <Pressable
+                      key={s.key}
+                      onPress={() => toggleSeries(s.key)}
+                      style={[
+                        styles.seriesChip,
+                        {
+                          backgroundColor: active
+                            ? colors.surfaceVariant
+                            : "transparent",
+                          borderColor: active
+                            ? "transparent"
+                            : colors.outlineVariant,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.seriesChipDot,
+                          {
+                            backgroundColor: active ? s.color : "transparent",
+                            borderColor: s.color,
+                          },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.seriesChipText,
+                          {
+                            color: active
+                              ? colors.onSurface
+                              : colors.onSurfaceVariant,
+                          },
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Line chart */}
+              <View style={styles.lineChartWrap}>
+                <LineChart
+                  data={
+                    activeSeries.has("income") ? makeLineData("income") : []
+                  }
+                  data2={
+                    activeSeries.has("expense") ? makeLineData("expense") : []
+                  }
+                  data3={
+                    activeSeries.has("asset") ? makeLineData("asset") : []
+                  }
+                  data4={
+                    activeSeries.has("liability")
+                      ? makeLineData("liability")
+                      : []
+                  }
+                  color1="#10b981"
+                  color2="#f43f5e"
+                  color3="#3b82f6"
+                  color4="#14b8a6"
+                  thickness={2.5}
+                  curved
+                  areaChart
+                  startFillColor1="#10b981"
+                  endFillColor1="#10b981"
+                  startOpacity1={0.25}
+                  endOpacity1={0.02}
+                  startFillColor2="#f43f5e"
+                  endFillColor2="#f43f5e"
+                  startOpacity2={0.22}
+                  endOpacity2={0.02}
+                  startFillColor3="#3b82f6"
+                  endFillColor3="#3b82f6"
+                  startOpacity3={0.2}
+                  endOpacity3={0.02}
+                  startFillColor4="#14b8a6"
+                  endFillColor4="#14b8a6"
+                  startOpacity4={0.2}
+                  endOpacity4={0.02}
+                  hideDataPoints={false}
+                  dataPointsRadius={3}
+                  dataPointsColor1="#10b981"
+                  dataPointsColor2="#f43f5e"
+                  dataPointsColor3="#3b82f6"
+                  dataPointsColor4="#14b8a6"
+                  maxValue={chartMaxValue}
+                  noOfSections={4}
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  yAxisTextStyle={{
+                    color: colors.onSurfaceVariant,
+                    fontSize: 10,
+                  }}
+                  xAxisLabelTextStyle={{
+                    color: colors.onSurfaceVariant,
+                    fontSize: 10,
+                  }}
+                  rulesType="solid"
+                  rulesColor={colors.outlineVariant}
+                  height={160}
+                  width={Dimensions.get("window").width - spacing.lg * 4}
+                  initialSpacing={10}
+                  endSpacing={10}
+                  spacing={
+                    (Dimensions.get("window").width - spacing.lg * 4 - 20) /
+                    Math.max((cashFlow?.length || 1) - 1, 1)
+                  }
+                  isAnimated
+                  animationDuration={700}
+                  disableScroll
+                />
+              </View>
+
+              {/* Summary footer */}
+              <View
+                style={[
+                  styles.cashflowFooter,
+                  {
+                    backgroundColor:
+                      mtdNetCashflow >= 0
+                        ? colors.tertiaryContainer
+                        : colors.errorContainer,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.cashflowFooterAmount,
+                    {
+                      color:
+                        mtdNetCashflow >= 0 ? colors.tertiary : colors.error,
+                    },
+                  ]}
+                >
+                  {mtdNetCashflow < 0 ? "− " : ""}
+                  {formatAmount(Math.abs(mtdNetCashflow))}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.cashflowFooterTitle,
+                      { color: colors.onSurface },
+                    ]}
+                  >
+                    {mtdNetCashflow >= 0 ? "Positive" : "Negative"} period
+                    cashflow
+                  </Text>
+                  <Text
+                    style={[
+                      styles.cashflowFooterSub,
+                      { color: colors.onSurfaceVariant },
+                    ]}
+                  >
+                    Net cashflow for latest {granularity === "weekly"
+                      ? "week"
+                      : granularity === "yearly"
+                        ? "year"
+                        : "month"}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Expense Breakdown */}
+        {pieData.length > 0 && (
+          <View style={styles.section}>
+            <View
+              style={[
+                styles.chartCard,
+                { backgroundColor: colors.surface },
+                shadow.sm,
+              ]}
+            >
+              {/* Header: title row + granularity toggle */}
+              <View style={styles.breakdownHeaderRow}>
+                <Text
+                  style={[styles.chartTitle, { color: colors.onSurface }]}
+                >
+                  Expense Breakdown
+                </Text>
+                <GranularityToggle
+                  value={breakdownGranularity}
+                  onChange={setBreakdownGranularity}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.chartSubtitle,
+                  { color: colors.onSurfaceVariant },
+                ]}
+              >
+                Top categories for {breakdownLabel}
+              </Text>
+
+              {/* Donut - centered */}
+              <View style={styles.donutWrap}>
+                <PieChart
+                  data={pieData}
+                  donut
+                  radius={90}
+                  innerRadius={62}
+                  showGradient
+                  focusOnPress
+                  strokeColor={colors.surface}
+                  strokeWidth={2}
+                  centerLabelComponent={() => (
+                    <View style={{ alignItems: "center" }}>
+                      <Text
+                        style={[
+                          styles.pieCenterLabel,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                      >
+                        Total
+                      </Text>
+                      <Text
+                        style={[
+                          styles.pieCenterValue,
+                          { color: colors.onSurface },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {maskAmount(totalExpenseForPie)}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.pieCenterPeriod,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {breakdownLabel}
+                      </Text>
+                    </View>
+                  )}
+                />
+              </View>
+
+              {/* Legend — full width below the donut */}
+              <View style={styles.pieLegendGrid}>
+                {pieData.map((slice, idx) => {
+                  const pct =
+                    totalExpenseForPie > 0
+                      ? ((slice.value / totalExpenseForPie) * 100).toFixed(1)
+                      : "0";
+                  return (
+                    <View key={idx} style={styles.pieLegendItem}>
+                      <View
+                        style={[
+                          styles.pieLegendDot,
+                          { backgroundColor: slice.color },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.pieLegendName,
+                          { color: colors.onSurface },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {slice.text}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.pieLegendPct,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                      >
+                        {maskAmount(slice.value)} · {pct}%
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* Leading category insight */}
+              {pieData[0] && (
+                <View
+                  style={[
+                    styles.insightFooter,
+                    { backgroundColor: colors.surfaceVariant },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.insightDot,
+                      { backgroundColor: pieData[0].color },
+                    ]}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      style={[
+                        styles.insightTitleText,
+                        { color: colors.onSurface },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {pieData[0].text} is leading this period
+                    </Text>
+                    <Text
+                      style={[
+                        styles.insightSubText,
+                        { color: colors.onSurfaceVariant },
+                      ]}
+                    >
+                      {totalExpenseForPie > 0
+                        ? (
+                            (pieData[0].value / totalExpenseForPie) *
+                            100
+                          ).toFixed(1)
+                        : "0"}
+                      % of total expenses
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}
@@ -706,6 +1181,85 @@ export default function DashboardScreen() {
     </SafeAreaView>
   );
 }
+
+type SeriesKeyInternal = "income" | "expense" | "asset" | "liability";
+type GranularityInternal = "weekly" | "monthly" | "yearly";
+
+const SERIES_DEFS: {
+  key: SeriesKeyInternal;
+  label: string;
+  color: string;
+}[] = [
+  { key: "income", label: "Income", color: "#10b981" },
+  { key: "expense", label: "Expenses", color: "#f43f5e" },
+  { key: "asset", label: "Assets", color: "#3b82f6" },
+  { key: "liability", label: "Liabilities", color: "#14b8a6" },
+];
+
+function GranularityToggle({
+  value,
+  onChange,
+}: {
+  value: GranularityInternal;
+  onChange: (v: GranularityInternal) => void;
+}) {
+  const { colors } = useTheme();
+  const options: { key: GranularityInternal; label: string }[] = [
+    { key: "weekly", label: "Weekly" },
+    { key: "monthly", label: "Monthly" },
+    { key: "yearly", label: "Yearly" },
+  ];
+  return (
+    <View
+      style={[
+        granularityStyles.container,
+        { backgroundColor: colors.surfaceVariant },
+      ]}
+    >
+      {options.map((o) => {
+        const active = value === o.key;
+        return (
+          <Pressable
+            key={o.key}
+            onPress={() => onChange(o.key)}
+            style={[
+              granularityStyles.segment,
+              active && { backgroundColor: colors.primary },
+            ]}
+          >
+            <Text
+              style={[
+                granularityStyles.segmentText,
+                {
+                  color: active ? colors.onPrimary : colors.onSurfaceVariant,
+                  fontWeight: active ? "700" : "600",
+                },
+              ]}
+            >
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const granularityStyles = StyleSheet.create({
+  container: {
+    flexDirection: "row",
+    padding: 3,
+    borderRadius: 999,
+  },
+  segment: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  segmentText: {
+    fontSize: 11,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -915,6 +1469,149 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.md,
+  },
+  chartCard: {
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    gap: spacing.md,
+  },
+  chartHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  chartSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 17,
+  },
+  seriesChipsRow: {
+    flexDirection: "row",
+    gap: 5,
+  },
+  seriesChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  seriesChipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1.5,
+  },
+  seriesChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  lineChartWrap: {
+    overflow: "hidden",
+    marginLeft: -spacing.sm,
+  },
+  cashflowFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    marginTop: spacing.sm,
+  },
+  cashflowFooterAmount: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  cashflowFooterTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  cashflowFooterSub: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  insightFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    marginTop: spacing.sm,
+  },
+  insightDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  insightTitleText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  insightSubText: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  breakdownHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  donutWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm,
+  },
+  pieCenterLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  pieCenterValue: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.4,
+    marginTop: 3,
+  },
+  pieCenterPeriod: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 3,
+    textTransform: "capitalize",
+  },
+  pieLegendGrid: {
+    gap: 8,
+  },
+  pieLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pieLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  pieLegendName: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: "600",
+  },
+  pieLegendPct: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   statsGrid: {
     flexDirection: "row",
