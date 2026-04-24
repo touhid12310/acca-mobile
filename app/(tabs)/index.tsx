@@ -662,20 +662,6 @@ export default function DashboardScreen() {
                   >
                     Cashflow Trend
                   </Text>
-                  <Text
-                    style={[
-                      styles.chartSubtitle,
-                      { color: colors.onSurfaceVariant },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    Income, expenses, assets & liabilities across last 6{" "}
-                    {granularity === "weekly"
-                      ? "weeks"
-                      : granularity === "yearly"
-                        ? "years"
-                        : "months"}
-                  </Text>
                 </View>
                 <GranularityToggle
                   value={granularity}
