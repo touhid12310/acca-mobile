@@ -441,6 +441,7 @@ export default function DashboardScreen() {
         .map(([name, amount]) => ({ name, amount }))
         .sort((a, b) => b.amount - a.amount);
     },
+    placeholderData: (previousData) => previousData ?? [],
   });
 
   const categoryPalette = [
@@ -977,7 +978,7 @@ export default function DashboardScreen() {
               )}
 
               {/* Legend — full width below the donut */}
-        {expenseByCategory !== undefined && (
+              {pieData.length > 0 && (
                 <View style={styles.pieLegendGrid}>
                 {pieData.map((slice, idx) => {
                   const pct =
