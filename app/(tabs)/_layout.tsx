@@ -1,62 +1,66 @@
-import React from 'react';
-import { Tabs } from 'expo-router';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { View, StyleSheet, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from "react";
+import { Tabs } from "expo-router";
+import { View, StyleSheet, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  BarChart3,
+  Bot,
+  LayoutGrid,
+  ListChecks,
+  Menu,
+  LucideIcon,
+} from "lucide-react-native";
 
-import { useTheme } from '../../src/contexts/ThemeContext';
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { radius, shadow, gradients } from "../../src/constants/theme";
 
-type IconNames = {
-  focused: string;
-  unfocused: string;
-};
-
-const TAB_ICONS: Record<string, IconNames> = {
-  dashboard: { focused: 'view-dashboard', unfocused: 'view-dashboard-outline' },
-  transactions: { focused: 'format-list-bulleted-square', unfocused: 'format-list-bulleted' },
-  chat: { focused: 'robot', unfocused: 'robot-outline' },
-  reports: { focused: 'chart-bar', unfocused: 'chart-bar' },
-  more: { focused: 'menu', unfocused: 'menu' },
+const TAB_ICONS: Record<string, LucideIcon> = {
+  dashboard: LayoutGrid,
+  transactions: ListChecks,
+  chat: Bot,
+  reports: BarChart3,
+  more: Menu,
 };
 
 export default function TabsLayout() {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const getTabBarIcon = (
+  const renderIcon = (
     tabName: string,
     focused: boolean,
-    color: string,
-    isCenter: boolean = false
+    isCenter: boolean = false,
   ) => {
-    const icons = TAB_ICONS[tabName];
-    const iconName = focused ? icons.focused : icons.unfocused;
+    const Icon = TAB_ICONS[tabName];
+    if (!Icon) return null;
 
     if (isCenter) {
       return (
-        <View
-          style={[
-            styles.centerIconContainer,
-            {
-              backgroundColor: focused ? colors.primary : colors.primaryContainer,
-            },
-          ]}
-        >
-          <MaterialCommunityIcons
-            name={iconName as any}
-            size={28}
-            color={focused ? '#ffffff' : colors.primary}
+        <View style={[styles.centerIconWrap, shadow.md]}>
+          <LinearGradient
+            colors={gradients.primary as any}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Icon
+            size={24}
+            color="#ffffff"
+            strokeWidth={2.3}
           />
         </View>
       );
     }
 
     return (
-      <MaterialCommunityIcons
-        name={iconName as any}
-        size={24}
-        color={color}
-      />
+      <View style={styles.iconWrap}>
+        <Icon
+          size={22}
+          color={focused ? colors.primary : colors.onSurfaceVariant}
+          strokeWidth={focused ? 2.4 : 2}
+        />
+      </View>
     );
   };
 
@@ -69,48 +73,46 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.outlineVariant,
-          borderTopWidth: 1,
+          borderTopWidth: StyleSheet.hairlineWidth,
           height: 64 + insets.bottom,
-          paddingBottom: insets.bottom + 8,
+          paddingBottom: insets.bottom + 6,
           paddingTop: 8,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: isDark ? 0.3 : 0.1,
-          shadowRadius: 4,
+          elevation: 12,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: isDark ? 0.3 : 0.08,
+          shadowRadius: 12,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          fontSize: 10.5,
+          fontWeight: "600",
           marginTop: 2,
+          letterSpacing: 0.1,
         },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
-          tabBarIcon: ({ focused, color }) =>
-            getTabBarIcon('dashboard', focused, color),
+          title: "Home",
+          tabBarIcon: ({ focused }) => renderIcon("dashboard", focused),
         }}
       />
       <Tabs.Screen
         name="transactions"
         options={{
-          title: 'Activity',
-          tabBarIcon: ({ focused, color }) =>
-            getTabBarIcon('transactions', focused, color),
+          title: "Activity",
+          tabBarIcon: ({ focused }) => renderIcon("transactions", focused),
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Chat',
-          tabBarIcon: ({ focused }) =>
-            getTabBarIcon('chat', focused, colors.primary, true),
+          title: "AI Chat",
+          tabBarIcon: ({ focused }) => renderIcon("chat", focused, true),
           tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '600',
+            fontSize: 10.5,
+            fontWeight: "600",
             marginTop: 10,
           },
         }}
@@ -118,17 +120,15 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="reports"
         options={{
-          title: 'Reports',
-          tabBarIcon: ({ focused, color }) =>
-            getTabBarIcon('reports', focused, color),
+          title: "Reports",
+          tabBarIcon: ({ focused }) => renderIcon("reports", focused),
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
-          title: 'More',
-          tabBarIcon: ({ focused, color }) =>
-            getTabBarIcon('more', focused, color),
+          title: "More",
+          tabBarIcon: ({ focused }) => renderIcon("more", focused),
         }}
       />
     </Tabs>
@@ -136,17 +136,18 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  centerIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+  iconWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+  },
+  centerIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: radius.pill,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 18,
+    overflow: "hidden",
   },
 });

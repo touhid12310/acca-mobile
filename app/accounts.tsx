@@ -4,54 +4,70 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
+  Pressable,
   Alert,
   KeyboardAvoidingView,
   Platform,
-} from "react-native";
-import {
-  Text,
-  Surface,
-  FAB,
   ActivityIndicator,
-  Portal,
   Modal,
-  TextInput,
-  Button,
-} from "react-native-paper";
+  Text,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  Banknote,
+  BanknoteArrowUp,
+  BadgePlus,
+  Building2,
+  ChartLine,
+  ChevronRight,
+  CreditCard,
+  HandCoins,
+  PiggyBank,
+  Plus,
+  Smartphone,
+  Sparkles,
+  Star,
+  TriangleAlert,
+  Wallet,
+  LucideIcon,
+} from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
-import { BrandedHeader } from "../src/components";
+import {
+  ScreenHeader,
+  Card,
+  IconBadge,
+  Button,
+  EmptyState,
+  Badge,
+  Input,
+  AlertBar,
+  Chip,
+} from "../src/components/ui";
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
+import { gradients, radius, shadow, spacing } from "../src/constants/theme";
 
-// Helper function to extracts detailed validation errors from API response
 const formatApiError = (result: any): string => {
   const errorData = result.data;
   let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
   const validationErrors = errorData?.errors;
   if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
+    const details = Object.entries(validationErrors)
       .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
+        ([f, m]) =>
+          `${f}: ${Array.isArray(m) ? m.join(", ") : m}`,
       )
       .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
+    if (details) errorMsg = `${errorMsg}\n\n${details}`;
   }
-
   return errorMsg;
 };
 
@@ -68,18 +84,15 @@ const accountTypeOptions = [
   { value: "Other", label: "Other" },
 ];
 
-const getAccountIcon = (type: string = ""): string => {
-  const normalized = type.toLowerCase();
-  if (normalized.includes("cash")) return "cash";
-  if (normalized.includes("credit") || normalized.includes("card"))
-    return "credit-card";
-  if (normalized.includes("wallet") || normalized.includes("mobile"))
-    return "wallet";
-  if (normalized.includes("savings") || normalized.includes("piggy"))
-    return "piggy-bank";
-  if (normalized.includes("investment")) return "chart-line";
-  if (normalized.includes("loan")) return "hand-coin";
-  return "bank";
+const getAccountIcon = (type: string = ""): LucideIcon => {
+  const n = type.toLowerCase();
+  if (n.includes("cash")) return Banknote;
+  if (n.includes("credit") || n.includes("card")) return CreditCard;
+  if (n.includes("wallet") || n.includes("mobile")) return Smartphone;
+  if (n.includes("savings") || n.includes("piggy")) return PiggyBank;
+  if (n.includes("investment")) return ChartLine;
+  if (n.includes("loan")) return HandCoins;
+  return Building2;
 };
 
 export default function AccountsScreen() {
@@ -93,11 +106,7 @@ export default function AccountsScreen() {
     visible: boolean;
     title: string;
     message: string;
-  }>({
-    visible: false,
-    title: "",
-    message: "",
-  });
+  }>({ visible: false, title: "", message: "" });
   const [formData, setFormData] = useState({
     account_name: "",
     account_type: "Bank Account" as string,
@@ -163,21 +172,19 @@ export default function AccountsScreen() {
   });
 
   const openAddModal = () => {
-    setFormData({
-      account_name: "",
-      account_type: "Bank Account",
-      balance: "",
-    });
+    setFormData({ account_name: "", account_type: "Bank Account", balance: "" });
     setModalVisible(true);
   };
 
-  const closeModal = () => {
-    setModalVisible(false);
-  };
+  const closeModal = () => setModalVisible(false);
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
-      Alert.alert("Error", "Please enter an account name");
+      setErrorDialog({
+        visible: true,
+        title: "Missing information",
+        message: "Please enter an account name",
+      });
       return;
     }
     createMutation.mutate(formData);
@@ -198,11 +205,9 @@ export default function AccountsScreen() {
     );
   };
 
-  const handleAccountPress = (account: Account) => {
+  const handleAccountPress = (account: Account) =>
     router.push(`/account-detail?id=${account.id}`);
-  };
 
-  // Calculate stats
   const viewAccounts = accounts || [];
   const totalBalance = viewAccounts.reduce((sum: number, acc: Account) => {
     const balance = parseFloat(String(acc.current_balance ?? acc.balance ?? 0));
@@ -214,14 +219,10 @@ export default function AccountsScreen() {
   ).size;
   const topAccount =
     viewAccounts.length > 0
-      ? viewAccounts.reduce((prev: Account, current: Account) => {
-          const prevBalance = parseFloat(
-            String(prev.current_balance ?? prev.balance ?? 0),
-          );
-          const currBalance = parseFloat(
-            String(current.current_balance ?? current.balance ?? 0),
-          );
-          return currBalance > prevBalance ? current : prev;
+      ? viewAccounts.reduce((prev: Account, curr: Account) => {
+          const pB = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
+          const cB = parseFloat(String(curr.current_balance ?? curr.balance ?? 0));
+          return cB > pB ? curr : prev;
         }, viewAccounts[0])
       : null;
 
@@ -242,11 +243,13 @@ export default function AccountsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Accounts"
-        subtitle="Manage balances and payment sources"
-        showBack
-      />
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <ScreenHeader
+          title="Accounts"
+          subtitle="Balances & sources"
+          showBack
+        />
+      </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -255,547 +258,478 @@ export default function AccountsScreen() {
             refreshing={isRefetching}
             onRefresh={refetch}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
-        {/* Stats Section */}
-        <View style={styles.statsGrid}>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <View
-              style={[
-                styles.statIconWrapper,
-                { backgroundColor: `${colors.primary}15` },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="wallet"
-                size={20}
-                color={colors.primary}
-              />
+        {/* Total Balance Hero */}
+        <LinearGradient
+          colors={gradients.primary as any}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.hero, shadow.md]}
+        >
+          <View style={styles.heroIcon}>
+            <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
+          </View>
+          <Text style={styles.heroLabel}>Total balance</Text>
+          <Text style={styles.heroValue}>{formatAmount(totalBalance)}</Text>
+          <View style={styles.heroMeta}>
+            <View style={styles.heroMetaItem}>
+              <Text style={styles.heroMetaValue}>{accountsCount}</Text>
+              <Text style={styles.heroMetaLabel}>Accounts</Text>
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Balance
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, fontWeight: "bold" }}
-            >
-              {formatAmount(totalBalance)}
-            </Text>
-          </Surface>
-
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <View
-              style={[
-                styles.statIconWrapper,
-                { backgroundColor: `${colors.tertiary}15` },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="bank"
-                size={20}
-                color={colors.tertiary}
-              />
+            <View style={styles.heroDivider} />
+            <View style={styles.heroMetaItem}>
+              <Text style={styles.heroMetaValue}>{uniqueTypes}</Text>
+              <Text style={styles.heroMetaLabel}>Types</Text>
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Accounts
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, fontWeight: "bold" }}
-            >
-              {accountsCount}
-            </Text>
-          </Surface>
-
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <View
-              style={[
-                styles.statIconWrapper,
-                { backgroundColor: `${colors.secondary}15` },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="star"
-                size={20}
-                color={colors.secondary}
-              />
+            <View style={styles.heroDivider} />
+            <View style={styles.heroMetaItem}>
+              <Text
+                style={styles.heroMetaValueSmall}
+                numberOfLines={1}
+              >
+                {topAccount?.account_name || "—"}
+              </Text>
+              <Text style={styles.heroMetaLabel}>Top account</Text>
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Top Account
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.onSurface, fontWeight: "600" }}
-              numberOfLines={1}
-            >
-              {topAccount?.account_name || "-"}
-            </Text>
-          </Surface>
+          </View>
+        </LinearGradient>
 
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <View
-              style={[styles.statIconWrapper, { backgroundColor: "#F59E0B15" }]}
-            >
-              <MaterialCommunityIcons name="shape" size={20} color="#F59E0B" />
-            </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Types
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, fontWeight: "bold" }}
-            >
-              {uniqueTypes}
-            </Text>
-          </Surface>
-        </View>
-
-        {/* Accounts List */}
         {viewAccounts.length > 0 ? (
-          <View>
+          <View style={{ gap: spacing.md }}>
             <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, marginBottom: 12 }}
+              style={[styles.sectionTitle, { color: colors.onSurface }]}
             >
-              All Accounts
+              All accounts
             </Text>
+
             {viewAccounts.map((account: Account) => {
-              const accountType =
-                account.type || account.account_type || "Other";
+              const type = account.type || account.account_type || "Other";
               const balance = parseFloat(
                 String(account.current_balance ?? account.balance ?? 0),
               );
-              const iconName = getAccountIcon(accountType);
+              const Icon = getAccountIcon(type);
+              const positive = balance >= 0;
 
               return (
-                <Surface
+                <Card
                   key={account.id}
-                  style={[
-                    styles.accountCard,
-                    { backgroundColor: colors.surface },
-                  ]}
-                  elevation={1}
+                  variant="elevated"
+                  padding="lg"
+                  radiusSize="xl"
+                  onPress={() => handleAccountPress(account)}
                 >
-                  <View style={styles.accountCardInner}>
-                    <TouchableOpacity
-                      style={styles.accountCardPressable}
-                      onPress={() => handleAccountPress(account)}
-                      onLongPress={() => handleDelete(account)}
-                      activeOpacity={0.7}
-                    >
-                      <View
+                  <Pressable
+                    onLongPress={() => handleDelete(account)}
+                    style={styles.accountInner}
+                  >
+                    <IconBadge icon={Icon} tone="primary" size="lg" shape="rounded" />
+                    <View style={styles.accountInfo}>
+                      <Text
                         style={[
-                          styles.accountIcon,
-                          { backgroundColor: `${colors.primary}15` },
+                          styles.accountName,
+                          { color: colors.onSurface },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {account.account_name || "Unnamed Account"}
+                      </Text>
+                      <Badge label={type} tone="neutral" size="sm" />
+                    </View>
+                    <View style={styles.balanceBlock}>
+                      <Text
+                        style={[
+                          styles.balanceLabel,
+                          { color: colors.onSurfaceVariant },
                         ]}
                       >
-                        <MaterialCommunityIcons
-                          name={iconName as any}
-                          size={24}
-                          color={colors.primary}
-                        />
-                      </View>
-                      <View style={styles.accountInfo}>
-                        <Text
-                          variant="titleMedium"
-                          style={{ color: colors.onSurface }}
-                        >
-                          {account.account_name || "Unnamed Account"}
-                        </Text>
-                        <View
-                          style={[
-                            styles.typeBadge,
-                            { backgroundColor: `${colors.primary}10` },
-                          ]}
-                        >
-                          <Text
-                            variant="labelSmall"
-                            style={{ color: colors.primary }}
-                          >
-                            {accountType}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.balanceContainer}>
-                        <Text
-                          variant="labelSmall"
-                          style={{ color: colors.onSurfaceVariant }}
-                        >
-                          Balance
-                        </Text>
-                        <Text
-                          variant="titleMedium"
-                          style={{
-                            color:
-                              balance >= 0 ? colors.tertiary : colors.error,
-                            fontWeight: "bold",
-                          }}
-                        >
-                          {formatAmount(balance)}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-                </Surface>
+                        Balance
+                      </Text>
+                      <Text
+                        style={[
+                          styles.balanceValue,
+                          {
+                            color: positive ? colors.tertiary : colors.error,
+                          },
+                        ]}
+                      >
+                        {formatAmount(balance)}
+                      </Text>
+                    </View>
+                    <ChevronRight
+                      size={18}
+                      color={colors.onSurfaceVariant}
+                      strokeWidth={2}
+                    />
+                  </Pressable>
+                </Card>
               );
             })}
           </View>
         ) : (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="bank-off"
-              size={64}
-              color={colors.onSurfaceVariant}
-            />
-            <Text
-              variant="bodyLarge"
-              style={{ color: colors.onSurfaceVariant, marginTop: 16 }}
-            >
-              No accounts yet
-            </Text>
-            <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, textAlign: "center" }}
-            >
-              Tap the + button to add your first account
-            </Text>
-          </View>
+          <EmptyState
+            icon={Building2}
+            title="No accounts yet"
+            message="Tap the + button to add your first account"
+            action={{ label: "Add account", onPress: openAddModal }}
+          />
         )}
       </ScrollView>
 
-      <FAB
-        icon="plus"
-        style={[
-          styles.fab,
-          { backgroundColor: colors.primary, bottom: 16 + insets.bottom },
-        ]}
-        color={colors.onPrimary}
+      {/* FAB */}
+      <Pressable
         onPress={openAddModal}
-      />
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: 20 + insets.bottom, opacity: pressed ? 0.85 : 1 },
+          shadow.lg,
+        ]}
+      >
+        <LinearGradient
+          colors={gradients.primary as any}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <Plus size={24} color="#ffffff" strokeWidth={2.4} />
+      </Pressable>
 
-      {/* Add/Edit Modal */}
-      <Portal>
-        <Modal
-          visible={modalVisible}
-          onDismiss={closeModal}
-          contentContainerStyle={[
-            styles.modal,
-            { backgroundColor: colors.surface },
-          ]}
+      {/* Add Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalBackdrop}
         >
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text
-              variant="titleLarge"
-              style={{ color: colors.onSurface, marginBottom: 16 }}
+          <Pressable style={styles.modalBackdropTouchable} onPress={closeModal}>
+            <Pressable
+              style={[
+                styles.sheet,
+                { backgroundColor: colors.surface },
+                shadow.lg,
+              ]}
+              onPress={(e) => e.stopPropagation()}
             >
-              Add Account
-            </Text>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>
+                  Add account
+                </Text>
 
-            <TextInput
-              label="Account Name"
-              value={formData.account_name}
-              onChangeText={(text) =>
-                setFormData({ ...formData, account_name: text })
-              }
-              mode="outlined"
-              style={styles.input}
-            />
-
-            <TextInput
-              label="Initial Balance"
-              value={formData.balance}
-              onChangeText={(text) =>
-                setFormData({ ...formData, balance: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              style={styles.input}
-            />
-
-            <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
-            >
-              Account Type
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 16 }}
-              contentContainerStyle={{ gap: 8 }}
-            >
-              {accountTypeOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.value}
-                  style={[
-                    styles.typeChip,
-                    {
-                      backgroundColor:
-                        formData.account_type === option.value
-                          ? colors.primary
-                          : colors.surfaceVariant,
-                      borderColor:
-                        formData.account_type === option.value
-                          ? colors.primary
-                          : colors.surfaceVariant,
-                    },
-                  ]}
-                  onPress={() =>
-                    setFormData({ ...formData, account_type: option.value })
+                <Input
+                  label="Account name"
+                  placeholder="e.g. Main checking"
+                  value={formData.account_name}
+                  onChangeText={(t) =>
+                    setFormData({ ...formData, account_name: t })
                   }
+                />
+                <Input
+                  label="Initial balance"
+                  placeholder="0.00"
+                  value={formData.balance}
+                  onChangeText={(t) => setFormData({ ...formData, balance: t })}
+                  keyboardType="decimal-pad"
+                />
+
+                <Text
+                  style={[
+                    styles.fieldLabel,
+                    { color: colors.onSurfaceVariant },
+                  ]}
                 >
-                  <Text
-                    style={{
-                      color:
-                        formData.account_type === option.value
-                          ? "#fff"
-                          : colors.onSurfaceVariant,
-                      fontSize: 12,
-                      fontWeight: "500",
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  Account type
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.typeChips}
+                >
+                  {accountTypeOptions.map((opt) => (
+                    <Chip
+                      key={opt.value}
+                      label={opt.label}
+                      selected={formData.account_type === opt.value}
+                      onPress={() =>
+                        setFormData({ ...formData, account_type: opt.value })
+                      }
+                    />
+                  ))}
+                </ScrollView>
 
-            <View style={styles.modalButtons}>
-              <Button mode="text" onPress={closeModal}>
-                Cancel
-              </Button>
-              <Button
-                mode="contained"
-                onPress={handleSave}
-                loading={createMutation.isPending}
-              >
-                Add
-              </Button>
-            </View>
-          </ScrollView>
-        </Modal>
-      </Portal>
+                <View style={styles.sheetButtons}>
+                  <Button
+                    label="Cancel"
+                    variant="secondary"
+                    onPress={closeModal}
+                    fullWidth
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label="Add"
+                    variant="primary"
+                    onPress={handleSave}
+                    loading={createMutation.isPending}
+                    fullWidth
+                    icon={BadgePlus}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
-      <Portal>
-        <Modal
-          visible={errorDialog.visible}
-          onDismiss={() =>
+      {/* Error Modal */}
+      <Modal
+        visible={errorDialog.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setErrorDialog({ visible: false, title: "", message: "" })
+        }
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() =>
             setErrorDialog({ visible: false, title: "", message: "" })
           }
-          contentContainerStyle={[
-            styles.errorModal,
-            { backgroundColor: colors.surface },
-          ]}
         >
-          <View
+          <Pressable
             style={[
-              styles.errorIconWrap,
-              { backgroundColor: `${colors.error}14` },
+              styles.confirmCard,
+              { backgroundColor: colors.surface },
+              shadow.lg,
             ]}
+            onPress={(e) => e.stopPropagation()}
           >
-            <MaterialCommunityIcons
-              name="alert-circle-outline"
-              size={28}
-              color={colors.error}
+            <View
+              style={[
+                styles.confirmIcon,
+                { backgroundColor: colors.errorContainer },
+              ]}
+            >
+              <TriangleAlert
+                size={28}
+                color={colors.error}
+                strokeWidth={2.2}
+              />
+            </View>
+            <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
+              {errorDialog.title}
+            </Text>
+            <Text
+              style={[styles.confirmText, { color: colors.onSurfaceVariant }]}
+            >
+              {errorDialog.message}
+            </Text>
+            <Button
+              label="Got it"
+              variant="primary"
+              fullWidth
+              onPress={() =>
+                setErrorDialog({ visible: false, title: "", message: "" })
+              }
+              style={{ alignSelf: "stretch", marginTop: spacing.md }}
             />
-          </View>
-
-          <Text
-            variant="titleLarge"
-            style={[styles.errorTitle, { color: colors.onSurface }]}
-          >
-            {errorDialog.title}
-          </Text>
-
-          <Text
-            variant="bodyMedium"
-            style={[styles.errorText, { color: colors.onSurfaceVariant }]}
-          >
-            {errorDialog.message}
-          </Text>
-
-          <Button
-            mode="contained"
-            onPress={() =>
-              setErrorDialog({ visible: false, title: "", message: "" })
-            }
-            style={styles.errorButton}
-          >
-            Got it
-          </Button>
-        </Modal>
-      </Portal>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    paddingBottom: 8,
-  },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  title: {
-    fontWeight: "bold",
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
+  container: { flex: 1 },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 20,
+  scrollContent: {
+    padding: spacing.lg,
+    paddingBottom: 120,
+    gap: spacing.lg,
   },
-  statCard: {
-    width: "48%",
-    flexGrow: 1,
-    padding: 12,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
-  },
-  accountCard: {
-    borderRadius: 12,
-    marginBottom: 10,
+  hero: {
+    padding: spacing.xl,
+    borderRadius: radius.xxl,
+    gap: spacing.sm,
     overflow: "hidden",
   },
-  accountCardInner: {
-    flexDirection: "row",
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
-    padding: 14,
-  },
-  accountCardPressable: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  accountIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
     justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  heroLabel: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 13,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+  },
+  heroValue: {
+    color: "#ffffff",
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: -0.6,
+  },
+  heroMeta: {
+    flexDirection: "row",
     alignItems: "center",
-    marginRight: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  heroMetaItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  heroMetaValue: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  heroMetaValueSmall: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+    maxWidth: 90,
+  },
+  heroMetaLabel: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  heroDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  accountInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
   },
   accountInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
   },
-  typeBadge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
+  accountName: {
+    fontSize: 15,
+    fontWeight: "700",
   },
-  balanceContainer: {
+  balanceBlock: {
     alignItems: "flex-end",
+    gap: 2,
   },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 64,
+  balanceLabel: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  balanceValue: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
   },
   fab: {
     position: "absolute",
-    right: 16,
-    bottom: 16,
-  },
-  modal: {
-    margin: 20,
-    padding: 20,
-    borderRadius: 16,
-    maxHeight: "70%",
-  },
-  input: {
-    marginBottom: 12,
-  },
-  typeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    gap: 8,
-    marginTop: 16,
-  },
-  errorModal: {
-    margin: 24,
-    padding: 24,
-    borderRadius: 24,
+    right: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
     alignItems: "center",
-    gap: 14,
+    justifyContent: "center",
+    overflow: "hidden",
   },
-  errorIconWrap: {
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+  },
+  modalBackdropTouchable: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sheet: {
+    margin: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: radius.xxl,
+    gap: spacing.md,
+    alignSelf: "stretch",
+    maxHeight: "85%",
+    maxWidth: 520,
+    width: "100%",
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: spacing.md,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 4,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  typeChips: {
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  sheetButtons: {
+    flexDirection: "row",
+    gap: spacing.md,
+    marginTop: spacing.xl,
+  },
+  confirmCard: {
+    margin: spacing.xl,
+    padding: spacing.xxl,
+    borderRadius: radius.xxl,
+    alignItems: "center",
+    gap: spacing.md,
+    maxWidth: 400,
+  },
+  confirmIcon: {
     width: 64,
     height: 64,
-    borderRadius: 20,
+    borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
   },
-  errorTitle: {
-    fontWeight: "700",
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: "800",
     textAlign: "center",
   },
-  errorText: {
+  confirmText: {
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
-    lineHeight: 22,
-  },
-  errorButton: {
-    marginTop: 8,
-    minWidth: 120,
-    borderRadius: 14,
+    maxWidth: 300,
   },
 });

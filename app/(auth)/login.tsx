@@ -1,79 +1,67 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  TouchableOpacity,
+  Text,
+  Pressable,
   Image,
-} from 'react-native';
-import { Text, TextInput, Button, HelperText } from 'react-native-paper';
-import { Link, router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+} from "react-native";
+import { Link, router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { Mail, Lock, ShieldCheck } from "lucide-react-native";
 
-import { useAuth } from '../../src/contexts/AuthContext';
-import { useTheme } from '../../src/contexts/ThemeContext';
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { Button, Input, AlertBar } from "../../src/components/ui";
+import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 export default function LoginScreen() {
   const { login } = useAuth();
   const { colors, isDark } = useTheme();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState("");
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
-    if (!email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Please enter a valid email';
-    }
-
-    if (!password) {
-      newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-
-    if (requiresTwoFactor && !twoFactorCode.trim()) {
-      newErrors.twoFactorCode = 'Two-factor code is required';
-    }
-
+    if (!email.trim()) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(email))
+      newErrors.email = "Please enter a valid email";
+    if (!password) newErrors.password = "Password is required";
+    else if (password.length < 6)
+      newErrors.password = "Password must be at least 6 characters";
+    if (requiresTwoFactor && !twoFactorCode.trim())
+      newErrors.twoFactorCode = "Two-factor code is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleLogin = async () => {
     if (!validateForm()) return;
-
     setIsLoading(true);
     setErrors({});
-
     try {
       const result = await login(
         email.trim(),
         password,
-        requiresTwoFactor ? twoFactorCode.trim() : undefined
+        requiresTwoFactor ? twoFactorCode.trim() : undefined,
       );
-
       if (result.success) {
-        router.replace('/(tabs)');
+        router.replace("/(tabs)");
       } else if (result.requiresTwoFactor) {
         setRequiresTwoFactor(true);
       } else {
         setErrors({
-          general: result.message || 'Login failed. Please try again.',
+          general: result.message || "Login failed. Please try again.",
         });
-
         if (result.errors) {
           const fieldErrors: Record<string, string> = {};
           Object.entries(result.errors).forEach(([key, messages]) => {
@@ -83,7 +71,7 @@ export default function LoginScreen() {
         }
       }
     } catch (error) {
-      setErrors({ general: 'An unexpected error occurred. Please try again.' });
+      setErrors({ general: "An unexpected error occurred. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -94,31 +82,32 @@ export default function LoginScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Logo/Header */}
-          <View style={styles.header}>
+          {/* Hero */}
+          <View style={styles.hero}>
             <LinearGradient
-              colors={['#c1c957', 'rgba(110, 157, 231, 0.66)']}
+              colors={gradients.heroAccent as any}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.logoBadge}
+              style={[styles.logoBadge, shadow.md]}
             >
               <Image
-                source={require('../../assets/logo.png')}
+                source={require("../../assets/logo.png")}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
             </LinearGradient>
-            <Text variant="headlineMedium" style={[styles.title, { color: colors.onSurface }]}>
-              Welcome Back
+            <Text style={[styles.title, { color: colors.onSurface }]}>
+              Welcome back
             </Text>
-            <Text variant="bodyMedium" style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
+            <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
               Sign in to continue managing your finances
             </Text>
           </View>
@@ -126,128 +115,92 @@ export default function LoginScreen() {
           {/* Form */}
           <View style={styles.form}>
             {errors.general && (
-              <View
-                style={[
-                  styles.errorBanner,
-                  { backgroundColor: colors.errorContainer },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="alert-circle"
-                  size={20}
-                  color={colors.error}
-                />
-                <Text style={[styles.errorBannerText, { color: colors.error }]}>
-                  {errors.general}
-                </Text>
-              </View>
+              <AlertBar tone="error" message={errors.general} />
             )}
 
-            <TextInput
+            <Input
               label="Email"
+              placeholder="you@example.com"
               value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+              onChangeText={(t) => {
+                setEmail(t);
+                if (errors.email) setErrors((p) => ({ ...p, email: "" }));
               }}
-              mode="outlined"
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
-              error={!!errors.email}
-              left={<TextInput.Icon icon="email" />}
-              style={styles.input}
+              icon={Mail}
+              error={errors.email}
             />
-            {errors.email && (
-              <HelperText type="error" visible={!!errors.email}>
-                {errors.email}
-              </HelperText>
-            )}
 
-            <TextInput
+            <Input
               label="Password"
+              placeholder="••••••••"
               value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (errors.password)
-                  setErrors((prev) => ({ ...prev, password: '' }));
+              onChangeText={(t) => {
+                setPassword(t);
+                if (errors.password) setErrors((p) => ({ ...p, password: "" }));
               }}
-              mode="outlined"
-              secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoComplete="password"
-              error={!!errors.password}
-              left={<TextInput.Icon icon="lock" />}
-              right={
-                <TextInput.Icon
-                  icon={showPassword ? 'eye-off' : 'eye'}
-                  onPress={() => setShowPassword(!showPassword)}
-                />
-              }
-              style={styles.input}
+              icon={Lock}
+              secureTextEntry
+              secureToggleable
+              error={errors.password}
             />
-            {errors.password && (
-              <HelperText type="error" visible={!!errors.password}>
-                {errors.password}
-              </HelperText>
-            )}
 
             {requiresTwoFactor && (
-              <>
-                <TextInput
-                  label="Two-Factor Code"
-                  value={twoFactorCode}
-                  onChangeText={(text) => {
-                    setTwoFactorCode(text);
-                    if (errors.twoFactorCode)
-                      setErrors((prev) => ({ ...prev, twoFactorCode: '' }));
-                  }}
-                  mode="outlined"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  error={!!errors.twoFactorCode}
-                  left={<TextInput.Icon icon="shield-key" />}
-                  style={styles.input}
-                />
-                {errors.twoFactorCode && (
-                  <HelperText type="error" visible={!!errors.twoFactorCode}>
-                    {errors.twoFactorCode}
-                  </HelperText>
-                )}
-              </>
+              <Input
+                label="Two-factor code"
+                placeholder="123456"
+                value={twoFactorCode}
+                onChangeText={(t) => {
+                  setTwoFactorCode(t);
+                  if (errors.twoFactorCode)
+                    setErrors((p) => ({ ...p, twoFactorCode: "" }));
+                }}
+                keyboardType="number-pad"
+                maxLength={6}
+                icon={ShieldCheck}
+                error={errors.twoFactorCode}
+              />
             )}
 
-            <Button
-              mode="contained"
-              onPress={handleLogin}
-              loading={isLoading}
-              disabled={isLoading}
-              style={styles.button}
-              contentStyle={styles.buttonContent}
+            <Pressable
+              style={styles.forgotPassword}
+              onPress={() => {}}
+              hitSlop={6}
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
-            </Button>
-
-            <TouchableOpacity style={styles.forgotPassword}>
               <Text
                 style={[styles.forgotPasswordText, { color: colors.primary }]}
               >
-                Forgot Password?
+                Forgot password?
               </Text>
-            </TouchableOpacity>
+            </Pressable>
+
+            <Button
+              label={isLoading ? "Signing in..." : "Sign in"}
+              onPress={handleLogin}
+              loading={isLoading}
+              disabled={isLoading}
+              fullWidth
+              size="lg"
+            />
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: colors.onSurfaceVariant }]}>
-              Don't have an account?{' '}
+            <Text
+              style={[styles.footerText, { color: colors.onSurfaceVariant }]}
+            >
+              Don't have an account?{" "}
             </Text>
             <Link href="/(auth)/register" asChild>
-              <TouchableOpacity>
+              <Pressable hitSlop={6}>
                 <Text style={[styles.linkText, { color: colors.primary }]}>
-                  Sign Up
+                  Sign up
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </Link>
           </View>
         </ScrollView>
@@ -257,96 +210,60 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  logoBadge: {
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(110, 157, 231, 0.35)',
-    shadowColor: '#6e9de7',
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    justifyContent: "center",
+    gap: spacing.xxl,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
+  hero: {
+    alignItems: "center",
+    gap: spacing.md,
   },
-  logoContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+  logoBadge: {
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
   logoImage: {
-    width: 200,
-    height: 44,
+    width: 180,
+    height: 40,
   },
   title: {
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.3,
   },
   subtitle: {
-    textAlign: 'center',
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 300,
   },
   form: {
-    marginBottom: 24,
-  },
-  input: {
-    marginBottom: 4,
-  },
-  button: {
-    marginTop: 16,
-    borderRadius: 8,
-  },
-  buttonContent: {
-    paddingVertical: 8,
+    gap: spacing.lg,
   },
   forgotPassword: {
-    alignItems: 'center',
-    marginTop: 16,
+    alignSelf: "flex-end",
+    paddingVertical: 2,
   },
   forgotPasswordText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: "600",
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   footerText: {
     fontSize: 14,
   },
   linkText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorBannerText: {
-    marginLeft: 8,
-    flex: 1,
-    fontSize: 14,
+    fontWeight: "700",
   },
 });

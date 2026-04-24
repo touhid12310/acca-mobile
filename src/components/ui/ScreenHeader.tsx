@@ -13,23 +13,25 @@ import { router } from "expo-router";
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
 
-type BrandedHeaderProps = {
+interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
   showBack?: boolean;
   onBack?: () => void;
   right?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-};
+  compact?: boolean;
+}
 
-export function BrandedHeader({
+export function ScreenHeader({
   title,
   subtitle,
-  showBack = false,
+  showBack,
   onBack,
   right,
   style,
-}: BrandedHeaderProps) {
+  compact,
+}: ScreenHeaderProps) {
   const { colors } = useTheme();
 
   const handleBack = () => {
@@ -38,7 +40,7 @@ export function BrandedHeader({
   };
 
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, compact && styles.compact, style]}>
       <View style={styles.leftCluster}>
         {showBack && (
           <Pressable
@@ -69,8 +71,7 @@ export function BrandedHeader({
           </Text>
         </View>
       </View>
-
-      {right && <View style={styles.rightSlot}>{right}</View>}
+      {right && <View style={styles.right}>{right}</View>}
     </View>
   );
 }
@@ -80,9 +81,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     gap: spacing.md,
+  },
+  compact: {
+    paddingVertical: spacing.sm,
   },
   leftCluster: {
     flex: 1,
@@ -104,13 +107,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   subtitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.4,
     textTransform: "uppercase",
     marginBottom: 1,
   },
-  rightSlot: {
+  right: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,

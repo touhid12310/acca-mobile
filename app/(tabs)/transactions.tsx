@@ -1,38 +1,50 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
   FlatList,
   RefreshControl,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
-  Alert,
-} from "react-native";
-import {
-  Text,
-  Searchbar,
-  Chip,
-  FAB,
   ActivityIndicator,
-  Surface,
-  Divider,
-  Menu,
-  IconButton,
-  Portal,
+  TextInput,
+  Text,
   Modal,
-  Button,
-} from "react-native-paper";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+} from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowUpRight,
+  ArrowUpDown,
+  CreditCard,
+  Edit3,
+  MoreVertical,
+  Plus,
+  Receipt,
+  Search,
+  Trash2,
+  TriangleAlert,
+  Wallet,
+  X,
+  LucideIcon,
+} from "lucide-react-native";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
-import { BrandedHeader } from "../../src/components";
+import {
+  ScreenHeader,
+  Chip,
+  IconBadge,
+  EmptyState,
+  Card,
+  Button,
+  AlertBar,
+  Badge,
+} from "../../src/components/ui";
 import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
 import { formatDate } from "../../src/utils/date";
@@ -42,8 +54,18 @@ import {
   AccountType,
   Account,
 } from "../../src/types";
+import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 type FilterType = "all" | TransactionType;
+
+const FILTERS: { key: FilterType; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "income", label: "Income" },
+  { key: "expense", label: "Expenses" },
+  { key: "transfer", label: "Transfers" },
+  { key: "asset", label: "Assets" },
+  { key: "liability", label: "Liabilities" },
+];
 
 export default function TransactionsScreen() {
   const { colors } = useTheme();
@@ -53,15 +75,13 @@ export default function TransactionsScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
-  const [sortMenuVisible, setSortMenuVisible] = useState(false);
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await transactionService.delete(id);
@@ -76,42 +96,10 @@ export default function TransactionsScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
     },
     onError: (error: Error) => {
-      Alert.alert("Error", error.message);
+      setErrorMessage(error.message);
     },
   });
 
-  const showTransactionActions = (item: Transaction) => {
-    setSelectedTransaction(item);
-    setShowActionSheet(true);
-  };
-
-  const handleDeletePress = () => {
-    setShowActionSheet(false);
-    setTimeout(() => setShowDeleteConfirm(true), 200);
-  };
-
-  const handleConfirmDelete = () => {
-    if (selectedTransaction) {
-      deleteMutation.mutate(selectedTransaction.id);
-    }
-    setShowDeleteConfirm(false);
-    setSelectedTransaction(null);
-  };
-
-  const handleEditPress = () => {
-    if (selectedTransaction) {
-      handleEditTransaction(selectedTransaction);
-    }
-    setShowActionSheet(false);
-    setSelectedTransaction(null);
-  };
-
-  const closeActionSheet = () => {
-    setShowActionSheet(false);
-    setSelectedTransaction(null);
-  };
-
-  // Fetch accounts for asset/liability filtering
   const { data: accountsData } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
@@ -127,9 +115,7 @@ export default function TransactionsScreen() {
   });
 
   const accounts: Account[] = accountsData || [];
-
-  // Create a map of account_id to account for quick lookup
-  const accountsMap = React.useMemo(() => {
+  const accountsMap = useMemo(() => {
     const map = new Map<number, Account>();
     accounts.forEach((acc) => map.set(acc.id, acc));
     return map;
@@ -144,8 +130,6 @@ export default function TransactionsScreen() {
     queryKey: ["transactions", filterType],
     queryFn: async () => {
       const params: Record<string, string> = {};
-      // Only filter by transaction type for income/expense/transfer
-      // asset/liability filtering is done client-side based on account type
       if (
         filterType !== "all" &&
         filterType !== "asset" &&
@@ -155,29 +139,16 @@ export default function TransactionsScreen() {
       }
       const result = await transactionService.getAll(params);
       if (result.success && result.data) {
-        // Handle Laravel paginated response structure
-        // API returns: { success: true, data: { data: { data: [...] } } } OR { success: true, data: { data: [...] } }
         const laravelResponse = result.data as any;
-
-        let transactionsData: Transaction[] = [];
-
-        // Check for triply nested: laravelResponse.data.data (array)
-        if (
-          laravelResponse.data?.data &&
-          Array.isArray(laravelResponse.data.data)
-        ) {
-          transactionsData = laravelResponse.data.data;
+        let data: Transaction[] = [];
+        if (laravelResponse.data?.data && Array.isArray(laravelResponse.data.data)) {
+          data = laravelResponse.data.data;
+        } else if (Array.isArray(laravelResponse.data)) {
+          data = laravelResponse.data;
+        } else if (Array.isArray(laravelResponse)) {
+          data = laravelResponse;
         }
-        // Check for doubly nested: laravelResponse.data (array)
-        else if (Array.isArray(laravelResponse.data)) {
-          transactionsData = laravelResponse.data;
-        }
-        // Check if laravelResponse itself is an array
-        else if (Array.isArray(laravelResponse)) {
-          transactionsData = laravelResponse;
-        }
-
-        return transactionsData;
+        return data;
       }
       throw new Error(result.error || "Failed to load transactions");
     },
@@ -185,117 +156,80 @@ export default function TransactionsScreen() {
 
   const transactions = transactionsData || [];
 
-  // Helper to get account type for a transaction
-  const getTransactionAccountType = useCallback(
-    (t: Transaction): AccountType | undefined => {
-      // First try the nested account object
-      if (t.account?.account_type) {
-        return t.account.account_type;
-      }
-      // Fall back to looking up by account_id in our accounts map
-      if (t.account_id) {
-        const account = accountsMap.get(t.account_id);
-        return account?.account_type;
-      }
-      return undefined;
-    },
-    [accountsMap],
-  );
-
-  // Filter and sort transactions
   const filteredTransactions = useCallback(() => {
     let filtered = [...transactions];
-
-    // Filter by transaction type
     if (filterType !== "all") {
       filtered = filtered.filter((t) => t.type === filterType);
     }
-
-    // Search filter
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (t) =>
-          t.merchant_name?.toLowerCase().includes(query) ||
-          t.description?.toLowerCase().includes(query) ||
-          t.category?.name?.toLowerCase().includes(query),
+          t.merchant_name?.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q) ||
+          t.category?.name?.toLowerCase().includes(q),
       );
     }
-
-    // Sort
     filtered.sort((a, b) => {
       if (sortBy === "date") {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return sortOrder === "desc" ? dateB - dateA : dateA - dateB;
-      } else {
-        const amountA = parseFloat(String(a.amount)) || 0;
-        const amountB = parseFloat(String(b.amount)) || 0;
-        return sortOrder === "desc" ? amountB - amountA : amountA - amountB;
+        const dA = new Date(a.date).getTime();
+        const dB = new Date(b.date).getTime();
+        return sortOrder === "desc" ? dB - dA : dA - dB;
       }
+      const aA = parseFloat(String(a.amount)) || 0;
+      const aB = parseFloat(String(b.amount)) || 0;
+      return sortOrder === "desc" ? aB - aA : aA - aB;
     });
-
     return filtered;
   }, [transactions, searchQuery, sortBy, sortOrder, filterType]);
 
-  const handleSort = (by: "date" | "amount") => {
-    if (sortBy === by) {
-      setSortOrder(sortOrder === "desc" ? "asc" : "desc");
-    } else {
-      setSortBy(by);
-      setSortOrder("desc");
-    }
-    setSortMenuVisible(false);
+  const handleSort = () => {
+    if (sortBy === "date") setSortBy("amount");
+    else setSortBy("date");
+    setSortOrder("desc");
   };
 
-  const getTransactionIcon = (type: TransactionType) => {
+  const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
-      case "income":
-        return "arrow-down-circle";
-      case "expense":
-        return "arrow-up-circle";
-      case "transfer":
-        return "bank-transfer";
-      case "asset":
-        return "wallet";
-      case "liability":
-        return "credit-card";
-      default:
-        return "cash";
+      case "income": return ArrowDownLeft;
+      case "expense": return ArrowUpRight;
+      case "transfer": return ArrowLeftRight;
+      case "asset": return Wallet;
+      case "liability": return CreditCard;
+      default: return Receipt;
     }
   };
 
-  const getTransactionColor = (type: TransactionType) => {
+  const getTone = (type: TransactionType) => {
     switch (type) {
-      case "income":
-        return colors.tertiary;
-      case "expense":
-        return colors.error;
-      case "transfer":
-        return colors.primary;
-      case "asset":
-        return "#4CAF50"; // Green for assets
-      case "liability":
-        return "#FF9800"; // Orange for liabilities
-      default:
-        return colors.onSurfaceVariant;
+      case "income": return "success" as const;
+      case "expense": return "danger" as const;
+      case "transfer": return "primary" as const;
+      case "asset": return "success" as const;
+      case "liability": return "warning" as const;
+      default: return "neutral" as const;
+    }
+  };
+
+  const getAmountColor = (type: TransactionType) => {
+    switch (type) {
+      case "income": return colors.tertiary;
+      case "expense": return colors.error;
+      default: return colors.onSurface;
     }
   };
 
   const handleEditTransaction = (item: Transaction) => {
-    // Handle API structure: payment_method for account, transaction_categories for category
-    // Category: check transaction_categories array first, then fallback to category_id/category
     let categoryId: number | undefined = item.category_id || item.category?.id;
     let subcategoryId: number | undefined =
       item.subcategory_id || item.subcategory?.id;
 
     if (item.transaction_categories && item.transaction_categories.length > 0) {
-      const primaryCategory = item.transaction_categories[0];
-      categoryId = primaryCategory.category_id;
-      subcategoryId = primaryCategory.subcategory_id;
+      const primary = item.transaction_categories[0];
+      categoryId = primary.category_id;
+      subcategoryId = primary.subcategory_id;
     }
 
-    // Account: check payment_method first, then account_id/account
     const accountId =
       item.payment_method || item.account_id || item.account?.id;
 
@@ -316,98 +250,31 @@ export default function TransactionsScreen() {
     });
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={styles.transactionRow}>
-      <TouchableOpacity
-        style={styles.transactionItem}
-        onPress={() => handleEditTransaction(item)}
-        onLongPress={() => showTransactionActions(item)}
-      >
-        <View
-          style={[
-            styles.transactionIcon,
-            { backgroundColor: `${getTransactionColor(item.type)}20` },
-          ]}
-        >
-          <MaterialCommunityIcons
-            name={getTransactionIcon(item.type)}
-            size={24}
-            color={getTransactionColor(item.type)}
-          />
-        </View>
-        <View style={styles.transactionInfo}>
-          <Text
-            variant="bodyLarge"
-            style={{ color: colors.onSurface }}
-            numberOfLines={1}
-          >
-            {item.merchant_name || item.description || "Transaction"}
-          </Text>
-          <View style={styles.transactionMeta}>
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              {formatDate(item.date)}
-            </Text>
-            {item.category && (
-              <Chip
-                compact
-                textStyle={{ fontSize: 10 }}
-                style={styles.categoryChip}
-              >
-                {item.category.name}
-              </Chip>
-            )}
-          </View>
-        </View>
-        <Text
-          variant="titleMedium"
-          style={{
-            color: getTransactionColor(item.type),
-            fontWeight: "600",
-            marginRight: 4,
-          }}
-        >
-          {item.type === "expense" ? "-" : item.type === "income" ? "+" : ""}
-          {formatAmount(parseFloat(String(item.amount)) || 0)}
-        </Text>
-      </TouchableOpacity>
-      <IconButton
-        icon="dots-vertical"
-        size={20}
-        onPress={() => showTransactionActions(item)}
-        style={styles.menuButton}
-      />
-    </View>
-  );
-
-  const renderSectionHeader = (date: string) => (
-    <View
-      style={[styles.sectionHeader, { backgroundColor: colors.background }]}
-    >
-      <Text variant="labelLarge" style={{ color: colors.onSurfaceVariant }}>
-        {formatDate(date, { weekday: "long", month: "long", day: "numeric" })}
-      </Text>
-    </View>
-  );
-
-  // Group transactions by date
-  const groupedTransactions = useCallback(() => {
+  const groupedTransactions = useMemo(() => {
     const filtered = filteredTransactions();
     const groups: { date: string; data: Transaction[] }[] = [];
     let currentDate = "";
-
-    filtered.forEach((transaction) => {
-      const date = transaction.date.split("T")[0];
+    filtered.forEach((t) => {
+      const date = t.date.split("T")[0];
       if (date !== currentDate) {
         currentDate = date;
         groups.push({ date, data: [] });
       }
-      groups[groups.length - 1].data.push(transaction);
+      groups[groups.length - 1].data.push(t);
     });
-
     return groups;
+  }, [filteredTransactions]);
+
+  const totalExpense = useMemo(() => {
+    return filteredTransactions()
+      .filter((t) => t.type === "expense")
+      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
+  }, [filteredTransactions]);
+
+  const totalIncome = useMemo(() => {
+    return filteredTransactions()
+      .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
   }, [filteredTransactions]);
 
   return (
@@ -415,146 +282,123 @@ export default function TransactionsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Transactions"
-        subtitle="Search, sort, and manage activity"
-        right={
-          <Menu
-            visible={sortMenuVisible}
-            onDismiss={() => setSortMenuVisible(false)}
-            anchor={
-              <IconButton
-                icon="sort"
-                size={24}
-                iconColor="#102033"
-                onPress={() => setSortMenuVisible(true)}
-              />
-            }
-          >
-            <Menu.Item
-              leadingIcon={sortBy === "date" ? "check" : undefined}
-              onPress={() => handleSort("date")}
-              title={`Date ${sortBy === "date" ? (sortOrder === "desc" ? "(Newest)" : "(Oldest)") : ""}`}
-            />
-            <Menu.Item
-              leadingIcon={sortBy === "amount" ? "check" : undefined}
-              onPress={() => handleSort("amount")}
-              title={`Amount ${sortBy === "amount" ? (sortOrder === "desc" ? "(Highest)" : "(Lowest)") : ""}`}
-            />
-          </Menu>
-        }
-      />
-
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <Searchbar
-          placeholder="Search transactions..."
-          onChangeText={setSearchQuery}
-          value={searchQuery}
-          style={[styles.searchbar, { backgroundColor: colors.surfaceVariant }]}
-          inputStyle={{ fontSize: 14 }}
+      <View style={styles.headerWrap}>
+        <ScreenHeader
+          title="Activity"
+          subtitle="Transactions"
+          right={
+            <Pressable
+              onPress={handleSort}
+              style={[
+                styles.sortBtn,
+                { backgroundColor: colors.surfaceVariant },
+              ]}
+              hitSlop={6}
+            >
+              <ArrowUpDown size={18} color={colors.onSurface} strokeWidth={2.2} />
+            </Pressable>
+          }
         />
       </View>
 
-      {/* Filter Chips */}
-      <View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filters}
-        >
-          <Chip
-            selected={filterType === "all"}
-            onPress={() => setFilterType("all")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "all" ? "flat" : "outlined"}
-          >
-            All
-          </Chip>
-          <Chip
-            selected={filterType === "income"}
-            onPress={() => setFilterType("income")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "income" ? "flat" : "outlined"}
-          >
+      {/* Totals summary */}
+      <View style={styles.summaryRow}>
+        <View style={[styles.summaryCard, { backgroundColor: colors.tertiaryContainer }]}>
+          <Text style={[styles.summaryLabel, { color: colors.onTertiaryContainer }]}>
             Income
-          </Chip>
-          <Chip
-            selected={filterType === "expense"}
-            onPress={() => setFilterType("expense")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "expense" ? "flat" : "outlined"}
-          >
-            Expenses
-          </Chip>
-          <Chip
-            selected={filterType === "transfer"}
-            onPress={() => setFilterType("transfer")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "transfer" ? "flat" : "outlined"}
-          >
-            Transfers
-          </Chip>
-          <Chip
-            selected={filterType === "asset"}
-            onPress={() => setFilterType("asset")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "asset" ? "flat" : "outlined"}
-          >
-            Assets
-          </Chip>
-          <Chip
-            selected={filterType === "liability"}
-            onPress={() => setFilterType("liability")}
-            style={styles.filterChip}
-            showSelectedCheck={false}
-            mode={filterType === "liability" ? "flat" : "outlined"}
-          >
-            Liabilities
-          </Chip>
-        </ScrollView>
+          </Text>
+          <Text style={[styles.summaryValue, { color: colors.onTertiaryContainer }]}>
+            {formatAmount(totalIncome)}
+          </Text>
+        </View>
+        <View style={[styles.summaryCard, { backgroundColor: colors.errorContainer }]}>
+          <Text style={[styles.summaryLabel, { color: colors.onErrorContainer }]}>
+            Expense
+          </Text>
+          <Text style={[styles.summaryValue, { color: colors.onErrorContainer }]}>
+            {formatAmount(totalExpense)}
+          </Text>
+        </View>
       </View>
 
-      {/* Transactions List */}
+      {errorMessage && (
+        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+          <AlertBar
+            tone="error"
+            message={errorMessage}
+            onClose={() => setErrorMessage(null)}
+          />
+        </View>
+      )}
+
+      {/* Search */}
+      <View style={styles.searchWrap}>
+        <View
+          style={[styles.searchBox, { backgroundColor: colors.surfaceVariant }]}
+        >
+          <Search size={18} color={colors.onSurfaceVariant} strokeWidth={2} />
+          <TextInput
+            placeholder="Search transactions"
+            placeholderTextColor={colors.onSurfaceVariant}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={[styles.searchInput, { color: colors.onSurface }]}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+              <X size={16} color={colors.onSurfaceVariant} strokeWidth={2} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Filter Chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filters}
+      >
+        {FILTERS.map((f) => (
+          <Chip
+            key={f.key}
+            label={f.label}
+            selected={filterType === f.key}
+            onPress={() => setFilterType(f.key)}
+          />
+        ))}
+      </ScrollView>
+
+      {/* List */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : filteredTransactions().length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons
-            name="receipt-text-outline"
-            size={64}
-            color={colors.onSurfaceVariant}
-          />
-          <Text
-            variant="titleMedium"
-            style={{ color: colors.onSurfaceVariant, marginTop: 16 }}
-          >
-            No transactions found
-          </Text>
-          <Text
-            variant="bodyMedium"
-            style={{
-              color: colors.onSurfaceVariant,
-              textAlign: "center",
-              marginTop: 8,
-            }}
-          >
-            {searchQuery
+        <EmptyState
+          icon={Receipt}
+          title="No transactions yet"
+          message={
+            searchQuery
               ? "Try a different search term"
-              : "Add your first transaction to get started"}
-          </Text>
-        </View>
+              : "Add your first transaction to get started."
+          }
+          action={
+            !searchQuery
+              ? {
+                  label: "Add transaction",
+                  onPress: () => router.push("/transaction-modal"),
+                }
+              : undefined
+          }
+        />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          showsVerticalScrollIndicator={true}
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: 120,
+            gap: spacing.md,
+          }}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -564,222 +408,307 @@ export default function TransactionsScreen() {
             />
           }
         >
-          {groupedTransactions().map((group) => (
-            <Surface
-              key={group.date}
-              style={[styles.dateGroup, { backgroundColor: colors.surface }]}
-              elevation={1}
-            >
-              {renderSectionHeader(group.date)}
-              {group.data.map((transaction, index) => (
-                <React.Fragment key={transaction.id}>
-                  {renderTransaction({ item: transaction })}
-                  {index < group.data.length - 1 && (
-                    <Divider style={{ marginLeft: 72 }} />
-                  )}
-                </React.Fragment>
-              ))}
-            </Surface>
+          {groupedTransactions.map((group) => (
+            <View key={group.date} style={{ gap: spacing.sm }}>
+              <Text
+                style={[styles.dateHeader, { color: colors.onSurfaceVariant }]}
+              >
+                {formatDate(group.date, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </Text>
+              <Card variant="elevated" padding={0} radiusSize="xl">
+                {group.data.map((t, idx) => {
+                  const Icon = getIcon(t.type);
+                  return (
+                    <Pressable
+                      key={t.id}
+                      onPress={() => handleEditTransaction(t)}
+                      onLongPress={() => {
+                        setSelectedTransaction(t);
+                        setShowActionSheet(true);
+                      }}
+                    >
+                      {({ pressed }) => (
+                        <View
+                          style={[
+                            styles.txnRow,
+                            {
+                              borderBottomColor: colors.outlineVariant,
+                              borderBottomWidth:
+                                idx < group.data.length - 1
+                                  ? StyleSheet.hairlineWidth
+                                  : 0,
+                              opacity: pressed ? 0.6 : 1,
+                            },
+                          ]}
+                        >
+                          <IconBadge icon={Icon} tone={getTone(t.type)} size="md" />
+                          <View style={styles.txnTextBlock}>
+                            <Text
+                              style={[styles.txnTitle, { color: colors.onSurface }]}
+                              numberOfLines={1}
+                            >
+                              {t.merchant_name || t.description || "Transaction"}
+                            </Text>
+                            <View style={styles.txnMetaRow}>
+                              <Text
+                                style={[
+                                  styles.txnSub,
+                                  { color: colors.onSurfaceVariant },
+                                ]}
+                              >
+                                {formatDate(t.date)}
+                              </Text>
+                              {t.category && (
+                                <Badge
+                                  label={t.category.name}
+                                  tone="neutral"
+                                  size="sm"
+                                />
+                              )}
+                            </View>
+                          </View>
+                          <Text
+                            style={[
+                              styles.txnAmount,
+                              { color: getAmountColor(t.type) },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {t.type === "expense"
+                              ? "−"
+                              : t.type === "income"
+                                ? "+"
+                                : ""}
+                            {formatAmount(parseFloat(String(t.amount)) || 0)}
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              setSelectedTransaction(t);
+                              setShowActionSheet(true);
+                            }}
+                            hitSlop={6}
+                          >
+                            <MoreVertical
+                              size={18}
+                              color={colors.onSurfaceVariant}
+                              strokeWidth={2}
+                            />
+                          </Pressable>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </Card>
+            </View>
           ))}
         </ScrollView>
       )}
 
       {/* FAB */}
-      <FAB
-        icon="plus"
-        style={[
-          styles.fab,
-          { backgroundColor: colors.primary, bottom: 16 + insets.bottom },
-        ]}
-        color="#ffffff"
+      <Pressable
         onPress={() => router.push("/transaction-modal")}
-      />
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: 20 + insets.bottom, opacity: pressed ? 0.85 : 1 },
+          shadow.lg,
+        ]}
+      >
+        <LinearGradient
+          colors={gradients.primary as any}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <Plus size={24} color="#ffffff" strokeWidth={2.4} />
+      </Pressable>
 
       {/* Action Sheet Modal */}
-      <Portal>
-        <Modal
-          visible={showActionSheet}
-          onDismiss={closeActionSheet}
-          contentContainerStyle={[
-            styles.actionSheetContainer,
-            { backgroundColor: colors.surface },
-          ]}
+      <Modal
+        visible={showActionSheet}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActionSheet(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowActionSheet(false)}
         >
-          {selectedTransaction && (
-            <>
-              {/* Header */}
-              <View style={styles.actionSheetHeader}>
-                <View
-                  style={[
-                    styles.actionSheetIcon,
-                    {
-                      backgroundColor: `${getTransactionColor(selectedTransaction.type)}20`,
-                    },
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name={getTransactionIcon(selectedTransaction.type)}
-                    size={28}
-                    color={getTransactionColor(selectedTransaction.type)}
-                  />
-                </View>
-                <View style={styles.actionSheetInfo}>
-                  <Text
-                    variant="titleMedium"
-                    style={{ color: colors.onSurface }}
-                    numberOfLines={1}
-                  >
-                    {selectedTransaction.merchant_name ||
-                      selectedTransaction.description ||
-                      "Transaction"}
-                  </Text>
-                  <Text
-                    variant="titleLarge"
-                    style={{
-                      color: getTransactionColor(selectedTransaction.type),
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {selectedTransaction.type === "expense"
-                      ? "-"
-                      : selectedTransaction.type === "income"
-                        ? "+"
-                        : ""}
-                    {formatAmount(
-                      parseFloat(String(selectedTransaction.amount)) || 0,
-                    )}
-                  </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    {formatDate(selectedTransaction.date, {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </Text>
-                </View>
-              </View>
-
-              <Divider style={{ marginVertical: 16 }} />
-
-              {/* Actions */}
-              <TouchableOpacity
-                style={styles.actionSheetButton}
-                onPress={handleEditPress}
-              >
-                <MaterialCommunityIcons
-                  name="pencil"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text
-                  variant="bodyLarge"
-                  style={[
-                    styles.actionSheetButtonText,
-                    { color: colors.onSurface },
-                  ]}
-                >
-                  Edit Transaction
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={24}
-                  color={colors.onSurfaceVariant}
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionSheetButton}
-                onPress={handleDeletePress}
-              >
-                <MaterialCommunityIcons
-                  name="delete"
-                  size={24}
-                  color={colors.error}
-                />
-                <Text
-                  variant="bodyLarge"
-                  style={[
-                    styles.actionSheetButtonText,
-                    { color: colors.error },
-                  ]}
-                >
-                  Delete Transaction
-                </Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={24}
-                  color={colors.error}
-                />
-              </TouchableOpacity>
-
-              <Button
-                mode="outlined"
-                onPress={closeActionSheet}
-                style={styles.actionSheetCancel}
-              >
-                Cancel
-              </Button>
-            </>
-          )}
-        </Modal>
-      </Portal>
-
-      {/* Delete Confirmation Modal */}
-      <Portal>
-        <Modal
-          visible={showDeleteConfirm}
-          onDismiss={() => setShowDeleteConfirm(false)}
-          contentContainerStyle={[
-            styles.deleteConfirmContainer,
-            { backgroundColor: colors.surface },
-          ]}
-        >
-          <MaterialCommunityIcons
-            name="alert-circle"
-            size={48}
-            color={colors.error}
-            style={{ alignSelf: "center" }}
-          />
-          <Text
-            variant="titleLarge"
-            style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}
-          >
-            Delete Transaction?
-          </Text>
-          <Text
-            variant="bodyMedium"
+          <Pressable
             style={[
-              styles.deleteConfirmText,
-              { color: colors.onSurfaceVariant },
+              styles.actionSheet,
+              { backgroundColor: colors.surface },
+              shadow.lg,
             ]}
+            onPress={(e) => e.stopPropagation()}
           >
-            This action cannot be undone. The transaction will be permanently
-            removed.
-          </Text>
-          <View style={styles.deleteConfirmButtons}>
-            <Button
-              mode="outlined"
-              onPress={() => setShowDeleteConfirm(false)}
-              style={styles.deleteConfirmButton}
+            {selectedTransaction && (
+              <>
+                <View style={styles.actionSheetHeader}>
+                  <IconBadge
+                    icon={getIcon(selectedTransaction.type)}
+                    tone={getTone(selectedTransaction.type)}
+                    size="lg"
+                  />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      style={[
+                        styles.actionTitle,
+                        { color: colors.onSurface },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {selectedTransaction.merchant_name ||
+                        selectedTransaction.description ||
+                        "Transaction"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.actionAmount,
+                        { color: getAmountColor(selectedTransaction.type) },
+                      ]}
+                    >
+                      {selectedTransaction.type === "expense"
+                        ? "−"
+                        : selectedTransaction.type === "income"
+                          ? "+"
+                          : ""}
+                      {formatAmount(
+                        parseFloat(String(selectedTransaction.amount)) || 0,
+                      )}
+                    </Text>
+                    <Text
+                      style={[styles.actionDate, { color: colors.onSurfaceVariant }]}
+                    >
+                      {formatDate(selectedTransaction.date, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={[styles.divider, { backgroundColor: colors.outlineVariant }]} />
+
+                <Pressable
+                  onPress={() => {
+                    handleEditTransaction(selectedTransaction);
+                    setShowActionSheet(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.actionSheetButton,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <IconBadge icon={Edit3} tone="primary" size="sm" />
+                  <Text
+                    style={[styles.actionBtnText, { color: colors.onSurface }]}
+                  >
+                    Edit transaction
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    setShowActionSheet(false);
+                    setTimeout(() => setShowDeleteConfirm(true), 150);
+                  }}
+                  style={({ pressed }) => [
+                    styles.actionSheetButton,
+                    { opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <IconBadge icon={Trash2} tone="danger" size="sm" />
+                  <Text
+                    style={[styles.actionBtnText, { color: colors.error }]}
+                  >
+                    Delete transaction
+                  </Text>
+                </Pressable>
+
+                <Button
+                  label="Cancel"
+                  variant="secondary"
+                  fullWidth
+                  onPress={() => setShowActionSheet(false)}
+                  style={{ marginTop: spacing.md }}
+                />
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Delete Confirm Modal */}
+      <Modal
+        visible={showDeleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowDeleteConfirm(false)}
+        >
+          <Pressable
+            style={[
+              styles.confirmCard,
+              { backgroundColor: colors.surface },
+              shadow.lg,
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View
+              style={[
+                styles.confirmIcon,
+                { backgroundColor: colors.errorContainer },
+              ]}
             >
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              buttonColor={colors.error}
-              onPress={handleConfirmDelete}
-              style={styles.deleteConfirmButton}
-              loading={deleteMutation.isPending}
-            >
-              Delete
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
+              <TriangleAlert
+                size={28}
+                color={colors.error}
+                strokeWidth={2.2}
+              />
+            </View>
+            <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
+              Delete transaction?
+            </Text>
+            <Text style={[styles.confirmText, { color: colors.onSurfaceVariant }]}>
+              This action cannot be undone. The transaction will be permanently
+              removed.
+            </Text>
+            <View style={styles.confirmButtons}>
+              <Button
+                label="Cancel"
+                variant="secondary"
+                fullWidth
+                onPress={() => setShowDeleteConfirm(false)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                label="Delete"
+                variant="destructive"
+                fullWidth
+                loading={deleteMutation.isPending}
+                onPress={() => {
+                  if (selectedTransaction) {
+                    deleteMutation.mutate(selectedTransaction.id);
+                  }
+                  setShowDeleteConfirm(false);
+                  setSelectedTransaction(null);
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -788,157 +717,186 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  headerWrap: {
+    paddingHorizontal: spacing.lg,
+  },
+  sortBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
+    justifyContent: "center",
   },
-  title: {
-    fontWeight: "bold",
+  summaryRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
   },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
+  summaryCard: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    gap: 2,
   },
-  searchbar: {
-    borderRadius: 12,
-    elevation: 0,
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  summaryValue: {
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  searchWrap: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  searchBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    height: 46,
+    borderRadius: radius.pill,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
   },
   filters: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  filterChip: {
-    height: 32,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 32,
+  dateHeader: {
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    paddingHorizontal: spacing.xs,
   },
-  listContent: {
-    padding: 16,
-    paddingBottom: 100,
-  },
-  dateGroup: {
-    borderRadius: 12,
-    marginBottom: 12,
-    overflow: "hidden",
-  },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  transactionRow: {
+  txnRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  transactionItem: {
+  txnTextBlock: {
     flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  txnTitle: {
+    fontSize: 14.5,
+    fontWeight: "600",
+  },
+  txnMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
-    paddingRight: 8,
+    gap: spacing.sm,
   },
-  menuButton: {
-    marginRight: 4,
+  txnSub: {
+    fontSize: 12,
   },
-  transactionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  transactionInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  transactionMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 4,
-  },
-  categoryChip: {
-    height: 20,
+  txnAmount: {
+    fontSize: 15,
+    fontWeight: "700",
   },
   fab: {
     position: "absolute",
-    right: 16,
-    bottom: 16,
+    right: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
-  // Action Sheet Styles
-  actionSheetContainer: {
-    margin: 16,
-    marginTop: "auto",
-    borderRadius: 20,
-    padding: 20,
-    paddingBottom: 32,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  actionSheet: {
+    margin: spacing.lg,
+    padding: spacing.xl,
+    borderRadius: radius.xxl,
+    gap: spacing.md,
   },
   actionSheetHeader: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.md,
   },
-  actionSheetIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
+  actionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
   },
-  actionSheetInfo: {
-    flex: 1,
+  actionAmount: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  actionDate: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing.xs,
   },
   actionSheetButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
-    paddingHorizontal: 4,
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  actionSheetButtonText: {
+  actionBtnText: {
     flex: 1,
-    marginLeft: 16,
+    fontSize: 15,
+    fontWeight: "600",
   },
-  actionSheetCancel: {
-    marginTop: 16,
-    borderRadius: 12,
+  confirmCard: {
+    margin: spacing.xl,
+    padding: spacing.xxl,
+    borderRadius: radius.xxl,
+    alignItems: "center",
+    alignSelf: "center",
+    marginTop: "auto",
+    marginBottom: "auto",
+    gap: spacing.md,
+    maxWidth: 400,
   },
-  // Delete Confirmation Styles
-  deleteConfirmContainer: {
-    margin: 24,
-    borderRadius: 20,
-    padding: 24,
+  confirmIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  deleteConfirmTitle: {
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: "800",
     textAlign: "center",
-    marginTop: 16,
-    fontWeight: "bold",
   },
-  deleteConfirmText: {
+  confirmText: {
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
-    marginTop: 8,
-    marginBottom: 24,
+    maxWidth: 300,
   },
-  deleteConfirmButtons: {
+  confirmButtons: {
     flexDirection: "row",
-    gap: 12,
-  },
-  deleteConfirmButton: {
-    flex: 1,
-    borderRadius: 12,
+    gap: spacing.md,
+    marginTop: spacing.md,
+    alignSelf: "stretch",
   },
 });

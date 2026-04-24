@@ -1,29 +1,43 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   RefreshControl,
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { Stack, router } from "expo-router";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  LogOut,
+  Monitor,
+  ShieldCheck,
+  Smartphone,
+  LucideIcon,
+} from "lucide-react-native";
+
 import { useTheme } from "../src/contexts/ThemeContext";
-import { BrandedHeader } from "../src/components";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  IconBadge,
+  ScreenHeader,
+} from "../src/components/ui";
 import { authService, Session } from "../src/services/authService";
+import { radius, shadow, spacing } from "../src/constants/theme";
 
 export default function SessionsScreen() {
   const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const queryClient = useQueryClient();
   const [revokingId, setRevokingId] = useState<number | null>(null);
 
-  // Fetch sessions
   const {
     data: sessionsData,
     isLoading,
@@ -43,22 +57,16 @@ export default function SessionsScreen() {
 
   const sessions = sessionsData || [];
 
-  // Revoke session mutation
   const revokeSessionMutation = useMutation({
     mutationFn: (sessionId: number) => authService.revokeSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       Alert.alert("Success", "Session revoked successfully");
     },
-    onError: () => {
-      Alert.alert("Error", "Failed to revoke session");
-    },
-    onSettled: () => {
-      setRevokingId(null);
-    },
+    onError: () => Alert.alert("Error", "Failed to revoke session"),
+    onSettled: () => setRevokingId(null),
   });
 
-  // Revoke all other sessions mutation
   const revokeAllMutation = useMutation({
     mutationFn: () => authService.revokeOtherSessions(),
     onSuccess: (result) => {
@@ -69,14 +77,12 @@ export default function SessionsScreen() {
       };
       Alert.alert("Success", data?.message || "All other sessions revoked");
     },
-    onError: () => {
-      Alert.alert("Error", "Failed to revoke sessions");
-    },
+    onError: () => Alert.alert("Error", "Failed to revoke sessions"),
   });
 
   const handleRevokeSession = (sessionId: number) => {
     Alert.alert(
-      "Revoke Session",
+      "Revoke session",
       "Are you sure you want to revoke this session? The device will be logged out.",
       [
         { text: "Cancel", style: "cancel" },
@@ -98,14 +104,13 @@ export default function SessionsScreen() {
       Alert.alert("Info", "No other sessions to revoke");
       return;
     }
-
     Alert.alert(
-      "Revoke All Sessions",
+      "Revoke all sessions",
       `Are you sure you want to revoke ${otherSessions.length} other session(s)? All other devices will be logged out.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Revoke All",
+          text: "Revoke all",
           style: "destructive",
           onPress: () => revokeAllMutation.mutate(),
         },
@@ -113,31 +118,25 @@ export default function SessionsScreen() {
     );
   };
 
-  const getDeviceIcon = (browser: string) => {
-    if (browser === "Mobile App") return "cellphone";
-    return "monitor";
-  };
-
-  const styles = createStyles(colors, isDark);
+  const getDeviceIcon = (browser: string): LucideIcon =>
+    browser === "Mobile App" ? Smartphone : Monitor;
 
   return (
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
+        {
+          backgroundColor: colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+        },
       ]}
     >
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <BrandedHeader
-        title="Login Activity"
-        subtitle="Review and revoke active sessions"
-        showBack
-      />
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <ScreenHeader title="Login activity" subtitle="Active sessions" showBack />
+      </View>
 
       <ScrollView
         style={styles.scrollView}
@@ -149,280 +148,236 @@ export default function SessionsScreen() {
             tintColor={colors.primary}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <MaterialCommunityIcons
-            name="shield-account"
-            size={48}
-            color={colors.primary}
-          />
-          <Text style={styles.headerTitle}>Active Sessions</Text>
-          <Text style={styles.headerDescription}>
-            These are the devices currently logged into your account. You can
-            revoke any session to sign out from that device.
+        <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.infoCard}>
+          <View
+            style={[
+              styles.infoIcon,
+              { backgroundColor: colors.primaryContainer },
+            ]}
+          >
+            <ShieldCheck size={28} color={colors.primary} strokeWidth={2.2} />
+          </View>
+          <Text style={[styles.infoTitle, { color: colors.onSurface }]}>
+            Your active sessions
           </Text>
-        </View>
+          <Text
+            style={[styles.infoDescription, { color: colors.onSurfaceVariant }]}
+          >
+            These are the devices currently logged into your account. Revoke any
+            session to sign out from that device.
+          </Text>
+        </Card>
 
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading sessions...</Text>
           </View>
         ) : sessions.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons
-              name="shield-check"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>No active sessions found</Text>
-          </View>
+          <EmptyState
+            icon={ShieldCheck}
+            title="No active sessions"
+            message="Once you sign in on a device, it'll appear here."
+          />
         ) : (
-          <>
-            {sessions.map((session) => (
-              <View
-                key={session.id}
-                style={[
-                  styles.sessionCard,
-                  session.is_current && styles.currentSession,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.sessionIcon,
-                    session.is_current && styles.currentSessionIcon,
-                  ]}
+          <View style={{ gap: spacing.md }}>
+            {sessions.map((session) => {
+              const Icon = getDeviceIcon(session.browser);
+              return (
+                <Card
+                  key={session.id}
+                  variant={session.is_current ? "tinted" : "elevated"}
+                  tint={session.is_current ? colors.tertiaryContainer : undefined}
+                  padding="lg"
+                  radiusSize="xl"
                 >
-                  <MaterialCommunityIcons
-                    name={getDeviceIcon(session.browser)}
-                    size={24}
-                    color={session.is_current ? "#10b981" : colors.primary}
-                  />
-                </View>
-
-                <View style={styles.sessionInfo}>
-                  <View style={styles.sessionHeader}>
-                    <Text style={styles.sessionName}>
-                      {session.device_name}
-                    </Text>
-                    {session.is_current && (
-                      <View style={styles.currentBadge}>
-                        <Text style={styles.currentBadgeText}>Current</Text>
+                  <View style={styles.sessionRow}>
+                    <IconBadge
+                      icon={Icon}
+                      tone={session.is_current ? "success" : "primary"}
+                      size="lg"
+                      shape="rounded"
+                    />
+                    <View style={styles.sessionInfo}>
+                      <View style={styles.sessionHeader}>
+                        <Text
+                          style={[
+                            styles.sessionName,
+                            { color: colors.onSurface },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {session.device_name}
+                        </Text>
+                        {session.is_current && (
+                          <Badge
+                            label="Current"
+                            tone="success"
+                            size="sm"
+                            solid
+                          />
+                        )}
                       </View>
+                      <Text
+                        style={[
+                          styles.sessionDetail,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                      >
+                        {session.browser} • {session.platform}
+                      </Text>
+                      <View style={styles.sessionMeta}>
+                        <Text
+                          style={[
+                            styles.sessionIp,
+                            { color: colors.onSurfaceVariant },
+                          ]}
+                        >
+                          {session.ip_address}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.sessionTime,
+                            { color: colors.onSurfaceVariant },
+                          ]}
+                        >
+                          Last active: {session.last_active}
+                        </Text>
+                      </View>
+                    </View>
+                    {!session.is_current && (
+                      <Pressable
+                        onPress={() => handleRevokeSession(session.id)}
+                        disabled={revokingId === session.id}
+                        style={({ pressed }) => [
+                          styles.revokeButton,
+                          { borderColor: colors.error, opacity: pressed ? 0.6 : 1 },
+                        ]}
+                      >
+                        {revokingId === session.id ? (
+                          <ActivityIndicator size="small" color={colors.error} />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.revokeButtonText,
+                              { color: colors.error },
+                            ]}
+                          >
+                            Revoke
+                          </Text>
+                        )}
+                      </Pressable>
                     )}
                   </View>
-                  <Text style={styles.sessionDetails}>
-                    {session.browser} • {session.platform}
-                  </Text>
-                  <View style={styles.sessionMeta}>
-                    <Text style={styles.sessionIp}>{session.ip_address}</Text>
-                    <Text style={styles.sessionTime}>
-                      Last active: {session.last_active}
-                    </Text>
-                  </View>
-                </View>
-
-                {!session.is_current && (
-                  <TouchableOpacity
-                    style={styles.revokeButton}
-                    onPress={() => handleRevokeSession(session.id)}
-                    disabled={revokingId === session.id}
-                  >
-                    {revokingId === session.id ? (
-                      <ActivityIndicator size="small" color="#ef4444" />
-                    ) : (
-                      <Text style={styles.revokeButtonText}>Revoke</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+                </Card>
+              );
+            })}
 
             {sessions.filter((s) => !s.is_current).length > 0 && (
-              <TouchableOpacity
-                style={styles.revokeAllButton}
+              <Button
+                label="Revoke all other sessions"
+                variant="destructive"
+                icon={LogOut}
+                fullWidth
+                loading={revokeAllMutation.isPending}
                 onPress={handleRevokeAll}
-                disabled={revokeAllMutation.isPending}
-              >
-                {revokeAllMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons
-                      name="logout"
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text style={styles.revokeAllButtonText}>
-                      Revoke All Other Sessions
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                style={{ marginTop: spacing.md }}
+              />
             )}
-          </>
+          </View>
         )}
       </ScrollView>
     </View>
   );
 }
 
-const createStyles = (colors: any, isDark: boolean) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    scrollView: {
-      flex: 1,
-    },
-    scrollContent: {
-      padding: 16,
-    },
-    header: {
-      alignItems: "center",
-      marginBottom: 24,
-      padding: 20,
-      backgroundColor: colors.card,
-      borderRadius: 16,
-    },
-    headerTitle: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: colors.text,
-      marginTop: 12,
-      marginBottom: 8,
-    },
-    headerDescription: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: "center",
-      lineHeight: 20,
-    },
-    loadingContainer: {
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 60,
-    },
-    loadingText: {
-      marginTop: 12,
-      fontSize: 14,
-      color: colors.textSecondary,
-    },
-    emptyContainer: {
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 60,
-    },
-    emptyText: {
-      marginTop: 12,
-      fontSize: 16,
-      color: colors.textSecondary,
-    },
-    sessionCard: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      padding: 16,
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(148, 163, 184, 0.2)" : "#e5e7eb",
-    },
-    currentSession: {
-      borderColor: "#10b981",
-      backgroundColor: isDark
-        ? "rgba(16, 185, 129, 0.1)"
-        : "rgba(16, 185, 129, 0.05)",
-    },
-    sessionIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      backgroundColor: isDark
-        ? "rgba(59, 130, 246, 0.2)"
-        : "rgba(59, 130, 246, 0.1)",
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 12,
-    },
-    currentSessionIcon: {
-      backgroundColor: isDark
-        ? "rgba(16, 185, 129, 0.2)"
-        : "rgba(16, 185, 129, 0.1)",
-    },
-    sessionInfo: {
-      flex: 1,
-    },
-    sessionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 4,
-    },
-    sessionName: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.text,
-      marginRight: 8,
-    },
-    currentBadge: {
-      backgroundColor: "#10b981",
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 12,
-    },
-    currentBadgeText: {
-      fontSize: 10,
-      fontWeight: "700",
-      color: "#fff",
-      textTransform: "uppercase",
-    },
-    sessionDetails: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      marginBottom: 4,
-    },
-    sessionMeta: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 12,
-    },
-    sessionIp: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      fontFamily: "monospace",
-    },
-    sessionTime: {
-      fontSize: 12,
-      color: colors.textSecondary,
-    },
-    revokeButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 8,
-      borderWidth: 1.5,
-      borderColor: "#ef4444",
-      minWidth: 80,
-      alignItems: "center",
-    },
-    revokeButtonText: {
-      fontSize: 13,
-      fontWeight: "600",
-      color: "#ef4444",
-    },
-    revokeAllButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      backgroundColor: "#ef4444",
-      padding: 16,
-      borderRadius: 12,
-      marginTop: 16,
-    },
-    revokeAllButtonText: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: "#fff",
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  infoCard: {
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  infoIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  infoDescription: {
+    fontSize: 13.5,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 320,
+  },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  sessionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  sessionInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  sessionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  sessionName: {
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
+  },
+  sessionDetail: {
+    fontSize: 12.5,
+  },
+  sessionMeta: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 2,
+  },
+  sessionIp: {
+    fontSize: 11.5,
+    fontFamily: "monospace",
+  },
+  sessionTime: {
+    fontSize: 11.5,
+  },
+  revokeButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    minWidth: 78,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  revokeButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+});

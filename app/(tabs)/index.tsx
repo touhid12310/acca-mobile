@@ -4,34 +4,57 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
+  Pressable,
   Image,
-} from "react-native";
-import {
-  Text,
-  Card,
   ActivityIndicator,
-  Surface,
-  Divider,
-} from "react-native-paper";
+  Text,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowLeftRight,
+  Camera,
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Receipt,
+  Sparkles,
+  SlidersHorizontal,
+  User2,
+  Wallet,
+} from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
-import { BrandedHeader } from "../../src/components";
+import {
+  Card,
+  SectionHeader,
+  IconBadge,
+  EmptyState,
+  ProgressBar,
+  Badge,
+  PeriodModal,
+  computePeriodRange,
+  PeriodRange,
+} from "../../src/components/ui";
 import dashboardService, {
   DashboardData,
 } from "../../src/services/dashboardService";
+import transactionService from "../../src/services/transactionService";
 import { formatRelativeTime } from "../../src/utils/date";
+import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 export default function DashboardScreen() {
   const { user } = useAuth();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
+  const [balanceHidden, setBalanceHidden] = React.useState(false);
 
   const {
     data: dashboardData,
@@ -43,11 +66,8 @@ export default function DashboardScreen() {
     queryFn: async (): Promise<DashboardData> => {
       const result = await dashboardService.getDashboardData();
       if (result.success && result.data) {
-        // Handle wrapped response { data: DashboardData, message?: string }
         const data = result.data as DashboardData | { data: DashboardData };
-        if ("totalBalance" in data) {
-          return data;
-        }
+        if ("totalBalance" in data) return data;
         return (data as { data: DashboardData }).data;
       }
       throw new Error(result.error || "Failed to load dashboard");
@@ -58,84 +78,65 @@ export default function DashboardScreen() {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 18) return "Good Afternoon";
-    return "Good Evening";
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
   };
 
-  const StatCard = ({
-    title,
-    value,
-    icon,
-    color,
-    trend,
-  }: {
-    title: string;
-    value: string;
-    icon: string;
-    color: string;
-    trend?: "up" | "down" | null;
-  }) => (
-    <Surface
-      style={[styles.statCard, { backgroundColor: colors.surface }]}
-      elevation={1}
-    >
-      <View
-        style={[styles.statIconContainer, { backgroundColor: `${color}20` }]}
-      >
-        <MaterialCommunityIcons name={icon as never} size={24} color={color} />
-      </View>
-      <View style={styles.statContent}>
-        <Text
-          variant="bodySmall"
-          style={[styles.statTitle, { color: colors.onSurfaceVariant }]}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {title}
-        </Text>
-        <View style={styles.statValueRow}>
-          <Text
-            variant="titleMedium"
-            style={[styles.statValue, { color: colors.onSurface }]}
-          >
-            {value}
-          </Text>
-          {trend && (
-            <MaterialCommunityIcons
-              name={trend === "up" ? "trending-up" : "trending-down"}
-              size={18}
-              color={trend === "up" ? colors.tertiary : colors.error}
-            />
-          )}
-        </View>
-      </View>
-    </Surface>
+  const maskAmount = (value: number) =>
+    balanceHidden ? "••••••" : formatAmount(value);
+
+  // Period filter state + modal
+  const [periodModalVisible, setPeriodModalVisible] = React.useState(false);
+  const [period, setPeriod] = React.useState<PeriodRange>(() =>
+    computePeriodRange("this_month"),
   );
 
-  const QuickAction = ({
-    icon,
-    label,
-    onPress,
-    color,
-  }: {
-    icon: string;
-    label: string;
-    onPress: () => void;
-    color: string;
-  }) => (
-    <TouchableOpacity style={styles.quickAction} onPress={onPress}>
-      <View style={[styles.quickActionIcon, { backgroundColor: `${color}20` }]}>
-        <MaterialCommunityIcons name={icon as never} size={24} color={color} />
-      </View>
-      <Text
-        variant="bodySmall"
-        style={[styles.quickActionLabel, { color: colors.onSurface }]}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  const toApiDate = (d: Date) => d.toISOString().split("T")[0];
+
+  // Fetch period-specific transactions to compute income/expense totals
+  const { data: periodTotals } = useQuery<{
+    income: number;
+    expenses: number;
+  }>({
+    queryKey: [
+      "dashboard-period",
+      period.preset,
+      toApiDate(period.start),
+      toApiDate(period.end),
+    ],
+    queryFn: async () => {
+      const result = await transactionService.getAll({
+        start_date: toApiDate(period.start),
+        end_date: toApiDate(period.end),
+        per_page: 1000,
+      });
+      let rows: any[] = [];
+      if (result.success && result.data) {
+        const payload: any = result.data;
+        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
+        else if (Array.isArray(payload?.data)) rows = payload.data;
+        else if (Array.isArray(payload)) rows = payload;
+      }
+      let income = 0;
+      let expenses = 0;
+      for (const t of rows) {
+        const amount = parseFloat(String(t.amount)) || 0;
+        if (t.type === "income") income += amount;
+        else if (t.type === "expense") expenses += amount;
+      }
+      return { income, expenses };
+    },
+  });
+
+  const displayedIncome =
+    period.preset === "this_month"
+      ? stats?.monthlyIncome || 0
+      : periodTotals?.income || 0;
+  const displayedExpenses =
+    period.preset === "this_month"
+      ? stats?.monthlyExpenses || 0
+      : periodTotals?.expenses || 0;
 
   if (isLoading) {
     return (
@@ -166,77 +167,132 @@ export default function DashboardScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <BrandedHeader
-          title={user?.name || "Dashboard"}
-          subtitle={`${getGreeting()}, welcome back`}
-          right={
-            <TouchableOpacity
-              style={[
-                styles.avatarContainer,
-                { backgroundColor: colors.primaryContainer },
-              ]}
-              onPress={() => router.push("/(tabs)/more")}
+        {/* Greeting Row */}
+        <View style={styles.greetingRow}>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[styles.greetingLabel, { color: colors.onSurfaceVariant }]}
             >
-              {user?.profile_picture_url ? (
-                <Image
-                  source={{ uri: user.profile_picture_url }}
-                  style={styles.avatarImage}
-                />
-              ) : (
-                <MaterialCommunityIcons
-                  name="account"
-                  size={28}
-                  color={colors.primary}
-                />
-              )}
-            </TouchableOpacity>
-          }
-          style={styles.brandedHeader}
-        />
-
-        {/* Net Worth Card */}
-        <Card
-          style={[styles.netWorthCard, { backgroundColor: colors.primary }]}
-          mode="elevated"
-        >
-          <Card.Content style={styles.netWorthContent}>
-            <Text style={styles.netWorthLabel}>Net Worth</Text>
-            <Text style={styles.netWorthValue}>
-              {formatAmount(stats?.netWorth || 0)}
+              {getGreeting()}
             </Text>
-          </Card.Content>
-        </Card>
-
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <StatCard
-            title="Monthly Income"
-            value={formatAmount(stats?.monthlyIncome || 0)}
-            icon="arrow-up-circle"
-            color={colors.tertiary}
-            trend="up"
-          />
-          <StatCard
-            title="Monthly Expenses"
-            value={formatAmount(stats?.monthlyExpenses || 0)}
-            icon="arrow-down-circle"
-            color={colors.error}
-          />
+            <Text style={[styles.greetingName, { color: colors.onSurface }]}>
+              {user?.name?.split(" ")[0] || "there"} 👋
+            </Text>
+          </View>
+          <Pressable
+            style={[
+              styles.avatarContainer,
+              { backgroundColor: colors.surfaceVariant },
+            ]}
+            onPress={() => router.push("/(tabs)/more")}
+          >
+            {user?.profile_picture_url ? (
+              <Image
+                source={{ uri: user.profile_picture_url }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <User2 size={22} color={colors.onSurface} strokeWidth={2} />
+            )}
+          </Pressable>
         </View>
+
+        {/* Hero Balance Card */}
+        <View style={styles.heroWrap}>
+          <LinearGradient
+            colors={gradients.heroAccent as any}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.hero, shadow.lg]}
+          >
+            <View style={styles.heroHeader}>
+              <View style={styles.heroBadge}>
+                <Wallet size={12} color="#ffffff" strokeWidth={2.4} />
+                <Text style={styles.heroBadgeText}>Net Worth</Text>
+              </View>
+              <View style={styles.heroHeaderRight}>
+                <Pressable
+                  onPress={() => setPeriodModalVisible(true)}
+                  hitSlop={6}
+                  style={styles.heroPeriodBtn}
+                >
+                  <Text style={styles.heroPeriodText} numberOfLines={1}>
+                    {period.label}
+                  </Text>
+                  <ChevronDown
+                    size={14}
+                    color="rgba(255,255,255,0.9)"
+                    strokeWidth={2.4}
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={() => setBalanceHidden((v) => !v)}
+                  hitSlop={6}
+                  style={styles.heroEye}
+                >
+                  {balanceHidden ? (
+                    <EyeOff size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
+                  ) : (
+                    <Eye size={16} color="rgba(255,255,255,0.9)" strokeWidth={2.2} />
+                  )}
+                </Pressable>
+              </View>
+            </View>
+
+            <Text style={styles.heroValue}>
+              {maskAmount(stats?.netWorth || 0)}
+            </Text>
+
+            <View style={styles.heroFooter}>
+              <View style={styles.heroFooterItem}>
+                <View style={[styles.heroIconCircle, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
+                  <ArrowDownLeft size={13} color="#ffffff" strokeWidth={2.6} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.heroFooterLabel} numberOfLines={1}>
+                    Income
+                  </Text>
+                  <Text style={styles.heroFooterValue} numberOfLines={1}>
+                    {maskAmount(displayedIncome)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.heroDivider} />
+              <View style={styles.heroFooterItem}>
+                <View style={[styles.heroIconCircle, { backgroundColor: "rgba(255,255,255,0.18)" }]}>
+                  <ArrowUpRight size={13} color="#ffffff" strokeWidth={2.6} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.heroFooterLabel} numberOfLines={1}>
+                    Expense
+                  </Text>
+                  <Text style={styles.heroFooterValue} numberOfLines={1}>
+                    {maskAmount(displayedExpenses)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </LinearGradient>
+        </View>
+
+        <PeriodModal
+          visible={periodModalVisible}
+          onClose={() => setPeriodModalVisible(false)}
+          current={period}
+          onSelect={(range) => {
+            setPeriod(range);
+          }}
+        />
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text
-            variant="titleMedium"
-            style={[styles.sectionTitle, { color: colors.onSurface }]}
-          >
-            Quick Actions
-          </Text>
+          <SectionHeader title="Quick actions" />
           <View style={styles.quickActions}>
             <QuickAction
-              icon="plus-circle"
-              label="Add Expense"
-              color={colors.error}
+              icon={ArrowUpRight}
+              label="Expense"
+              bg={colors.errorContainer}
+              fg={colors.error}
               onPress={() =>
                 router.push({
                   pathname: "/transaction-modal",
@@ -245,9 +301,10 @@ export default function DashboardScreen() {
               }
             />
             <QuickAction
-              icon="cash-plus"
-              label="Add Income"
-              color={colors.tertiary}
+              icon={ArrowDownLeft}
+              label="Income"
+              bg={colors.tertiaryContainer}
+              fg={colors.tertiary}
               onPress={() =>
                 router.push({
                   pathname: "/transaction-modal",
@@ -256,9 +313,10 @@ export default function DashboardScreen() {
               }
             />
             <QuickAction
-              icon="bank-transfer"
+              icon={ArrowLeftRight}
               label="Transfer"
-              color={colors.primary}
+              bg={colors.primaryContainer}
+              fg={colors.primary}
               onPress={() =>
                 router.push({
                   pathname: "/transaction-modal",
@@ -267,9 +325,10 @@ export default function DashboardScreen() {
               }
             />
             <QuickAction
-              icon="camera"
-              label="Scan Receipt"
-              color="#9c27b0"
+              icon={Camera}
+              label="Scan"
+              bg={colors.infoContainer}
+              fg={colors.info}
               onPress={() =>
                 router.push({
                   pathname: "/transaction-modal",
@@ -280,191 +339,206 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Recent Transactions */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text
-              variant="titleMedium"
-              style={[styles.sectionTitle, { color: colors.onSurface }]}
-            >
-              Recent Transactions
-            </Text>
-            <TouchableOpacity
-              onPress={() => router.push("/(tabs)/transactions")}
-            >
-              <Text style={{ color: colors.primary }}>See All</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Surface
-            style={[
-              styles.transactionsList,
-              { backgroundColor: colors.surface },
-            ]}
-            elevation={1}
-          >
-            {stats?.recentTransactions &&
-            stats.recentTransactions.length > 0 ? (
-              stats.recentTransactions.slice(0, 5).map((transaction, index) => (
-                <React.Fragment key={transaction.id}>
-                  <TouchableOpacity
-                    style={styles.transactionItem}
-                    onPress={() =>
-                      router.push(`/(tabs)/transactions?id=${transaction.id}`)
-                    }
-                  >
-                    <View
-                      style={[
-                        styles.transactionIcon,
-                        {
-                          backgroundColor:
-                            transaction.type === "income"
-                              ? `${colors.tertiary}20`
-                              : `${colors.error}20`,
-                        },
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name={
-                          transaction.type === "income"
-                            ? "arrow-down-circle"
-                            : "arrow-up-circle"
-                        }
-                        size={24}
-                        color={
-                          transaction.type === "income"
-                            ? colors.tertiary
-                            : colors.error
-                        }
-                      />
-                    </View>
-                    <View style={styles.transactionInfo}>
-                      <Text
-                        variant="bodyMedium"
-                        style={{ color: colors.onSurface }}
-                        numberOfLines={1}
-                      >
-                        {transaction.merchant_name || "Transaction"}
-                      </Text>
-                      <Text
-                        variant="bodySmall"
-                        style={{ color: colors.onSurfaceVariant }}
-                      >
-                        {formatRelativeTime(transaction.date)}
-                      </Text>
-                    </View>
-                    <Text
-                      variant="titleSmall"
-                      style={{
-                        color:
-                          transaction.type === "income"
-                            ? colors.tertiary
-                            : colors.error,
-                      }}
-                    >
-                      {transaction.type === "income" ? "+" : "-"}
-                      {formatAmount(transaction.amount)}
-                    </Text>
-                  </TouchableOpacity>
-                  {index < (stats.recentTransactions?.length || 0) - 1 && (
-                    <Divider style={{ marginLeft: 72 }} />
-                  )}
-                </React.Fragment>
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <MaterialCommunityIcons
-                  name="receipt"
-                  size={48}
-                  color={colors.onSurfaceVariant}
-                />
-                <Text
-                  variant="bodyMedium"
-                  style={{ color: colors.onSurfaceVariant, marginTop: 8 }}
-                >
-                  No recent transactions
-                </Text>
-              </View>
-            )}
-          </Surface>
-        </View>
-
         {/* Budget Summary */}
         {stats?.budgetSummary && (
           <View style={styles.section}>
-            <Text
-              variant="titleMedium"
-              style={[styles.sectionTitle, { color: colors.onSurface }]}
-            >
-              Budget Overview
-            </Text>
-            <Surface
-              style={[styles.budgetCard, { backgroundColor: colors.surface }]}
-              elevation={1}
-            >
+            <SectionHeader
+              title="Budget overview"
+              actionLabel="Details"
+              onActionPress={() => router.push("/budgets")}
+            />
+            <Card variant="elevated" padding="lg" radiusSize="xl">
               <View style={styles.budgetHeader}>
                 <View>
                   <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
+                    style={[styles.budgetLabel, { color: colors.onSurfaceVariant }]}
                   >
-                    Spent
+                    Spent this month
                   </Text>
-                  <Text
-                    variant="titleMedium"
-                    style={{ color: colors.onSurface }}
-                  >
-                    {formatAmount(stats.budgetSummary.total_spent)}
+                  <Text style={[styles.budgetSpent, { color: colors.onSurface }]}>
+                    {maskAmount(stats.budgetSummary.total_spent)}
                   </Text>
                 </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    Remaining
-                  </Text>
-                  <Text
-                    variant="titleMedium"
-                    style={{ color: colors.tertiary }}
-                  >
-                    {formatAmount(stats.budgetSummary.remaining)}
-                  </Text>
-                </View>
-              </View>
-              <View
-                style={[
-                  styles.budgetProgress,
-                  { backgroundColor: colors.surfaceVariant },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.budgetProgressFill,
-                    {
-                      backgroundColor: colors.primary,
-                      width: `${Math.min(
-                        (stats.budgetSummary.total_spent /
-                          stats.budgetSummary.total_budgeted) *
-                          100,
-                        100,
-                      )}%`,
-                    },
-                  ]}
+                <Badge
+                  label={`${Math.round(
+                    (stats.budgetSummary.total_spent /
+                      Math.max(stats.budgetSummary.total_budgeted, 1)) *
+                      100,
+                  )}% used`}
+                  tone={
+                    stats.budgetSummary.total_spent >
+                    stats.budgetSummary.total_budgeted
+                      ? "danger"
+                      : "primary"
+                  }
+                  size="md"
                 />
               </View>
-              <Text
-                variant="bodySmall"
-                style={{ color: colors.onSurfaceVariant, marginTop: 8 }}
-              >
-                {formatAmount(stats.budgetSummary.total_budgeted)} budgeted this
-                month
-              </Text>
-            </Surface>
+              <ProgressBar
+                value={stats.budgetSummary.total_spent}
+                max={Math.max(stats.budgetSummary.total_budgeted, 1)}
+                gradient={gradients.primary as unknown as readonly [string, string]}
+                height={10}
+              />
+              <View style={styles.budgetFooter}>
+                <Text
+                  style={[
+                    styles.budgetFooterText,
+                    { color: colors.onSurfaceVariant },
+                  ]}
+                >
+                  Budget {maskAmount(stats.budgetSummary.total_budgeted)}
+                </Text>
+                <Text
+                  style={[styles.budgetFooterText, { color: colors.tertiary }]}
+                >
+                  {maskAmount(stats.budgetSummary.remaining)} left
+                </Text>
+              </View>
+            </Card>
           </View>
         )}
+
+        {/* Recent Transactions */}
+        <View style={styles.section}>
+          <SectionHeader
+            title="Recent activity"
+            actionLabel="See all"
+            onActionPress={() => router.push("/(tabs)/transactions")}
+          />
+          <Card variant="elevated" padding={0} radiusSize="xl">
+            {stats?.recentTransactions && stats.recentTransactions.length > 0 ? (
+              stats.recentTransactions.slice(0, 5).map((t, idx) => {
+                const isIncome = t.type === "income";
+                return (
+                  <Pressable
+                    key={t.id}
+                    onPress={() =>
+                      router.push(`/(tabs)/transactions?id=${t.id}`)
+                    }
+                  >
+                    {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.txnRow,
+                          {
+                            borderBottomColor: colors.outlineVariant,
+                            borderBottomWidth:
+                              idx < (stats.recentTransactions?.length || 0) - 1
+                                ? StyleSheet.hairlineWidth
+                                : 0,
+                            opacity: pressed ? 0.6 : 1,
+                          },
+                        ]}
+                      >
+                        <IconBadge
+                          icon={isIncome ? ArrowDownLeft : ArrowUpRight}
+                          tone={isIncome ? "success" : "danger"}
+                          size="md"
+                        />
+                        <View style={styles.txnTextBlock}>
+                          <Text
+                            style={[styles.txnTitle, { color: colors.onSurface }]}
+                            numberOfLines={1}
+                          >
+                            {t.merchant_name || t.description || "Transaction"}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.txnSub,
+                              { color: colors.onSurfaceVariant },
+                            ]}
+                          >
+                            {formatRelativeTime(t.date)}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.txnAmount,
+                            {
+                              color: isIncome ? colors.tertiary : colors.onSurface,
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {isIncome ? "+" : "−"}
+                          {maskAmount(t.amount)}
+                        </Text>
+                        <ChevronRight
+                          size={16}
+                          color={colors.onSurfaceVariant}
+                          strokeWidth={2}
+                        />
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })
+            ) : (
+              <EmptyState
+                icon={Receipt}
+                title="No transactions yet"
+                message="Start tracking by adding your first expense or income."
+                compact
+              />
+            )}
+          </Card>
+        </View>
+
+        {/* AI Insights Teaser */}
+        <Pressable onPress={() => router.push("/(tabs)/chat")}>
+          <LinearGradient
+            colors={gradients.ocean as any}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.insightCard, shadow.md]}
+          >
+            <View style={styles.insightIcon}>
+              <Sparkles size={20} color="#ffffff" strokeWidth={2.2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.insightTitle}>Ask the AI assistant</Text>
+              <Text style={styles.insightSub}>
+                Get instant insights about your spending
+              </Text>
+            </View>
+            <ChevronRight size={20} color="#ffffff" strokeWidth={2.2} />
+          </LinearGradient>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function QuickAction({
+  icon: Icon,
+  label,
+  bg,
+  fg,
+  onPress,
+}: {
+  icon: any;
+  label: string;
+  bg: string;
+  fg: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable style={styles.quickActionWrapper} onPress={onPress}>
+      {({ pressed }) => (
+        <View
+          style={[styles.quickAction, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: bg }]}>
+            <Icon size={22} color={fg} strokeWidth={2.3} />
+          </View>
+          <Text style={[styles.quickActionLabel, { color: colors.onSurface }]}>
+            {label}
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -478,162 +552,246 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.lg,
   },
-  brandedHeader: {
-    marginHorizontal: 0,
-    marginTop: 0,
-  },
-  header: {
+  greetingRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    gap: spacing.md,
   },
-  greeting: {
-    marginBottom: 2,
+  greetingLabel: {
+    fontSize: 13,
+    fontWeight: "500",
   },
-  userName: {
-    fontWeight: "bold",
+  greetingName: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginTop: 2,
   },
   avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: "center",
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
     alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
   },
   avatarImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  netWorthCard: {
-    marginBottom: 16,
-    borderRadius: 16,
-  },
-  netWorthContent: {
-    padding: 8,
-  },
-  netWorthLabel: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 14,
-  },
-  netWorthValue: {
-    color: "#ffffff",
-    fontSize: 32,
-    fontWeight: "bold",
-    marginVertical: 8,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-    borderRadius: 12,
-  },
-  statIconContainer: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
+    borderRadius: radius.pill,
+  },
+  heroWrap: {
+    borderRadius: radius.xxl,
+    overflow: "hidden",
+  },
+  hero: {
+    borderRadius: radius.xxl,
+    padding: spacing.lg,
+    gap: spacing.md,
+    overflow: "hidden",
+  },
+  heroHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    marginRight: 12,
+    gap: spacing.sm,
   },
-  statContent: {
-    flex: 1,
+  heroHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  statTitle: {
-    marginBottom: 2,
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
   },
-  statValueRow: {
+  heroBadgeText: {
+    color: "#ffffff",
+    fontSize: 10.5,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  heroPeriodBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    maxWidth: 140,
   },
-  statValue: {
+  heroPeriodText: {
+    color: "#ffffff",
+    fontSize: 11.5,
+    fontWeight: "700",
+  },
+  heroEye: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroValue: {
+    color: "#ffffff",
+    fontSize: 30,
+    fontWeight: "800",
+    letterSpacing: -0.6,
+    marginTop: 2,
+  },
+  heroFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: radius.md,
+    padding: 10,
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  heroFooterItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 0,
+  },
+  heroIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: "rgba(255,255,255,0.25)",
+  },
+  heroFooterLabel: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 10,
     fontWeight: "600",
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  heroFooterValue: {
+    color: "#ffffff",
+    fontSize: 13.5,
+    fontWeight: "700",
+    marginTop: 1,
   },
   section: {
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontWeight: "600",
-    marginBottom: 12,
+    gap: spacing.md,
   },
   quickActions: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  quickActionWrapper: {
+    flex: 1,
   },
   quickAction: {
     alignItems: "center",
-    flex: 1,
+    gap: 8,
   },
   quickActionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    justifyContent: "center",
+    width: 56,
+    height: 56,
+    borderRadius: radius.lg,
     alignItems: "center",
-    marginBottom: 8,
+    justifyContent: "center",
   },
   quickActionLabel: {
-    textAlign: "center",
+    fontSize: 12.5,
+    fontWeight: "600",
   },
-  transactionsList: {
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  transactionItem: {
+  statsGrid: {
     flexDirection: "row",
-    alignItems: "center",
-    padding: 16,
-  },
-  transactionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  transactionInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  emptyState: {
-    padding: 32,
-    alignItems: "center",
-  },
-  budgetCard: {
-    padding: 16,
-    borderRadius: 12,
+    gap: spacing.md,
   },
   budgetHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 12,
+    alignItems: "flex-start",
+    marginBottom: spacing.md,
   },
-  budgetProgress: {
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
+  budgetLabel: {
+    fontSize: 12,
+    fontWeight: "500",
   },
-  budgetProgressFill: {
-    height: "100%",
-    borderRadius: 4,
+  budgetSpent: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginTop: 2,
+  },
+  budgetFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: spacing.md,
+  },
+  budgetFooterText: {
+    fontSize: 12.5,
+    fontWeight: "600",
+  },
+  txnRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  txnTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  txnTitle: {
+    fontSize: 14.5,
+    fontWeight: "600",
+  },
+  txnSub: {
+    fontSize: 12,
+  },
+  txnAmount: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  insightCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    gap: spacing.md,
+  },
+  insightIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  insightTitle: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  insightSub: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12.5,
+    marginTop: 2,
   },
 });

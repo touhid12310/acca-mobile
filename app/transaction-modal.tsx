@@ -1,12 +1,13 @@
 import React from 'react';
-import { StyleSheet, View, ActivityIndicator, Animated, Easing } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Animated, Easing, Modal, Pressable, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Portal, Modal, Text, Button } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { CheckCircle2, XCircle } from 'lucide-react-native';
 
 import { useTheme } from '../src/contexts/ThemeContext';
+import { Button } from '../src/components/ui';
+import { radius, shadow, spacing } from '../src/constants/theme';
 import TransactionFormContent, {
   TransactionFormData,
 } from '../src/components/transactions/TransactionFormContent';
@@ -459,16 +460,19 @@ export default function TransactionModalScreen() {
         }
       />
 
-      <Portal>
-        <Modal
-          visible={statusAlert.visible}
-          onDismiss={() => {
-            if (statusAlert.type === 'error') {
-              hideStatusAlert();
-            }
+      <Modal
+        visible={statusAlert.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (statusAlert.type === 'error') hideStatusAlert();
+        }}
+      >
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => {
+            if (statusAlert.type === 'error') hideStatusAlert();
           }}
-          dismissable={statusAlert.type === 'error'}
-          contentContainerStyle={styles.statusAlertModal}
         >
           <Animated.View
             style={[
@@ -478,6 +482,7 @@ export default function TransactionModalScreen() {
                 opacity: alertOpacity,
                 transform: [{ scale: alertScale }],
               },
+              shadow.lg,
             ]}
           >
             <Animated.View
@@ -486,8 +491,8 @@ export default function TransactionModalScreen() {
                 {
                   backgroundColor:
                     statusAlert.type === 'success'
-                      ? `${colors.tertiary}20`
-                      : `${colors.error}20`,
+                      ? colors.tertiaryContainer
+                      : colors.errorContainer,
                 },
                 statusAlert.type === 'success'
                   ? {
@@ -497,31 +502,33 @@ export default function TransactionModalScreen() {
                   : null,
               ]}
             >
-              <MaterialCommunityIcons
-                name={statusAlert.type === 'success' ? 'check-circle' : 'close-circle'}
-                size={48}
-                color={statusAlert.type === 'success' ? colors.tertiary : colors.error}
-              />
+              {statusAlert.type === 'success' ? (
+                <CheckCircle2 size={44} color={colors.tertiary} strokeWidth={2.2} />
+              ) : (
+                <XCircle size={44} color={colors.error} strokeWidth={2.2} />
+              )}
             </Animated.View>
 
-            <Text variant="titleLarge" style={[styles.statusAlertTitle, { color: colors.onSurface }]}>
+            <Text style={[styles.statusAlertTitle, { color: colors.onSurface }]}>
               {statusAlert.title}
             </Text>
             <Text
-              variant="bodyMedium"
               style={[styles.statusAlertMessage, { color: colors.onSurfaceVariant }]}
             >
               {statusAlert.message}
             </Text>
 
             {statusAlert.type === 'error' ? (
-              <Button mode="contained" onPress={hideStatusAlert} style={styles.statusAlertButton}>
-                OK
-              </Button>
+              <Button
+                label="OK"
+                variant="primary"
+                onPress={hideStatusAlert}
+                style={styles.statusAlertButton}
+              />
             ) : null}
           </Animated.View>
-        </Modal>
-      </Portal>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -535,34 +542,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  statusAlertModal: {
-    marginHorizontal: 24,
-  },
-  statusAlertCard: {
-    borderRadius: 18,
-    paddingHorizontal: 20,
-    paddingVertical: 22,
-    alignItems: 'center',
-  },
-  statusAlertIcon: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 14,
+    paddingHorizontal: spacing.xl,
+  },
+  statusAlertCard: {
+    borderRadius: radius.xxl,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    alignItems: 'center',
+    gap: spacing.sm,
+    maxWidth: 360,
+    width: '100%',
+  },
+  statusAlertIcon: {
+    width: 78,
+    height: 78,
+    borderRadius: radius.pill,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
   statusAlertTitle: {
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     textAlign: 'center',
   },
   statusAlertMessage: {
-    marginTop: 8,
+    fontSize: 14,
+    marginTop: spacing.xs,
     textAlign: 'center',
     lineHeight: 20,
   },
   statusAlertButton: {
-    marginTop: 20,
-    minWidth: 120,
+    marginTop: spacing.lg,
+    minWidth: 140,
   },
 });

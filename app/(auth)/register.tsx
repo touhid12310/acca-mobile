@@ -1,85 +1,70 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  TouchableOpacity,
-} from 'react-native';
-import { Text, TextInput, Button, HelperText } from 'react-native-paper';
-import { Link, router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+  Text,
+  Pressable,
+} from "react-native";
+import { Link, router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { Lock, Mail, UserPlus, User2 } from "lucide-react-native";
 
-import { useAuth } from '../../src/contexts/AuthContext';
-import { useTheme } from '../../src/contexts/ThemeContext';
+import { useAuth } from "../../src/contexts/AuthContext";
+import { useTheme } from "../../src/contexts/ThemeContext";
+import { Button, Input, AlertBar } from "../../src/components/ui";
+import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 export default function RegisterScreen() {
   const { register } = useAuth();
   const { colors } = useTheme();
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
-    if (!name.trim()) {
-      newErrors.name = 'Name is required';
-    } else if (name.trim().length < 2) {
-      newErrors.name = 'Name must be at least 2 characters';
-    }
-
-    if (!email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Please enter a valid email';
-    }
-
-    if (!password) {
-      newErrors.password = 'Password is required';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-
-    if (!confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (password !== confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-
+    if (!name.trim()) newErrors.name = "Name is required";
+    else if (name.trim().length < 2)
+      newErrors.name = "Name must be at least 2 characters";
+    if (!email.trim()) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(email))
+      newErrors.email = "Please enter a valid email";
+    if (!password) newErrors.password = "Password is required";
+    else if (password.length < 8)
+      newErrors.password = "Password must be at least 8 characters";
+    if (!confirmPassword)
+      newErrors.confirmPassword = "Please confirm your password";
+    else if (password !== confirmPassword)
+      newErrors.confirmPassword = "Passwords do not match";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleRegister = async () => {
     if (!validateForm()) return;
-
     setIsLoading(true);
     setErrors({});
-
     try {
       const result = await register(
         name.trim(),
         email.trim(),
         password,
-        confirmPassword
+        confirmPassword,
       );
-
       if (result.success) {
-        router.replace('/(tabs)');
+        router.replace("/(tabs)");
       } else {
         setErrors({
-          general: result.message || 'Registration failed. Please try again.',
+          general: result.message || "Registration failed. Please try again.",
         });
-
         if (result.errors) {
           const fieldErrors: Record<string, string> = {};
           Object.entries(result.errors).forEach(([key, messages]) => {
@@ -89,7 +74,7 @@ export default function RegisterScreen() {
         }
       }
     } catch (error) {
-      setErrors({ general: 'An unexpected error occurred. Please try again.' });
+      setErrors({ general: "An unexpected error occurred. Please try again." });
     } finally {
       setIsLoading(false);
     }
@@ -100,175 +85,117 @@ export default function RegisterScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Header */}
-          <View style={styles.header}>
-            <View
-              style={[
-                styles.logoContainer,
-                { backgroundColor: colors.primaryContainer },
-              ]}
+          {/* Hero */}
+          <View style={styles.hero}>
+            <LinearGradient
+              colors={gradients.heroAccent as any}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.logoBadge, shadow.md]}
             >
-              <MaterialCommunityIcons
-                name="account-plus"
-                size={48}
-                color={colors.primary}
-              />
-            </View>
-            <Text variant="headlineMedium" style={[styles.title, { color: colors.onSurface }]}>
-              Create Account
+              <UserPlus size={34} color="#ffffff" strokeWidth={2.2} />
+            </LinearGradient>
+            <Text style={[styles.title, { color: colors.onSurface }]}>
+              Create account
             </Text>
-            <Text variant="bodyMedium" style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-              Start managing your finances today
+            <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
+              Start managing your finances with clarity
             </Text>
           </View>
 
           {/* Form */}
           <View style={styles.form}>
-            {errors.general && (
-              <View
-                style={[
-                  styles.errorBanner,
-                  { backgroundColor: colors.errorContainer },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="alert-circle"
-                  size={20}
-                  color={colors.error}
-                />
-                <Text style={[styles.errorBannerText, { color: colors.error }]}>
-                  {errors.general}
-                </Text>
-              </View>
-            )}
+            {errors.general && <AlertBar tone="error" message={errors.general} />}
 
-            <TextInput
-              label="Full Name"
+            <Input
+              label="Full name"
+              placeholder="Jane Doe"
               value={name}
-              onChangeText={(text) => {
-                setName(text);
-                if (errors.name) setErrors((prev) => ({ ...prev, name: '' }));
+              onChangeText={(t) => {
+                setName(t);
+                if (errors.name) setErrors((p) => ({ ...p, name: "" }));
               }}
-              mode="outlined"
               autoCapitalize="words"
               autoComplete="name"
-              error={!!errors.name}
-              left={<TextInput.Icon icon="account" />}
-              style={styles.input}
+              icon={User2}
+              error={errors.name}
             />
-            {errors.name && (
-              <HelperText type="error" visible={!!errors.name}>
-                {errors.name}
-              </HelperText>
-            )}
-
-            <TextInput
+            <Input
               label="Email"
+              placeholder="you@example.com"
               value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) setErrors((prev) => ({ ...prev, email: '' }));
+              onChangeText={(t) => {
+                setEmail(t);
+                if (errors.email) setErrors((p) => ({ ...p, email: "" }));
               }}
-              mode="outlined"
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
-              error={!!errors.email}
-              left={<TextInput.Icon icon="email" />}
-              style={styles.input}
+              icon={Mail}
+              error={errors.email}
             />
-            {errors.email && (
-              <HelperText type="error" visible={!!errors.email}>
-                {errors.email}
-              </HelperText>
-            )}
-
-            <TextInput
+            <Input
               label="Password"
+              placeholder="At least 8 characters"
               value={password}
-              onChangeText={(text) => {
-                setPassword(text);
-                if (errors.password)
-                  setErrors((prev) => ({ ...prev, password: '' }));
+              onChangeText={(t) => {
+                setPassword(t);
+                if (errors.password) setErrors((p) => ({ ...p, password: "" }));
               }}
-              mode="outlined"
-              secureTextEntry={!showPassword}
               autoCapitalize="none"
               autoComplete="password-new"
-              error={!!errors.password}
-              left={<TextInput.Icon icon="lock" />}
-              right={
-                <TextInput.Icon
-                  icon={showPassword ? 'eye-off' : 'eye'}
-                  onPress={() => setShowPassword(!showPassword)}
-                />
-              }
-              style={styles.input}
+              icon={Lock}
+              secureTextEntry
+              secureToggleable
+              error={errors.password}
             />
-            {errors.password && (
-              <HelperText type="error" visible={!!errors.password}>
-                {errors.password}
-              </HelperText>
-            )}
-
-            <TextInput
-              label="Confirm Password"
+            <Input
+              label="Confirm password"
+              placeholder="Repeat your password"
               value={confirmPassword}
-              onChangeText={(text) => {
-                setConfirmPassword(text);
+              onChangeText={(t) => {
+                setConfirmPassword(t);
                 if (errors.confirmPassword)
-                  setErrors((prev) => ({ ...prev, confirmPassword: '' }));
+                  setErrors((p) => ({ ...p, confirmPassword: "" }));
               }}
-              mode="outlined"
-              secureTextEntry={!showConfirmPassword}
               autoCapitalize="none"
               autoComplete="password-new"
-              error={!!errors.confirmPassword}
-              left={<TextInput.Icon icon="lock-check" />}
-              right={
-                <TextInput.Icon
-                  icon={showConfirmPassword ? 'eye-off' : 'eye'}
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                />
-              }
-              style={styles.input}
+              icon={Lock}
+              secureTextEntry
+              secureToggleable
+              error={errors.confirmPassword}
             />
-            {errors.confirmPassword && (
-              <HelperText type="error" visible={!!errors.confirmPassword}>
-                {errors.confirmPassword}
-              </HelperText>
-            )}
 
             <Button
-              mode="contained"
+              label={isLoading ? "Creating account..." : "Create account"}
               onPress={handleRegister}
               loading={isLoading}
               disabled={isLoading}
-              style={styles.button}
-              contentStyle={styles.buttonContent}
-            >
-              {isLoading ? 'Creating Account...' : 'Create Account'}
-            </Button>
+              fullWidth
+              size="lg"
+              style={{ marginTop: spacing.sm }}
+            />
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
             <Text style={[styles.footerText, { color: colors.onSurfaceVariant }]}>
-              Already have an account?{' '}
+              Already have an account?{" "}
             </Text>
             <Link href="/(auth)/login" asChild>
-              <TouchableOpacity>
+              <Pressable hitSlop={6}>
                 <Text style={[styles.linkText, { color: colors.primary }]}>
-                  Sign In
+                  Sign in
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </Link>
           </View>
         </ScrollView>
@@ -278,71 +205,50 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
   scrollContent: {
     flexGrow: 1,
-    padding: 24,
-    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    justifyContent: "center",
+    gap: spacing.xxl,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 32,
+  hero: {
+    alignItems: "center",
+    gap: spacing.md,
   },
-  logoContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+  logoBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.xxl,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.3,
   },
   subtitle: {
-    textAlign: 'center',
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 300,
   },
   form: {
-    marginBottom: 24,
-  },
-  input: {
-    marginBottom: 4,
-  },
-  button: {
-    marginTop: 16,
-    borderRadius: 8,
-  },
-  buttonContent: {
-    paddingVertical: 8,
+    gap: spacing.lg,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   footerText: {
     fontSize: 14,
   },
   linkText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorBannerText: {
-    marginLeft: 8,
-    flex: 1,
-    fontSize: 14,
+    fontWeight: "700",
   },
 });
