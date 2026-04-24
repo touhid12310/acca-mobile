@@ -5,10 +5,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   BarChart3,
-  Bot,
   LayoutGrid,
   ListChecks,
   Menu,
+  Sparkles,
   LucideIcon,
 } from "lucide-react-native";
 
@@ -18,7 +18,7 @@ import { radius, shadow, gradients } from "../../src/constants/theme";
 const TAB_ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutGrid,
   transactions: ListChecks,
-  chat: Bot,
+  chat: Sparkles,
   reports: BarChart3,
   more: Menu,
 };

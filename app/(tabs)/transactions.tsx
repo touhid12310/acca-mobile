@@ -510,22 +510,26 @@ export default function TransactionsScreen() {
       )}
 
       {/* FAB */}
-      <Pressable
-        onPress={() => router.push("/transaction-modal")}
-        style={({ pressed }) => [
+      <View
+        style={[
           styles.fab,
-          { bottom: 20 + insets.bottom, opacity: pressed ? 0.85 : 1 },
+          { bottom: 20 + insets.bottom },
           shadow.lg,
         ]}
       >
-        <LinearGradient
-          colors={gradients.primary as any}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <Plus size={24} color="#ffffff" strokeWidth={2.4} />
-      </Pressable>
+        <Pressable
+          onPress={() => router.push("/transaction-modal")}
+          style={styles.fabPressable}
+        >
+          <LinearGradient
+            colors={gradients.primary as any}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <Plus size={24} color="#ffffff" strokeWidth={2.4} />
+        </Pressable>
+      </View>
 
       {/* Action Sheet Modal */}
       <Modal
@@ -816,9 +820,12 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: radius.pill,
+    overflow: "hidden",
+  },
+  fabPressable: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
   },
   modalBackdrop: {
     flex: 1,

@@ -13,11 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { BarChart } from "react-native-gifted-charts";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  ArrowLeftRight,
-  Camera,
   ChevronDown,
   ChevronRight,
   Eye,
@@ -190,6 +189,95 @@ export default function DashboardScreen() {
       up: change >= 0,
     };
   }, [displayedIncome, displayedExpenses, lastMonthTotals]);
+
+  // Last 6 months cash flow for the 3D bar chart
+  const cashFlowRange = React.useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return { start, end };
+  }, []);
+
+  const { data: cashFlow } = useQuery<
+    { month: string; income: number; expense: number }[]
+  >({
+    queryKey: [
+      "dashboard-cashflow-6m",
+      toApiDate(cashFlowRange.start),
+      toApiDate(cashFlowRange.end),
+    ],
+    queryFn: async () => {
+      const result = await transactionService.getAll({
+        start_date: toApiDate(cashFlowRange.start),
+        end_date: toApiDate(cashFlowRange.end),
+        per_page: 2000,
+      });
+      let rows: any[] = [];
+      if (result.success && result.data) {
+        const payload: any = result.data;
+        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
+        else if (Array.isArray(payload?.data)) rows = payload.data;
+        else if (Array.isArray(payload)) rows = payload;
+      }
+      const MONTHS = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      const now = new Date();
+      const buckets: { month: string; income: number; expense: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        buckets.push({ month: MONTHS[d.getMonth()], income: 0, expense: 0 });
+      }
+      for (const t of rows) {
+        const d = new Date(t.date);
+        const monthsBack =
+          (now.getFullYear() - d.getFullYear()) * 12 +
+          (now.getMonth() - d.getMonth());
+        if (monthsBack < 0 || monthsBack > 5) continue;
+        const idx = 5 - monthsBack;
+        const amount = parseFloat(String(t.amount)) || 0;
+        if (t.type === "income") buckets[idx].income += amount;
+        else if (t.type === "expense") buckets[idx].expense += amount;
+      }
+      return buckets;
+    },
+  });
+
+  const chartData = React.useMemo(() => {
+    if (!cashFlow) return [];
+    const out: any[] = [];
+    cashFlow.forEach((b) => {
+      out.push({
+        value: b.income,
+        label: b.month,
+        frontColor: "#10b981",
+        gradientColor: "#34d399",
+        spacing: 2,
+        labelWidth: 44,
+        labelTextStyle: {
+          color: colors.onSurfaceVariant,
+          fontSize: 11,
+          fontWeight: "600",
+        },
+      });
+      out.push({
+        value: b.expense,
+        frontColor: "#f43f5e",
+        gradientColor: "#fb7185",
+      });
+    });
+    return out;
+  }, [cashFlow, colors.onSurfaceVariant]);
+
+  const chartMaxValue = React.useMemo(() => {
+    if (!cashFlow || cashFlow.length === 0) return 1000;
+    let max = 0;
+    cashFlow.forEach((b) => {
+      max = Math.max(max, b.income, b.expense);
+    });
+    return max === 0 ? 1000 : Math.ceil((max * 1.15) / 100) * 100;
+  }, [cashFlow]);
 
   if (isLoading) {
     return (
@@ -365,60 +453,88 @@ export default function DashboardScreen() {
           }}
         />
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <SectionHeader title="Quick actions" />
-          <View style={styles.quickActions}>
-            <QuickAction
-              icon={ArrowUpRight}
-              label="Expense"
-              bg={colors.errorContainer}
-              fg={colors.error}
-              onPress={() =>
-                router.push({
-                  pathname: "/transaction-modal",
-                  params: { type: "expense" },
-                })
-              }
+        {/* Cash Flow Chart */}
+        {cashFlow && cashFlow.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader
+              title="Cash flow"
+              actionLabel="Reports"
+              onActionPress={() => router.push("/(tabs)/reports")}
             />
-            <QuickAction
-              icon={ArrowDownLeft}
-              label="Income"
-              bg={colors.tertiaryContainer}
-              fg={colors.tertiary}
-              onPress={() =>
-                router.push({
-                  pathname: "/transaction-modal",
-                  params: { type: "income" },
-                })
-              }
-            />
-            <QuickAction
-              icon={ArrowLeftRight}
-              label="Transfer"
-              bg={colors.primaryContainer}
-              fg={colors.primary}
-              onPress={() =>
-                router.push({
-                  pathname: "/transaction-modal",
-                  params: { type: "transfer" },
-                })
-              }
-            />
-            <QuickAction
-              icon={Camera}
-              label="Scan"
-              bg={colors.infoContainer}
-              fg={colors.info}
-              onPress={() =>
-                router.push({
-                  pathname: "/transaction-modal",
-                  params: { type: "expense", scan_mode: "camera" },
-                })
-              }
-            />
+            <View
+              style={[
+                styles.chartCard,
+                { backgroundColor: colors.surface },
+                shadow.sm,
+              ]}
+            >
+              <View style={styles.chartLegend}>
+                <View style={styles.chartLegendItem}>
+                  <View
+                    style={[styles.chartDot, { backgroundColor: "#10b981" }]}
+                  />
+                  <Text
+                    style={[
+                      styles.chartLegendText,
+                      { color: colors.onSurfaceVariant },
+                    ]}
+                  >
+                    Income
+                  </Text>
+                </View>
+                <View style={styles.chartLegendItem}>
+                  <View
+                    style={[styles.chartDot, { backgroundColor: "#f43f5e" }]}
+                  />
+                  <Text
+                    style={[
+                      styles.chartLegendText,
+                      { color: colors.onSurfaceVariant },
+                    ]}
+                  >
+                    Expense
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.chartLegendLabel,
+                    { color: colors.onSurfaceVariant },
+                  ]}
+                >
+                  Last 6 months
+                </Text>
+              </View>
+
+              <BarChart
+                data={chartData}
+                barWidth={18}
+                spacing={22}
+                initialSpacing={10}
+                roundedTop
+                roundedBottom
+                isThreeD
+                side="right"
+                sideWidth={5}
+                isAnimated
+                animationDuration={700}
+                showGradient
+                maxValue={chartMaxValue}
+                noOfSections={4}
+                yAxisThickness={0}
+                xAxisThickness={0}
+                yAxisTextStyle={{
+                  color: colors.onSurfaceVariant,
+                  fontSize: 10,
+                }}
+                rulesType="solid"
+                rulesColor={colors.outlineVariant}
+                height={160}
+                hideYAxisText
+                disableScroll
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Budget Summary */}
         {stats?.budgetSummary && (
@@ -588,38 +704,6 @@ export default function DashboardScreen() {
         </Pressable>
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function QuickAction({
-  icon: Icon,
-  label,
-  bg,
-  fg,
-  onPress,
-}: {
-  icon: any;
-  label: string;
-  bg: string;
-  fg: string;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Pressable style={styles.quickActionWrapper} onPress={onPress}>
-      {({ pressed }) => (
-        <View
-          style={[styles.quickAction, { opacity: pressed ? 0.7 : 1 }]}
-        >
-          <View style={[styles.quickActionIcon, { backgroundColor: bg }]}>
-            <Icon size={22} color={fg} strokeWidth={2.3} />
-          </View>
-          <Text style={[styles.quickActionLabel, { color: colors.onSurface }]}>
-            {label}
-          </Text>
-        </View>
-      )}
-    </Pressable>
   );
 }
 
@@ -831,28 +915,6 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.md,
-  },
-  quickActions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  quickActionWrapper: {
-    flex: 1,
-  },
-  quickAction: {
-    alignItems: "center",
-    gap: 8,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  quickActionLabel: {
-    fontSize: 12.5,
-    fontWeight: "600",
   },
   statsGrid: {
     flexDirection: "row",
