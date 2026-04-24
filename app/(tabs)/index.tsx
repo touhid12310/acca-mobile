@@ -867,7 +867,8 @@ export default function DashboardScreen() {
               {/* Header: title row + granularity toggle */}
               <View style={styles.breakdownHeaderRow}>
                 <Text
-                  style={[styles.chartTitle, { color: colors.onSurface }]}
+                  style={[styles.chartTitle, styles.breakdownTitle, { color: colors.onSurface }]}
+                  numberOfLines={2}
                 >
                   Expense Breakdown
                 </Text>
@@ -897,11 +898,24 @@ export default function DashboardScreen() {
                   strokeColor={colors.surface}
                   strokeWidth={2}
                   centerLabelComponent={() => (
-                    <View style={{ alignItems: "center" }}>
+                    <View
+                      style={[
+                        styles.pieCenterBox,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(15, 23, 42, 0.96)"
+                            : colors.surface,
+                        },
+                      ]}
+                    >
                       <Text
                         style={[
                           styles.pieCenterLabel,
-                          { color: colors.onSurfaceVariant },
+                          {
+                            color: isDark
+                              ? "rgba(255,255,255,0.68)"
+                              : colors.onSurfaceVariant,
+                          },
                         ]}
                       >
                         Total
@@ -909,7 +923,9 @@ export default function DashboardScreen() {
                       <Text
                         style={[
                           styles.pieCenterValue,
-                          { color: colors.onSurface },
+                          {
+                            color: isDark ? "#ffffff" : colors.onSurface,
+                          },
                         ]}
                         numberOfLines={1}
                       >
@@ -918,7 +934,11 @@ export default function DashboardScreen() {
                       <Text
                         style={[
                           styles.pieCenterPeriod,
-                          { color: colors.onSurfaceVariant },
+                          {
+                            color: isDark
+                              ? "rgba(255,255,255,0.72)"
+                              : colors.onSurfaceVariant,
+                          },
                         ]}
                         numberOfLines={1}
                       >
@@ -1250,14 +1270,17 @@ const granularityStyles = StyleSheet.create({
     flexDirection: "row",
     padding: 3,
     borderRadius: 999,
+    flexShrink: 0,
   },
   segment: {
-    paddingHorizontal: 10,
+    minWidth: 56,
+    alignItems: "center",
+    paddingHorizontal: 7,
     paddingVertical: 5,
     borderRadius: 999,
   },
   segmentText: {
-    fontSize: 11,
+    fontSize: 10.5,
   },
 });
 
@@ -1486,6 +1509,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: -0.2,
   },
+  breakdownTitle: {
+    flex: 1,
+    minWidth: 0,
+    lineHeight: 20,
+  },
   chartSubtitle: {
     fontSize: 12,
     marginTop: 2,
@@ -1567,11 +1595,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.sm,
+    width: "100%",
   },
   donutWrap: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: spacing.sm,
+  },
+  pieCenterBox: {
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
   },
   pieCenterLabel: {
     fontSize: 10,
