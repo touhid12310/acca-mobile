@@ -64,7 +64,8 @@ export const gradients = {
   danger: ["#ef4444", "#dc2626"],
   warning: ["#f59e0b", "#d97706"],
   info: ["#0ea5e9", "#0284c7"],
-  hero: ["#0f172a", "#1e293b", "#334155"],
+  // Align with app dark gradient (top → bottom of main bg)
+  hero: ["#0f213d", "#122a48", "#0b1830"],
   heroAccent: ["#6366f1", "#8b5cf6", "#ec4899"],
   mint: ["#34d399", "#10b981"],
   sunset: ["#f472b6", "#fb923c"],

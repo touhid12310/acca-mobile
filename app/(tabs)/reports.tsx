@@ -1611,6 +1611,7 @@ export default function ReportsScreen() {
       </View>
 
       <ScrollView
+        style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl

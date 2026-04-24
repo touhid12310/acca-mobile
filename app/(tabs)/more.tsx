@@ -163,6 +163,7 @@ export default function MoreScreen() {
       </View>
 
       <ScrollView
+        style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >

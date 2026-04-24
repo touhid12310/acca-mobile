@@ -68,6 +68,10 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Let AppDarkBackground + transparent screen roots show through in dark mode
+        sceneStyle: {
+          backgroundColor: isDark ? "transparent" : colors.background,
+        },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.onSurfaceVariant,
         tabBarStyle: {

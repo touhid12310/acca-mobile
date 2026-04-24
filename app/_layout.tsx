@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,6 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { CurrencyProvider } from '../src/contexts/CurrencyContext';
+import { AppDarkBackground } from '../src/components/ui';
 
 import '../global.css';
 
@@ -37,15 +39,24 @@ function RootLayoutNav() {
   return (
     <PaperProvider theme={theme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: {
-            backgroundColor: theme.colors.background,
-          },
-          animation: 'slide_from_right',
+      <View
+        style={{
+          flex: 1,
+          position: 'relative',
+          // Prevents default gray/white from showing under transparent tab scenes (dark)
+          backgroundColor: isDark ? '#0b1830' : 'transparent',
         }}
       >
+        {isDark && <AppDarkBackground />}
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: {
+              backgroundColor: isDark ? 'transparent' : theme.colors.background,
+            },
+            animation: 'slide_from_right',
+          }}
+        >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -57,7 +68,8 @@ function RootLayoutNav() {
             animation: 'slide_from_bottom',
           }}
         />
-      </Stack>
+        </Stack>
+      </View>
     </PaperProvider>
   );
 }

@@ -18,3 +18,4 @@ export { Chip } from "./Chip";
 export { Skeleton } from "./Skeleton";
 export { PeriodModal, computePeriodRange } from "./PeriodModal";
 export type { PeriodPreset, PeriodRange } from "./PeriodModal";
+export { AppDarkBackground } from "./AppDarkBackground";

@@ -356,6 +356,7 @@ export default function TransactionsScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.filters}
       >
         {FILTERS.map((f) => (
@@ -393,6 +394,7 @@ export default function TransactionsScreen() {
         />
       ) : (
         <ScrollView
+          style={{ backgroundColor: "transparent" }}
           contentContainerStyle={{
             paddingHorizontal: spacing.lg,
             paddingBottom: 120,

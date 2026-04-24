@@ -11,17 +11,21 @@ import {
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { LineChart, PieChart } from "react-native-gifted-charts";
 import {
   ArrowDownLeft,
+  ArrowLeftRight,
   ArrowUpRight,
+  Camera,
   ChevronDown,
   ChevronRight,
+  CircleDollarSign,
   Eye,
   EyeOff,
+  PlusCircle,
   Receipt,
   Sparkles,
   SlidersHorizontal,
@@ -333,6 +337,7 @@ export default function DashboardScreen() {
         liability,
       }));
     },
+    placeholderData: keepPreviousData,
   });
 
   const makeLineData = React.useCallback(
@@ -488,6 +493,7 @@ export default function DashboardScreen() {
       edges={["top"]}
     >
       <ScrollView
+        style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -643,6 +649,99 @@ export default function DashboardScreen() {
             setPeriod(range);
           }}
         />
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <View
+            style={[
+              styles.chartCard,
+              { backgroundColor: colors.surface },
+              shadow.sm,
+            ]}
+          >
+            <View style={styles.quickActionsRow}>
+              {(
+                [
+                  {
+                    key: "expense",
+                    label: "Add Expense",
+                    color: colors.error,
+                    icon: PlusCircle,
+                    onPress: () =>
+                      router.push({
+                        pathname: "/transaction-modal",
+                        params: { type: "expense" },
+                      }),
+                  },
+                  {
+                    key: "income",
+                    label: "Add Income",
+                    color: colors.tertiary,
+                    icon: CircleDollarSign,
+                    onPress: () =>
+                      router.push({
+                        pathname: "/transaction-modal",
+                        params: { type: "income" },
+                      }),
+                  },
+                  {
+                    key: "transfer",
+                    label: "Transfer",
+                    color: colors.primary,
+                    icon: ArrowLeftRight,
+                    onPress: () =>
+                      router.push({
+                        pathname: "/transaction-modal",
+                        params: { type: "transfer" },
+                      }),
+                  },
+                  {
+                    key: "scan",
+                    label: "Scan Receipt",
+                    color: "#9c27b0",
+                    icon: Camera,
+                    onPress: () =>
+                      router.push({
+                        pathname: "/transaction-modal",
+                        params: { type: "expense", scan_mode: "camera" },
+                      }),
+                  },
+                ] as const
+              ).map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Pressable
+                    key={action.key}
+                    onPress={action.onPress}
+                    style={({ pressed }) => [
+                      styles.quickAction,
+                      { opacity: pressed ? 0.7 : 1 },
+                    ]}
+                    hitSlop={4}
+                  >
+                    <View
+                      style={[
+                        styles.quickActionIcon,
+                        { backgroundColor: `${action.color}25` },
+                      ]}
+                    >
+                      <Icon size={22} color={action.color} strokeWidth={2.2} />
+                    </View>
+                    <Text
+                      style={[
+                        styles.quickActionLabel,
+                        { color: colors.onSurface },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {action.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </View>
 
         {/* Cashflow Trend */}
         {cashFlow && cashFlow.length > 0 && (
@@ -884,7 +983,7 @@ export default function DashboardScreen() {
                   showGradient
                   focusOnPress
                   innerCircleColor={
-                    isDark ? "rgba(15, 23, 42, 0.96)" : colors.background
+                    isDark ? "rgba(11, 24, 48, 0.96)" : colors.background
                   }
                   strokeColor="transparent"
                   strokeWidth={0}
@@ -894,7 +993,7 @@ export default function DashboardScreen() {
                         styles.pieCenterBox,
                         {
                           backgroundColor: isDark
-                            ? "rgba(15, 23, 42, 0.96)"
+                            ? "rgba(11, 24, 48, 0.96)"
                             : colors.surface,
                         },
                       ]}
@@ -1203,7 +1302,7 @@ export default function DashboardScreen() {
           <LinearGradient
             colors={
               isDark
-                ? (["#0f172a", "#1e293b"] as any)
+                ? (["#0f213d", "#0b1830"] as any)
                 : (gradients.ocean as any)
             }
             start={{ x: 0, y: 0 }}
@@ -1352,7 +1451,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   hero: {
-    backgroundColor: "#0f172a",
+    backgroundColor: "#0f213d",
     borderRadius: radius.xxl,
     padding: spacing.xl,
     overflow: "hidden",
@@ -1517,6 +1616,31 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: spacing.md,
+  },
+  quickActionsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 4,
+  },
+  quickAction: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+  },
+  quickActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  quickActionLabel: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 13.5,
   },
   chartCard: {
     padding: spacing.lg,
