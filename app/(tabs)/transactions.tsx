@@ -127,18 +127,9 @@ export default function TransactionsScreen() {
     isRefetching,
     refetch,
   } = useQuery({
-    queryKey: ["transactions", filterType],
-    placeholderData: (previousData) => previousData ?? [],
+    queryKey: ["transactions", "all"],
     queryFn: async () => {
-      const params: Record<string, string> = {};
-      if (
-        filterType !== "all" &&
-        filterType !== "asset" &&
-        filterType !== "liability"
-      ) {
-        params.type = filterType;
-      }
-      const result = await transactionService.getAll(params);
+      const result = await transactionService.getAll();
       if (result.success && result.data) {
         const laravelResponse = result.data as any;
         let data: Transaction[] = [];
@@ -267,16 +258,16 @@ export default function TransactionsScreen() {
   }, [filteredTransactions]);
 
   const totalExpense = useMemo(() => {
-    return filteredTransactions()
+    return transactions
       .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [filteredTransactions]);
+  }, [transactions]);
 
   const totalIncome = useMemo(() => {
-    return filteredTransactions()
+    return transactions
       .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [filteredTransactions]);
+  }, [transactions]);
 
   return (
     <SafeAreaView
@@ -418,42 +409,48 @@ export default function TransactionsScreen() {
       </View>
 
       {/* Filter Chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-        contentContainerStyle={styles.filters}
-      >
-        {FILTERS.map((f) => (
-          <View key={f.key} style={styles.filterItemWrap}>
-            <Pressable
-              onPress={() => setFilterType(f.key)}
-              style={[
-                styles.filterPill,
-                {
-                  backgroundColor:
-                    filterType === f.key ? colors.primary : colors.surfaceVariant,
-                },
-              ]}
-            >
-              <Text
+      <View style={styles.filterShell}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filters}
+          keyboardShouldPersistTaps="handled"
+        >
+          {FILTERS.map((f) => {
+            const active = filterType === f.key;
+            return (
+              <Pressable
+                key={f.key}
+                onPress={() => setFilterType(f.key)}
                 style={[
-                  styles.filterPillLabel,
+                  styles.filterPill,
                   {
-                    color:
-                      filterType === f.key
-                        ? colors.onPrimary
-                        : colors.onSurfaceVariant,
+                    backgroundColor: active
+                      ? colors.primary
+                      : colors.surfaceVariant,
                   },
                 ]}
-                numberOfLines={1}
+                hitSlop={6}
               >
-                {f.label}
-              </Text>
-            </Pressable>
-          </View>
-        ))}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.filterPillLabel,
+                    {
+                      color: active
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
+                    },
+                  ]}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                >
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       {/* List */}
       {isLoading ? (
@@ -901,35 +898,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
+  filterShell: {
+    height: 54,
+    marginBottom: 4,
+    justifyContent: "center",
+  },
   filters: {
     paddingHorizontal: spacing.lg,
-    paddingTop: 4,
-    paddingBottom: 8,
     gap: spacing.sm,
     alignItems: "center",
   },
-  filterScroll: {
-    backgroundColor: "transparent",
-    marginTop: 0,
-    marginBottom: 5,
-    overflow: "visible",
-  },
-  filterItemWrap: {
-    minHeight: 48,
-    justifyContent: "center",
-  },
-  filterChip: {
-    minHeight: 38,
-  },
   filterPill: {
-    minHeight: 40,
+    height: 38,
     paddingHorizontal: spacing.md,
-    paddingVertical: 0,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
-    marginVertical: 0,
   },
   filterPillLabel: {
     fontSize: 13,
