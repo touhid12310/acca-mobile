@@ -310,43 +310,40 @@ export default function TransactionsScreen() {
             { backgroundColor: colors.tertiaryContainer },
           ]}
         >
-          <View style={styles.summaryHeader}>
-            <View
-              style={[
-                styles.summaryIconWrap,
-                { backgroundColor: "rgba(255,255,255,0.55)" },
-              ]}
-            >
-              <ArrowDownLeft
-                size={18}
-                color={colors.tertiary}
-                strokeWidth={2.4}
-              />
+          <View style={styles.summaryTopRow}>
+            <View style={styles.summaryLead}>
+              <View
+                style={[
+                  styles.summaryIconWrap,
+                  { backgroundColor: "rgba(255,255,255,0.55)" },
+                ]}
+              >
+                <ArrowDownLeft
+                  size={18}
+                  color={colors.tertiary}
+                  strokeWidth={2.4}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.summaryLabel,
+                  { color: colors.onTertiaryContainer },
+                ]}
+              >
+                Total Income
+              </Text>
             </View>
-            <Text
-              style={[
-                styles.summaryLabel,
-                { color: colors.onTertiaryContainer },
-              ]}
-            >
-              Income
-            </Text>
           </View>
           <Text
             style={[
               styles.summaryValue,
               { color: colors.onTertiaryContainer },
             ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
             {formatAmount(totalIncome)}
-          </Text>
-          <Text
-            style={[
-              styles.summaryHint,
-              { color: colors.onTertiaryContainer, opacity: 0.72 },
-            ]}
-          >
-            Money received
           </Text>
         </View>
         <View
@@ -355,39 +352,36 @@ export default function TransactionsScreen() {
             { backgroundColor: colors.errorContainer },
           ]}
         >
-          <View style={styles.summaryHeader}>
-            <View
-              style={[
-                styles.summaryIconWrap,
-                { backgroundColor: "rgba(255,255,255,0.55)" },
-              ]}
-            >
-              <ArrowUpRight size={18} color={colors.error} strokeWidth={2.4} />
+          <View style={styles.summaryTopRow}>
+            <View style={styles.summaryLead}>
+              <View
+                style={[
+                  styles.summaryIconWrap,
+                  { backgroundColor: "rgba(255,255,255,0.55)" },
+                ]}
+              >
+                <ArrowUpRight size={18} color={colors.error} strokeWidth={2.4} />
+              </View>
+              <Text
+                style={[
+                  styles.summaryLabel,
+                  { color: colors.onErrorContainer },
+                ]}
+              >
+                Total Expenses
+              </Text>
             </View>
-            <Text
-              style={[
-                styles.summaryLabel,
-                { color: colors.onErrorContainer },
-              ]}
-            >
-              Expense
-            </Text>
           </View>
           <Text
             style={[
               styles.summaryValue,
               { color: colors.onErrorContainer },
             ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
             {formatAmount(totalExpense)}
-          </Text>
-          <Text
-            style={[
-              styles.summaryHint,
-              { color: colors.onErrorContainer, opacity: 0.72 },
-            ]}
-          >
-            Money spent
           </Text>
         </View>
       </View>
@@ -846,34 +840,43 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    padding: spacing.lg,
+    padding: spacing.sm,
     borderRadius: radius.xl,
-    gap: spacing.sm,
-    minHeight: 132,
-    justifyContent: "space-between",
+    gap: 2,
+    minHeight: 82,
+    justifyContent: "flex-start",
   },
-  summaryHeader: {
+  summaryTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
+  summaryLead: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    minWidth: 0,
+    gap: spacing.xs,
   },
   summaryIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.lg,
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   summaryLabel: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: "700",
-    lineHeight: 22,
+    lineHeight: 16,
+    flexShrink: 1,
   },
   summaryValue: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: "800",
-    letterSpacing: -0.3,
     lineHeight: 24,
+    marginTop: spacing.xs,
+    width: "100%",
+    textAlign: "center",
   },
   summaryHint: {
     fontSize: 12,
@@ -903,16 +906,16 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: spacing.sm,
     alignItems: "stretch",
-    height: 40,
+    height: 44,
   },
   filterScroll: {
     backgroundColor: "transparent",
-    height: 40,
+    height: 44,
     marginTop: spacing.md,
     marginBottom: spacing.md,
   },
   filterItemWrap: {
-    height: 40,
+    height: 44,
     justifyContent: "center",
   },
   filterChip: {
