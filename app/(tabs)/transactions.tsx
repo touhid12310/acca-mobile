@@ -19,13 +19,14 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
-  ArrowUpDown,
+  ChevronDown,
   CreditCard,
   Edit3,
   MoreVertical,
   Plus,
   Receipt,
   Search,
+  SlidersHorizontal,
   Trash2,
   TriangleAlert,
   Wallet,
@@ -44,6 +45,9 @@ import {
   Button,
   AlertBar,
   Badge,
+  PeriodModal,
+  computePeriodRange,
+  PeriodRange,
 } from "../../src/components/ui";
 import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
@@ -82,6 +86,10 @@ export default function TransactionsScreen() {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [periodModalVisible, setPeriodModalVisible] = useState(false);
+  const [period, setPeriod] = useState<PeriodRange>(() =>
+    computePeriodRange("all"),
+  );
 
   const handleFilterPress = useCallback(
     (key: FilterType) => {
@@ -160,8 +168,18 @@ export default function TransactionsScreen() {
 
   const transactions = transactionsData || [];
 
+  const periodPool = useMemo(() => {
+    if (period.preset === "all") return transactions;
+    const start = period.start.getTime();
+    const end = period.end.getTime();
+    return transactions.filter((t) => {
+      const d = new Date(t.date).getTime();
+      return d >= start && d <= end;
+    });
+  }, [transactions, period]);
+
   const filteredTransactions = useCallback(() => {
-    let filtered = [...transactions];
+    let filtered = [...periodPool];
     if (filterType !== "all") {
       filtered = filtered.filter((t) => t.type === filterType);
     }
@@ -185,13 +203,7 @@ export default function TransactionsScreen() {
       return sortOrder === "desc" ? aB - aA : aA - aB;
     });
     return filtered;
-  }, [transactions, searchQuery, sortBy, sortOrder, filterType]);
-
-  const handleSort = () => {
-    if (sortBy === "date") setSortBy("amount");
-    else setSortBy("date");
-    setSortOrder("desc");
-  };
+  }, [periodPool, searchQuery, sortBy, sortOrder, filterType]);
 
   const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
@@ -270,16 +282,16 @@ export default function TransactionsScreen() {
   }, [filteredTransactions]);
 
   const totalIncome = useMemo(() => {
-    return transactions
+    return periodPool
       .filter((t) => t.type === "income")
       .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [transactions]);
+  }, [periodPool]);
 
   const totalExpense = useMemo(() => {
-    return transactions
+    return periodPool
       .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [transactions]);
+  }, [periodPool]);
 
   return (
     <SafeAreaView
@@ -292,18 +304,40 @@ export default function TransactionsScreen() {
           subtitle="Transactions"
           right={
             <Pressable
-              onPress={handleSort}
+              onPress={() => setPeriodModalVisible(true)}
               style={[
-                styles.sortBtn,
+                styles.periodBtn,
                 { backgroundColor: colors.surfaceVariant },
               ]}
               hitSlop={6}
             >
-              <ArrowUpDown size={18} color={colors.onSurface} strokeWidth={2.2} />
+              <SlidersHorizontal
+                size={14}
+                color={colors.onSurface}
+                strokeWidth={2.4}
+              />
+              <Text
+                style={[styles.periodBtnLabel, { color: colors.onSurface }]}
+                numberOfLines={1}
+              >
+                {period.label}
+              </Text>
+              <ChevronDown
+                size={14}
+                color={colors.onSurfaceVariant}
+                strokeWidth={2.4}
+              />
             </Pressable>
           }
         />
       </View>
+
+      <PeriodModal
+        visible={periodModalVisible}
+        onClose={() => setPeriodModalVisible(false)}
+        current={period}
+        onSelect={(range) => setPeriod(range)}
+      />
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
@@ -830,6 +864,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
+  },
+  periodBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    maxWidth: 180,
+    minHeight: 36,
+  },
+  periodBtnLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   summaryRow: {
     flexDirection: "row",
