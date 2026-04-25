@@ -904,7 +904,7 @@ const styles = StyleSheet.create({
   filters: {
     paddingHorizontal: spacing.lg,
     paddingTop: 4,
-    paddingBottom: 4,
+    paddingBottom: 8,
     gap: spacing.sm,
     alignItems: "center",
   },
@@ -912,9 +912,10 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     marginTop: 0,
     marginBottom: 5,
+    overflow: "visible",
   },
   filterItemWrap: {
-    minHeight: 70,
+    minHeight: 48,
     justifyContent: "center",
   },
   filterChip: {
