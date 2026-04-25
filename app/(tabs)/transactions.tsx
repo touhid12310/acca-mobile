@@ -912,16 +912,20 @@ const styles = StyleSheet.create({
     minHeight: 38,
   },
   filterPill: {
-    minHeight: 38,
+    height: 40,
     paddingHorizontal: spacing.md,
-    paddingVertical: 9,
+    paddingVertical: 0,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "center",
   },
   filterPillLabel: {
     fontSize: 13,
     fontWeight: "700",
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   loadingContainer: {
     flex: 1,
