@@ -90,6 +90,20 @@ export default function TransactionsScreen() {
   const [period, setPeriod] = useState<PeriodRange>(() =>
     computePeriodRange("all"),
   );
+  const [pendingPeriod, setPendingPeriod] = useState<PeriodRange | null>(null);
+
+  const handleOpenPeriodModal = useCallback(() => {
+    setPendingPeriod(period);
+    setPeriodModalVisible(true);
+  }, [period]);
+
+  const handleClosePeriodModal = useCallback(() => {
+    setPeriodModalVisible(false);
+    if (pendingPeriod && pendingPeriod !== period) {
+      setPeriod(pendingPeriod);
+    }
+    setPendingPeriod(null);
+  }, [pendingPeriod, period]);
 
   const handleFilterPress = useCallback(
     (key: FilterType) => {
@@ -304,7 +318,7 @@ export default function TransactionsScreen() {
           subtitle="Transactions"
           right={
             <Pressable
-              onPress={() => setPeriodModalVisible(true)}
+              onPress={handleOpenPeriodModal}
               style={[
                 styles.periodBtn,
                 { backgroundColor: colors.surfaceVariant },
@@ -334,9 +348,9 @@ export default function TransactionsScreen() {
 
       <PeriodModal
         visible={periodModalVisible}
-        onClose={() => setPeriodModalVisible(false)}
-        current={period}
-        onSelect={(range) => setPeriod(range)}
+        onClose={handleClosePeriodModal}
+        current={pendingPeriod ?? period}
+        onSelect={(range) => setPendingPeriod(range)}
       />
 
       {/* Totals summary */}
