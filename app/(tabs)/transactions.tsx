@@ -128,6 +128,7 @@ export default function TransactionsScreen() {
     refetch,
   } = useQuery({
     queryKey: ["transactions", filterType],
+    placeholderData: (previousData) => previousData ?? [],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (
@@ -430,13 +431,32 @@ export default function TransactionsScreen() {
         contentContainerStyle={styles.filters}
       >
         {FILTERS.map((f) => (
-          <Chip
+          <Pressable
             key={f.key}
-            label={f.label}
-            selected={filterType === f.key}
             onPress={() => setFilterType(f.key)}
-            style={styles.filterChip}
-          />
+            style={[
+              styles.filterPill,
+              {
+                backgroundColor:
+                  filterType === f.key ? colors.primary : colors.surfaceVariant,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterPillLabel,
+                {
+                  color:
+                    filterType === f.key
+                      ? colors.onPrimary
+                      : colors.onSurfaceVariant,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              {f.label}
+            </Text>
+          </Pressable>
         ))}
       </ScrollView>
 
@@ -446,23 +466,36 @@ export default function TransactionsScreen() {
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : filteredTransactions().length === 0 ? (
-        <EmptyState
-          icon={Receipt}
-          title="No transactions yet"
-          message={
-            searchQuery
-              ? "Try a different search term"
-              : "Add your first transaction to get started."
-          }
-          action={
-            !searchQuery
-              ? {
-                  label: "Add transaction",
-                  onPress: () => router.push("/transaction-modal"),
-                }
-              : undefined
-          }
-        />
+        <View style={styles.emptyStateWrap}>
+          <EmptyState
+            icon={Receipt}
+            title="No transactions yet"
+            message={
+              searchQuery
+                ? "Try a different search term"
+                : "Add your first transaction to get started."
+            }
+            compact
+          />
+          {!searchQuery ? (
+            <Pressable
+              onPress={() => router.push("/transaction-modal")}
+              style={({ pressed }) => [
+                styles.emptyActionButton,
+                { transform: [{ scale: pressed ? 0.97 : 1 }] },
+              ]}
+            >
+              <LinearGradient
+                colors={gradients.primary as any}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.emptyActionGradient}
+              >
+                <Text style={styles.emptyActionLabel}>Add transaction</Text>
+              </LinearGradient>
+            </Pressable>
+          ) : null}
+        </View>
       ) : (
         <ScrollView
           style={{ backgroundColor: "transparent" }}
@@ -878,10 +911,48 @@ const styles = StyleSheet.create({
   filterChip: {
     minHeight: 38,
   },
+  filterPill: {
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 9,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterPillLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  emptyStateWrap: {
+    minHeight: 320,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxxl,
+  },
+  emptyActionButton: {
+    marginTop: spacing.lg,
+    minWidth: 170,
+    borderRadius: radius.pill,
+    overflow: "hidden",
+    ...shadow.sm,
+  },
+  emptyActionGradient: {
+    minHeight: 46,
+    paddingHorizontal: spacing.xl,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyActionLabel: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 20,
   },
   dateHeader: {
     fontSize: 12,
