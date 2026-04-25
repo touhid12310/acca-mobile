@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Dimensions,
+  Easing,
   Modal,
   Platform,
   Pressable,
@@ -146,6 +149,8 @@ interface PeriodModalProps {
   onSelect: (range: PeriodRange) => void;
 }
 
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+
 export function PeriodModal({
   visible,
   onClose,
@@ -155,6 +160,36 @@ export function PeriodModal({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [pickerMode, setPickerMode] = useState<"none" | "start" | "end">("none");
+
+  const [mounted, setMounted] = useState(visible);
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setMounted(true);
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 420,
+        easing: Easing.bezier(0.16, 1, 0.3, 1),
+        useNativeDriver: true,
+      }).start();
+    } else if (mounted) {
+      Animated.timing(progress, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.bezier(0.4, 0, 1, 1),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+  }, [visible, mounted, progress]);
+
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_HEIGHT * 0.6, 0],
+  });
+  const backdropOpacity = progress;
 
   const recentMonths = useMemo(() => {
     const now = new Date();
@@ -203,22 +238,29 @@ export function PeriodModal({
 
   return (
     <Modal
-      visible={visible}
+      visible={mounted}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
+      <Animated.View
+        style={[
+          styles.backdrop,
+          { opacity: backdropOpacity },
+        ]}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Animated.View
           style={[
             styles.sheet,
             {
               backgroundColor: colors.surface,
               paddingBottom: insets.bottom + spacing.xl,
+              transform: [{ translateY }],
             },
             shadow.lg,
           ]}
-          onPress={(e) => e.stopPropagation()}
         >
           <View style={[styles.handle, { backgroundColor: colors.outline }]} />
           <Text style={[styles.title, { color: colors.onSurface }]}>
@@ -383,8 +425,8 @@ export function PeriodModal({
               minimumDate={pickerMode === "end" ? current.start : undefined}
             />
           )}
-        </Pressable>
-      </Pressable>
+        </Animated.View>
+      </Animated.View>
     </Modal>
   );
 }
