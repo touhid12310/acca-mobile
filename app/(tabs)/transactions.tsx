@@ -129,7 +129,7 @@ export default function TransactionsScreen() {
   } = useQuery({
     queryKey: ["transactions", "all"],
     queryFn: async () => {
-      const result = await transactionService.getAll();
+      const result = await transactionService.getAll({ per_page: 5000 });
       if (result.success && result.data) {
         const laravelResponse = result.data as any;
         let data: Transaction[] = [];
@@ -145,6 +145,7 @@ export default function TransactionsScreen() {
       throw new Error(result.error || "Failed to load transactions");
     },
   });
+
 
   const transactions = transactionsData || [];
 
@@ -257,15 +258,15 @@ export default function TransactionsScreen() {
     return groups;
   }, [filteredTransactions]);
 
-  const totalExpense = useMemo(() => {
-    return transactions
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [transactions]);
-
   const totalIncome = useMemo(() => {
     return transactions
       .filter((t) => t.type === "income")
+      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
+  }, [transactions]);
+
+  const totalExpense = useMemo(() => {
+    return transactions
+      .filter((t) => t.type === "expense")
       .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
   }, [transactions]);
 
@@ -465,28 +466,10 @@ export default function TransactionsScreen() {
             message={
               searchQuery
                 ? "Try a different search term"
-                : "Add your first transaction to get started."
+                : "Tap the + button to add your first transaction."
             }
             compact
           />
-          {!searchQuery ? (
-            <Pressable
-              onPress={() => router.push("/transaction-modal")}
-              style={({ pressed }) => [
-                styles.emptyActionButton,
-                { transform: [{ scale: pressed ? 0.97 : 1 }] },
-              ]}
-            >
-              <LinearGradient
-                colors={gradients.primary as any}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.emptyActionGradient}
-              >
-                <Text style={styles.emptyActionLabel}>Add transaction</Text>
-              </LinearGradient>
-            </Pressable>
-          ) : null}
         </View>
       ) : (
         <ScrollView
@@ -611,21 +594,29 @@ export default function TransactionsScreen() {
       <View
         style={[
           styles.fab,
-          { bottom: 20 + insets.bottom },
+          {
+            bottom: 20 + insets.bottom,
+            backgroundColor: colors.primary,
+          },
           shadow.lg,
         ]}
       >
         <Pressable
           onPress={() => router.push("/transaction-modal")}
           style={styles.fabPressable}
+          android_ripple={{
+            color: "rgba(255,255,255,0.25)",
+            borderless: true,
+            radius: 28,
+          }}
         >
           <LinearGradient
             colors={gradients.primary as any}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, { borderRadius: 28 }]}
           />
-          <Plus size={24} color="#ffffff" strokeWidth={2.4} />
+          <Plus size={26} color="#ffffff" strokeWidth={2.6} />
         </Pressable>
       </View>
 
@@ -937,15 +928,19 @@ const styles = StyleSheet.create({
   emptyActionButton: {
     marginTop: spacing.lg,
     minWidth: 170,
-    borderRadius: radius.pill,
+    height: 50,
+    borderRadius: 999,
     overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
     ...shadow.sm,
   },
   emptyActionGradient: {
-    minHeight: 46,
-    paddingHorizontal: spacing.xl,
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: spacing.xl,
   },
   emptyActionLabel: {
     color: "#ffffff",
@@ -993,13 +988,18 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     width: 56,
     height: 56,
-    borderRadius: radius.pill,
+    borderRadius: 28,
     overflow: "hidden",
-  },
-  fabPressable: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  fabPressable: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
   modalBackdrop: {
     flex: 1,
