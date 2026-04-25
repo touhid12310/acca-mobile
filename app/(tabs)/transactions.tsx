@@ -75,12 +75,23 @@ export default function TransactionsScreen() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
+  const [filterChanging, setFilterChanging] = useState(false);
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleFilterPress = useCallback(
+    (key: FilterType) => {
+      if (key === filterType) return;
+      setFilterChanging(true);
+      setFilterType(key);
+      setTimeout(() => setFilterChanging(false), 300);
+    },
+    [filterType],
+  );
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -422,7 +433,7 @@ export default function TransactionsScreen() {
             return (
               <Pressable
                 key={f.key}
-                onPress={() => setFilterType(f.key)}
+                onPress={() => handleFilterPress(f.key)}
                 style={[
                   styles.filterPill,
                   {
@@ -454,7 +465,7 @@ export default function TransactionsScreen() {
       </View>
 
       {/* List */}
-      {isLoading ? (
+      {isLoading || filterChanging ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
