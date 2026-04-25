@@ -497,7 +497,7 @@ export default function TransactionsScreen() {
           contentContainerStyle={{
             paddingHorizontal: spacing.lg,
             paddingBottom: 120,
-            gap: spacing.md,
+            gap: spacing.sm,
           }}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -510,7 +510,7 @@ export default function TransactionsScreen() {
           }
         >
           {groupedTransactions.map((group) => (
-            <View key={group.date} style={{ gap: spacing.sm }}>
+            <View key={group.date} style={{ gap: spacing.xs }}>
               <Text
                 style={[styles.dateHeader, { color: colors.onSurfaceVariant }]}
               >
@@ -834,16 +834,17 @@ const styles = StyleSheet.create({
   },
   summaryRow: {
     flexDirection: "row",
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   summaryCard: {
     flex: 1,
-    padding: spacing.sm,
-    borderRadius: radius.xl,
-    gap: 2,
-    minHeight: 82,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.lg,
+    gap: 1,
+    minHeight: 72,
     justifyContent: "flex-start",
   },
   summaryTopRow: {
@@ -858,23 +859,23 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   summaryIconWrap: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   summaryLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    lineHeight: 16,
+    lineHeight: 14,
     flexShrink: 1,
   },
   summaryValue: {
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: "800",
-    lineHeight: 24,
-    marginTop: spacing.xs,
+    lineHeight: 21,
+    marginTop: 2,
     width: "100%",
     textAlign: "center",
   },
@@ -885,7 +886,7 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
+    marginBottom: 0,
   },
   searchBox: {
     flexDirection: "row",
@@ -902,33 +903,31 @@ const styles = StyleSheet.create({
   },
   filters: {
     paddingHorizontal: spacing.lg,
-    paddingTop: 0,
-    paddingBottom: 0,
+    paddingTop: 4,
+    paddingBottom: 4,
     gap: spacing.sm,
-    alignItems: "stretch",
-    height: 44,
+    alignItems: "center",
   },
   filterScroll: {
     backgroundColor: "transparent",
-    height: 44,
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
+    marginTop: 0,
+    marginBottom: 5,
   },
   filterItemWrap: {
-    height: 44,
+    minHeight: 70,
     justifyContent: "center",
   },
   filterChip: {
     minHeight: 38,
   },
   filterPill: {
-    height: 40,
+    minHeight: 40,
     paddingHorizontal: spacing.md,
     paddingVertical: 0,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "stretch",
+    alignSelf: "center",
     marginVertical: 0,
   },
   filterPillLabel: {
