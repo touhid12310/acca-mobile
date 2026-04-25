@@ -431,32 +431,33 @@ export default function TransactionsScreen() {
         contentContainerStyle={styles.filters}
       >
         {FILTERS.map((f) => (
-          <Pressable
-            key={f.key}
-            onPress={() => setFilterType(f.key)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor:
-                  filterType === f.key ? colors.primary : colors.surfaceVariant,
-              },
-            ]}
-          >
-            <Text
+          <View key={f.key} style={styles.filterItemWrap}>
+            <Pressable
+              onPress={() => setFilterType(f.key)}
               style={[
-                styles.filterPillLabel,
+                styles.filterPill,
                 {
-                  color:
-                    filterType === f.key
-                      ? colors.onPrimary
-                      : colors.onSurfaceVariant,
+                  backgroundColor:
+                    filterType === f.key ? colors.primary : colors.surfaceVariant,
                 },
               ]}
-              numberOfLines={1}
             >
-              {f.label}
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.filterPillLabel,
+                  {
+                    color:
+                      filterType === f.key
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {f.label}
+              </Text>
+            </Pressable>
+          </View>
         ))}
       </ScrollView>
 
@@ -898,15 +899,21 @@ const styles = StyleSheet.create({
   },
   filters: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingTop: 0,
+    paddingBottom: 0,
     gap: spacing.sm,
-    alignItems: "center",
-    minHeight: 52,
+    alignItems: "stretch",
+    height: 40,
   },
   filterScroll: {
     backgroundColor: "transparent",
-    minHeight: 56,
+    height: 40,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  filterItemWrap: {
+    height: 40,
+    justifyContent: "center",
   },
   filterChip: {
     minHeight: 38,
@@ -918,7 +925,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
+    alignSelf: "stretch",
+    marginVertical: 0,
   },
   filterPillLabel: {
     fontSize: 13,
