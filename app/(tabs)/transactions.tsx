@@ -303,20 +303,90 @@ export default function TransactionsScreen() {
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { backgroundColor: colors.tertiaryContainer }]}>
-          <Text style={[styles.summaryLabel, { color: colors.onTertiaryContainer }]}>
-            Income
-          </Text>
-          <Text style={[styles.summaryValue, { color: colors.onTertiaryContainer }]}>
+        <View
+          style={[
+            styles.summaryCard,
+            { backgroundColor: colors.tertiaryContainer },
+          ]}
+        >
+          <View style={styles.summaryHeader}>
+            <View
+              style={[
+                styles.summaryIconWrap,
+                { backgroundColor: "rgba(255,255,255,0.55)" },
+              ]}
+            >
+              <ArrowDownLeft
+                size={18}
+                color={colors.tertiary}
+                strokeWidth={2.4}
+              />
+            </View>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: colors.onTertiaryContainer },
+              ]}
+            >
+              Income
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.summaryValue,
+              { color: colors.onTertiaryContainer },
+            ]}
+          >
             {formatAmount(totalIncome)}
           </Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: colors.errorContainer }]}>
-          <Text style={[styles.summaryLabel, { color: colors.onErrorContainer }]}>
-            Expense
+          <Text
+            style={[
+              styles.summaryHint,
+              { color: colors.onTertiaryContainer, opacity: 0.72 },
+            ]}
+          >
+            Money received
           </Text>
-          <Text style={[styles.summaryValue, { color: colors.onErrorContainer }]}>
+        </View>
+        <View
+          style={[
+            styles.summaryCard,
+            { backgroundColor: colors.errorContainer },
+          ]}
+        >
+          <View style={styles.summaryHeader}>
+            <View
+              style={[
+                styles.summaryIconWrap,
+                { backgroundColor: "rgba(255,255,255,0.55)" },
+              ]}
+            >
+              <ArrowUpRight size={18} color={colors.error} strokeWidth={2.4} />
+            </View>
+            <Text
+              style={[
+                styles.summaryLabel,
+                { color: colors.onErrorContainer },
+              ]}
+            >
+              Expense
+            </Text>
+          </View>
+          <Text
+            style={[
+              styles.summaryValue,
+              { color: colors.onErrorContainer },
+            ]}
+          >
             {formatAmount(totalExpense)}
+          </Text>
+          <Text
+            style={[
+              styles.summaryHint,
+              { color: colors.onErrorContainer, opacity: 0.72 },
+            ]}
+          >
+            Money spent
           </Text>
         </View>
       </View>
@@ -356,7 +426,7 @@ export default function TransactionsScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ backgroundColor: "transparent" }}
+        style={styles.filterScroll}
         contentContainerStyle={styles.filters}
       >
         {FILTERS.map((f) => (
@@ -365,6 +435,7 @@ export default function TransactionsScreen() {
             label={f.label}
             selected={filterType === f.key}
             onPress={() => setFilterType(f.key)}
+            style={styles.filterChip}
           />
         ))}
       </ScrollView>
@@ -741,18 +812,39 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    padding: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.xl,
+    gap: spacing.sm,
+    minHeight: 132,
+    justifyContent: "space-between",
+  },
+  summaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  summaryIconWrap: {
+    width: 40,
+    height: 40,
     borderRadius: radius.lg,
-    gap: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   summaryLabel: {
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 22,
   },
   summaryValue: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
+    lineHeight: 24,
+  },
+  summaryHint: {
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 16,
   },
   searchWrap: {
     paddingHorizontal: spacing.lg,
@@ -773,8 +865,18 @@ const styles = StyleSheet.create({
   },
   filters: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.md,
     gap: spacing.sm,
+    alignItems: "center",
+    minHeight: 52,
+  },
+  filterScroll: {
+    backgroundColor: "transparent",
+    minHeight: 56,
+  },
+  filterChip: {
+    minHeight: 38,
   },
   loadingContainer: {
     flex: 1,
