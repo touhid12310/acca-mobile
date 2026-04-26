@@ -257,11 +257,18 @@ export default function TransactionsScreen() {
     const seen = new Set<number>();
     return (
       transactionPages?.pages.flatMap((p) =>
-        p.data.filter((transaction) => {
-          if (seen.has(transaction.id)) return false;
-          seen.add(transaction.id);
-          return true;
-        }),
+        [...p.data]
+          .sort((a, b) => {
+            const dateDiff =
+              new Date(b.date).getTime() - new Date(a.date).getTime();
+            if (dateDiff !== 0) return dateDiff;
+            return Number(b.id) - Number(a.id);
+          })
+          .filter((transaction) => {
+            if (seen.has(transaction.id)) return false;
+            seen.add(transaction.id);
+            return true;
+          }),
       ) ?? []
     );
   }, [transactionPages]);
@@ -328,11 +335,6 @@ export default function TransactionsScreen() {
           t.category?.name?.toLowerCase().includes(q),
       );
     }
-    filtered.sort((a, b) => {
-      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
-      if (dateDiff !== 0) return dateDiff;
-      return Number(b.id) - Number(a.id);
-    });
     return filtered;
   }, [periodPool, searchQuery, filterType]);
 
