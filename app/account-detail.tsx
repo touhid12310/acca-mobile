@@ -23,10 +23,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Wallet } from "lucide-react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "../src/contexts/ThemeContext";
+import {
+  gradients,
+  radius,
+  shadow,
+  spacing,
+} from "../src/constants/theme";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { BrandedHeader } from "../src/components";
 import accountService from "../src/services/accountService";
@@ -83,7 +91,7 @@ const formatApiError = (result: any): string => {
 };
 
 export default function AccountDetailScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -599,23 +607,24 @@ export default function AccountDetailScreen() {
       />
 
       {/* Balance Card */}
-      <Surface
-        style={[
-          styles.balanceCard,
-          { backgroundColor: colors.primaryContainer },
-        ]}
-        elevation={0}
+      <LinearGradient
+        colors={(isDark ? gradients.primaryNight : gradients.primary) as any}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.balanceCard, shadow.md]}
       >
-        <Text variant="bodyMedium" style={{ color: colors.primary }}>
-          Current Balance
-        </Text>
-        <Text
-          variant="headlineLarge"
-          style={{ color: colors.primary, fontWeight: "bold" }}
-        >
-          {formatAmount(accountBalance)}
-        </Text>
-      </Surface>
+        <View style={styles.balanceTopRow}>
+          <View style={styles.balanceIcon}>
+            <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
+          </View>
+          <View style={styles.balanceTopText}>
+            <Text style={styles.balanceLabelHero}>Current Balance</Text>
+            <Text style={styles.balanceValueHero}>
+              {formatAmount(accountBalance)}
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
 
       {/* Tabs */}
       <View style={[styles.tabs, { borderBottomColor: colors.surfaceVariant }]}>
@@ -1627,11 +1636,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   balanceCard: {
-    marginHorizontal: 16,
-    padding: 20,
-    borderRadius: 16,
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: radius.xxl,
+    marginBottom: spacing.md,
+    overflow: "hidden",
+  },
+  balanceTopRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  balanceIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  balanceTopText: {
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  balanceLabelHero: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.4,
+  },
+  balanceValueHero: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
   tabs: {
     flexDirection: "row",

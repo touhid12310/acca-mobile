@@ -236,11 +236,17 @@ export default function AccountsScreen() {
           end={{ x: 1, y: 1 }}
           style={[styles.hero, shadow.md]}
         >
-          <View style={styles.heroIcon}>
-            <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroIcon}>
+              <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
+            </View>
+            <View style={styles.heroTopText}>
+              <Text style={styles.heroLabel}>Total balance</Text>
+              <Text style={styles.heroValue}>
+                {formatAmount(totalBalance)}
+              </Text>
+            </View>
           </View>
-          <Text style={styles.heroLabel}>Total balance</Text>
-          <Text style={styles.heroValue}>{formatAmount(totalBalance)}</Text>
           <View style={styles.heroMeta}>
             <View style={styles.heroMetaItem}>
               <Text style={styles.heroMetaValue}>{accountsCount}</Text>
@@ -525,66 +531,78 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   hero: {
-    padding: spacing.xl,
+    padding: spacing.lg,
     borderRadius: radius.xxl,
-    gap: spacing.sm,
+    gap: spacing.xs,
     overflow: "hidden",
   },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  heroTopText: {
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    gap: 2,
+  },
   heroIcon: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: radius.pill,
     backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.sm,
   },
   heroLabel: {
     color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.4,
   },
   heroValue: {
     color: "#ffffff",
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: "800",
-    letterSpacing: -0.6,
+    letterSpacing: -0.5,
   },
   heroMeta: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.12)",
     borderRadius: radius.lg,
-    padding: spacing.md,
-    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
   },
   heroMetaItem: {
     flex: 1,
     alignItems: "center",
-    gap: 2,
+    gap: 1,
   },
   heroMetaValue: {
     color: "#ffffff",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
   },
   heroMetaValueSmall: {
     color: "#ffffff",
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: "700",
     maxWidth: 90,
   },
   heroMetaLabel: {
     color: "rgba(255,255,255,0.75)",
-    fontSize: 10.5,
+    fontSize: 10,
     fontWeight: "600",
     letterSpacing: 0.4,
     textTransform: "uppercase",
   },
   heroDivider: {
     width: 1,
-    height: 28,
+    height: 22,
     backgroundColor: "rgba(255,255,255,0.2)",
   },
   sectionTitle: {
