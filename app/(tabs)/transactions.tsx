@@ -650,14 +650,14 @@ export default function TransactionsScreen() {
             const distanceFromBottom =
               contentSize.height - (contentOffset.y + layoutMeasurement.height);
             if (
-              distanceFromBottom < 400 &&
+              distanceFromBottom < 600 &&
               hasNextPage &&
               !isFetchingNextPage
             ) {
               fetchNextPage();
             }
           }}
-          scrollEventThrottle={200}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
