@@ -901,8 +901,12 @@ export default function DashboardScreen() {
                   {
                     backgroundColor:
                       mtdNetCashflow >= 0
-                        ? colors.tertiaryContainer
-                        : colors.errorContainer,
+                        ? isDark
+                          ? `${colors.tertiary}26`
+                          : colors.tertiaryContainer
+                        : isDark
+                          ? `${colors.error}26`
+                          : colors.errorContainer,
                   },
                 ]}
               >

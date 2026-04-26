@@ -36,16 +36,28 @@ export function IconBadge({
   bg,
   style,
 }: IconBadgeProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
-  const palette = {
-    primary: { bg: colors.primaryContainer, fg: colors.primary },
-    success: { bg: colors.tertiaryContainer, fg: colors.tertiary },
-    danger: { bg: colors.errorContainer, fg: colors.error },
-    warning: { bg: colors.warningContainer, fg: colors.warning },
-    info: { bg: colors.infoContainer, fg: colors.info },
-    neutral: { bg: colors.surfaceVariant, fg: colors.onSurfaceVariant },
-  }[tone];
+  // In dark mode the saturated *Container colors render as heavy solid blobs.
+  // Use a translucent tint of the foreground instead for a soft, modern look.
+  const tint = (hex: string) => `${hex}26`;
+  const palette = isDark
+    ? {
+        primary: { bg: tint(colors.primary), fg: colors.primary },
+        success: { bg: tint(colors.tertiary), fg: colors.tertiary },
+        danger: { bg: tint(colors.error), fg: colors.error },
+        warning: { bg: tint(colors.warning), fg: colors.warning },
+        info: { bg: tint(colors.info), fg: colors.info },
+        neutral: { bg: colors.surfaceVariant, fg: colors.onSurfaceVariant },
+      }[tone]
+    : {
+        primary: { bg: colors.primaryContainer, fg: colors.primary },
+        success: { bg: colors.tertiaryContainer, fg: colors.tertiary },
+        danger: { bg: colors.errorContainer, fg: colors.error },
+        warning: { bg: colors.warningContainer, fg: colors.warning },
+        info: { bg: colors.infoContainer, fg: colors.info },
+        neutral: { bg: colors.surfaceVariant, fg: colors.onSurfaceVariant },
+      }[tone];
 
   const sizes = {
     xs: { box: 28, icon: 14 },

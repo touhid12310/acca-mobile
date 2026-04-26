@@ -33,6 +33,11 @@ import {
   X,
   LucideIcon,
 } from "lucide-react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from "react-native-reanimated";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
@@ -72,7 +77,15 @@ const FILTERS: { key: FilterType; label: string }[] = [
 ];
 
 export default function TransactionsScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Soft translucent tint for dark mode, full container colors for light mode.
+  const incomeBg = isDark ? `${colors.tertiary}26` : colors.tertiaryContainer;
+  const expenseBg = isDark ? `${colors.error}26` : colors.errorContainer;
+  const incomeFg = isDark ? colors.tertiary : colors.onTertiaryContainer;
+  const expenseFg = isDark ? colors.error : colors.onErrorContainer;
+  const summaryIconBg = isDark
+    ? "rgba(255,255,255,0.08)"
+    : "rgba(255,255,255,0.55)";
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -85,6 +98,7 @@ export default function TransactionsScreen() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [periodModalVisible, setPeriodModalVisible] = useState(false);
   const [period, setPeriod] = useState<PeriodRange>(() =>
@@ -358,7 +372,7 @@ export default function TransactionsScreen() {
         <View
           style={[
             styles.summaryCard,
-            { backgroundColor: colors.tertiaryContainer },
+            { backgroundColor: incomeBg },
           ]}
         >
           <View style={styles.summaryTopRow}>
@@ -366,7 +380,7 @@ export default function TransactionsScreen() {
               <View
                 style={[
                   styles.summaryIconWrap,
-                  { backgroundColor: "rgba(255,255,255,0.55)" },
+                  { backgroundColor: summaryIconBg },
                 ]}
               >
                 <ArrowDownLeft
@@ -375,21 +389,13 @@ export default function TransactionsScreen() {
                   strokeWidth={2.4}
                 />
               </View>
-              <Text
-                style={[
-                  styles.summaryLabel,
-                  { color: colors.onTertiaryContainer },
-                ]}
-              >
+              <Text style={[styles.summaryLabel, { color: incomeFg }]}>
                 Total Income
               </Text>
             </View>
           </View>
           <Text
-            style={[
-              styles.summaryValue,
-              { color: colors.onTertiaryContainer },
-            ]}
+            style={[styles.summaryValue, { color: incomeFg }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -400,7 +406,7 @@ export default function TransactionsScreen() {
         <View
           style={[
             styles.summaryCard,
-            { backgroundColor: colors.errorContainer },
+            { backgroundColor: expenseBg },
           ]}
         >
           <View style={styles.summaryTopRow}>
@@ -408,26 +414,18 @@ export default function TransactionsScreen() {
               <View
                 style={[
                   styles.summaryIconWrap,
-                  { backgroundColor: "rgba(255,255,255,0.55)" },
+                  { backgroundColor: summaryIconBg },
                 ]}
               >
                 <ArrowUpRight size={18} color={colors.error} strokeWidth={2.4} />
               </View>
-              <Text
-                style={[
-                  styles.summaryLabel,
-                  { color: colors.onErrorContainer },
-                ]}
-              >
+              <Text style={[styles.summaryLabel, { color: expenseFg }]}>
                 Total Expenses
               </Text>
             </View>
           </View>
           <Text
-            style={[
-              styles.summaryValue,
-              { color: colors.onErrorContainer },
-            ]}
+            style={[styles.summaryValue, { color: expenseFg }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -560,89 +558,37 @@ export default function TransactionsScreen() {
                 })}
               </Text>
               <Card variant="elevated" padding={0} radiusSize="xl">
-                {group.data.map((t, idx) => {
-                  const Icon = getIcon(t.type);
-                  return (
-                    <Pressable
-                      key={t.id}
-                      onPress={() => handleEditTransaction(t)}
-                      onLongPress={() => {
-                        setSelectedTransaction(t);
-                        setShowActionSheet(true);
-                      }}
-                    >
-                      {({ pressed }) => (
-                        <View
-                          style={[
-                            styles.txnRow,
-                            {
-                              borderBottomColor: colors.outlineVariant,
-                              borderBottomWidth:
-                                idx < group.data.length - 1
-                                  ? StyleSheet.hairlineWidth
-                                  : 0,
-                              opacity: pressed ? 0.6 : 1,
-                            },
-                          ]}
-                        >
-                          <IconBadge icon={Icon} tone={getTone(t.type)} size="md" />
-                          <View style={styles.txnTextBlock}>
-                            <Text
-                              style={[styles.txnTitle, { color: colors.onSurface }]}
-                              numberOfLines={1}
-                            >
-                              {t.merchant_name || t.description || "Transaction"}
-                            </Text>
-                            <View style={styles.txnMetaRow}>
-                              <Text
-                                style={[
-                                  styles.txnSub,
-                                  { color: colors.onSurfaceVariant },
-                                ]}
-                              >
-                                {formatDate(t.date)}
-                              </Text>
-                              {t.category && (
-                                <Badge
-                                  label={t.category.name}
-                                  tone="neutral"
-                                  size="sm"
-                                />
-                              )}
-                            </View>
-                          </View>
-                          <Text
-                            style={[
-                              styles.txnAmount,
-                              { color: getAmountColor(t.type) },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {t.type === "expense"
-                              ? "−"
-                              : t.type === "income"
-                                ? "+"
-                                : ""}
-                            {formatAmount(parseFloat(String(t.amount)) || 0)}
-                          </Text>
-                          <Pressable
-                            onPress={() => {
-                              setSelectedTransaction(t);
-                              setShowActionSheet(true);
-                            }}
-                            hitSlop={6}
-                          >
-                            <MoreVertical
-                              size={18}
-                              color={colors.onSurfaceVariant}
-                              strokeWidth={2}
-                            />
-                          </Pressable>
-                        </View>
-                      )}
-                    </Pressable>
-                  );
-                })}
+                {group.data.map((t, idx) => (
+                  <TransactionRow
+                    key={t.id}
+                    t={t}
+                    isLast={idx === group.data.length - 1}
+                    expanded={expandedRowId === t.id}
+                    onToggleExpand={() =>
+                      setExpandedRowId((prev) => (prev === t.id ? null : t.id))
+                    }
+                    onPressRow={() => handleEditTransaction(t)}
+                    onLongPress={() => {
+                      setExpandedRowId(null);
+                      setSelectedTransaction(t);
+                      setShowActionSheet(true);
+                    }}
+                    onEdit={() => {
+                      setExpandedRowId(null);
+                      handleEditTransaction(t);
+                    }}
+                    onDelete={() => {
+                      setExpandedRowId(null);
+                      setSelectedTransaction(t);
+                      setShowDeleteConfirm(true);
+                    }}
+                    icon={getIcon(t.type)}
+                    tone={getTone(t.type)}
+                    amountColor={getAmountColor(t.type)}
+                    formatAmount={formatAmount}
+                    colors={colors}
+                  />
+                ))}
               </Card>
             </View>
           ))}
@@ -744,6 +690,23 @@ export default function TransactionsScreen() {
                       })}
                     </Text>
                   </View>
+                  <Pressable
+                    onPress={() => setShowActionSheet(false)}
+                    hitSlop={10}
+                    style={({ pressed }) => [
+                      styles.actionSheetClose,
+                      {
+                        backgroundColor: colors.surfaceVariant,
+                        opacity: pressed ? 0.6 : 1,
+                      },
+                    ]}
+                  >
+                    <X
+                      size={18}
+                      color={colors.onSurface}
+                      strokeWidth={2.4}
+                    />
+                  </Pressable>
                 </View>
 
                 <View style={[styles.divider, { backgroundColor: colors.outlineVariant }]} />
@@ -755,12 +718,17 @@ export default function TransactionsScreen() {
                   }}
                   style={({ pressed }) => [
                     styles.actionSheetButton,
-                    { opacity: pressed ? 0.6 : 1 },
+                    {
+                      backgroundColor: pressed
+                        ? colors.surfaceVariant
+                        : "transparent",
+                    },
                   ]}
                 >
                   <IconBadge icon={Edit3} tone="primary" size="sm" />
                   <Text
                     style={[styles.actionBtnText, { color: colors.onSurface }]}
+                    numberOfLines={1}
                   >
                     Edit transaction
                   </Text>
@@ -773,12 +741,17 @@ export default function TransactionsScreen() {
                   }}
                   style={({ pressed }) => [
                     styles.actionSheetButton,
-                    { opacity: pressed ? 0.6 : 1 },
+                    {
+                      backgroundColor: pressed
+                        ? colors.surfaceVariant
+                        : "transparent",
+                    },
                   ]}
                 >
                   <IconBadge icon={Trash2} tone="danger" size="sm" />
                   <Text
                     style={[styles.actionBtnText, { color: colors.error }]}
+                    numberOfLines={1}
                   >
                     Delete transaction
                   </Text>
@@ -865,6 +838,160 @@ export default function TransactionsScreen() {
   );
 }
 
+const ACTION_WIDTH = 132;
+
+interface TransactionRowProps {
+  t: Transaction;
+  isLast: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onPressRow: () => void;
+  onLongPress: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  icon: LucideIcon;
+  tone: "primary" | "success" | "danger" | "warning" | "info" | "neutral";
+  amountColor: string;
+  formatAmount: (n: number) => string;
+  colors: ReturnType<typeof useTheme>["colors"];
+}
+
+function TransactionRow({
+  t,
+  isLast,
+  expanded,
+  onToggleExpand,
+  onPressRow,
+  onLongPress,
+  onEdit,
+  onDelete,
+  icon,
+  tone,
+  amountColor,
+  formatAmount,
+  colors,
+}: TransactionRowProps) {
+  const translateX = useSharedValue(0);
+
+  React.useEffect(() => {
+    translateX.value = withTiming(expanded ? -ACTION_WIDTH : 0, {
+      duration: 220,
+    });
+  }, [expanded, translateX]);
+
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  return (
+    <View
+      style={[
+        styles.txnRowOuter,
+        {
+          borderBottomColor: colors.outlineVariant,
+          borderBottomWidth: !isLast ? StyleSheet.hairlineWidth : 0,
+        },
+      ]}
+    >
+      {/* Action panel revealed by sliding the row left */}
+      <View style={[styles.slideActions, { width: ACTION_WIDTH }]}>
+        <Pressable
+          onPress={onEdit}
+          style={({ pressed }) => [
+            styles.slideAction,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Edit3 size={18} color="#ffffff" strokeWidth={2.4} />
+          <Text style={styles.slideActionLabel}>Edit</Text>
+        </Pressable>
+        <Pressable
+          onPress={onDelete}
+          style={({ pressed }) => [
+            styles.slideAction,
+            {
+              backgroundColor: colors.error,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Trash2 size={18} color="#ffffff" strokeWidth={2.4} />
+          <Text style={styles.slideActionLabel}>Delete</Text>
+        </Pressable>
+      </View>
+
+      {/* Foreground row that slides */}
+      <Animated.View style={[{ backgroundColor: colors.surface }, slideStyle]}>
+        <Pressable
+          onPress={expanded ? onToggleExpand : onPressRow}
+          onLongPress={onLongPress}
+        >
+          {({ pressed }) => (
+            <View style={[styles.txnRow, { opacity: pressed ? 0.6 : 1 }]}>
+              <IconBadge icon={icon} tone={tone} size="md" />
+              <View style={styles.txnTextBlock}>
+                <Text
+                  style={[styles.txnTitle, { color: colors.onSurface }]}
+                  numberOfLines={1}
+                >
+                  {t.merchant_name || t.description || "Transaction"}
+                </Text>
+                <View style={styles.txnMetaRow}>
+                  <Text
+                    style={[styles.txnSub, { color: colors.onSurfaceVariant }]}
+                  >
+                    {formatDate(t.date)}
+                  </Text>
+                  {t.category && (
+                    <Badge
+                      label={t.category.name}
+                      tone="neutral"
+                      size="sm"
+                    />
+                  )}
+                </View>
+              </View>
+              <Text
+                style={[styles.txnAmount, { color: amountColor }]}
+                numberOfLines={1}
+              >
+                {t.type === "expense"
+                  ? "−"
+                  : t.type === "income"
+                    ? "+"
+                    : ""}
+                {formatAmount(parseFloat(String(t.amount)) || 0)}
+              </Text>
+              <Pressable
+                onPress={onToggleExpand}
+                hitSlop={8}
+                style={styles.moreBtn}
+              >
+                {expanded ? (
+                  <X
+                    size={18}
+                    color={colors.onSurfaceVariant}
+                    strokeWidth={2}
+                  />
+                ) : (
+                  <MoreVertical
+                    size={18}
+                    color={colors.onSurfaceVariant}
+                    strokeWidth={2}
+                  />
+                )}
+              </Pressable>
+            </View>
+          )}
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -899,6 +1026,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.xs,
+    paddingBottom: 5,
   },
   summaryCard: {
     flex: 1,
@@ -1029,12 +1157,40 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     paddingHorizontal: spacing.xs,
   },
+  txnRowOuter: {
+    position: "relative",
+    overflow: "hidden",
+  },
   txnRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+  },
+  moreBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  slideActions: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  slideAction: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  slideActionLabel: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
   txnTextBlock: {
     flex: 1,
@@ -1091,6 +1247,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
+  actionSheetClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
   actionTitle: {
     fontSize: 15,
     fontWeight: "700",
@@ -1113,6 +1277,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
   },
   actionBtnText: {
     flex: 1,
