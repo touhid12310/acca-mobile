@@ -58,11 +58,11 @@ export function HeroCard({
       style={[styles.base, withShadow && shadow.lg, style]}
     >
       <View
-        style={[styles.glowA, { backgroundColor: "#67e8f9", opacity: 0.5 }]}
+        style={[styles.glowA, { backgroundColor: "#22d3ee", opacity: 0.4 }]}
         pointerEvents="none"
       />
       <View
-        style={[styles.glowB, { backgroundColor: "#ec4899", opacity: 0.35 }]}
+        style={[styles.glowB, { backgroundColor: "#ffffff", opacity: 0.18 }]}
         pointerEvents="none"
       />
       {children}

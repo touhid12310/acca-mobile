@@ -1084,7 +1084,7 @@ function SummaryCard({
       <View
         style={[
           styles.summaryGlowA,
-          { backgroundColor: "#ec4899", opacity: 0.45 },
+          { backgroundColor: "#22d3ee", opacity: 0.45 },
         ]}
         pointerEvents="none"
       />
