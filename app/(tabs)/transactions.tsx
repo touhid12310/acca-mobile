@@ -1252,8 +1252,8 @@ const styles = StyleSheet.create({
   },
   slideActions: {
     position: "absolute",
-    top: "25%",
-    bottom: "25%",
+    top: 0,
+    bottom: 0,
     right: 0,
     flexDirection: "row",
   },
