@@ -81,15 +81,7 @@ const FILTERS: { key: FilterType; label: string }[] = [
 ];
 
 export default function TransactionsScreen() {
-  const { colors, isDark } = useTheme();
-  // Soft translucent tint for dark mode, full container colors for light mode.
-  const incomeBg = isDark ? `${colors.tertiary}26` : colors.tertiaryContainer;
-  const expenseBg = isDark ? `${colors.error}26` : colors.errorContainer;
-  const incomeFg = isDark ? colors.tertiary : colors.onTertiaryContainer;
-  const expenseFg = isDark ? colors.error : colors.onErrorContainer;
-  const summaryIconBg = isDark
-    ? "rgba(255,255,255,0.08)"
-    : "rgba(255,255,255,0.55)";
+  const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -480,28 +472,22 @@ export default function TransactionsScreen() {
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { backgroundColor: incomeBg }]}>
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryGlowA} pointerEvents="none" />
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View
-                style={[
-                  styles.summaryIconWrap,
-                  { backgroundColor: summaryIconBg },
-                ]}
-              >
+              <View style={styles.summaryIconWrap}>
                 <ArrowDownLeft
-                  size={18}
-                  color={colors.tertiary}
+                  size={16}
+                  color="#34d399"
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={[styles.summaryLabel, { color: incomeFg }]}>
-                Total Income
-              </Text>
+              <Text style={styles.summaryLabel}>Total Income</Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: incomeFg }]}
+            style={[styles.summaryValue, { color: "#34d399" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -509,28 +495,22 @@ export default function TransactionsScreen() {
             {formatAmount(totalIncome)}
           </Text>
         </View>
-        <View style={[styles.summaryCard, { backgroundColor: expenseBg }]}>
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryGlowB} pointerEvents="none" />
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View
-                style={[
-                  styles.summaryIconWrap,
-                  { backgroundColor: summaryIconBg },
-                ]}
-              >
+              <View style={styles.summaryIconWrap}>
                 <ArrowUpRight
-                  size={18}
-                  color={colors.error}
+                  size={16}
+                  color="#fb923c"
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={[styles.summaryLabel, { color: expenseFg }]}>
-                Total Expenses
-              </Text>
+              <Text style={styles.summaryLabel}>Total Expenses</Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: expenseFg }]}
+            style={[styles.summaryValue, { color: "#fb923c" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -1113,12 +1093,34 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
+    backgroundColor: "#0f213d",
     paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: radius.lg,
     gap: 1,
     minHeight: 72,
     justifyContent: "flex-start",
+    overflow: "hidden",
+  },
+  summaryGlowA: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#6366f1",
+    opacity: 0.22,
+    top: -50,
+    right: -40,
+  },
+  summaryGlowB: {
+    position: "absolute",
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#a855f7",
+    opacity: 0.18,
+    bottom: -40,
+    left: -30,
   },
   summaryTopRow: {
     flexDirection: "row",
@@ -1132,9 +1134,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   summaryIconWrap: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1143,6 +1146,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 14,
     flexShrink: 1,
+    color: "rgba(255,255,255,0.75)",
   },
   summaryValue: {
     fontSize: 17,
@@ -1151,11 +1155,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     width: "100%",
     textAlign: "center",
-  },
-  summaryHint: {
-    fontSize: 12,
-    fontWeight: "600",
-    lineHeight: 16,
   },
   searchWrap: {
     paddingHorizontal: spacing.lg,
