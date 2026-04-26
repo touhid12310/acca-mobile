@@ -97,8 +97,6 @@ export default function TransactionsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [filterChanging, setFilterChanging] = useState(false);
-  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
-  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
@@ -107,8 +105,9 @@ export default function TransactionsScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [periodModalVisible, setPeriodModalVisible] = useState(false);
   const [period, setPeriod] = useState<PeriodRange>(() =>
-    computePeriodRange("all"),
+    computePeriodRange("this_month"),
   );
+  const [periodFilterActive, setPeriodFilterActive] = useState(false);
   const [pendingPeriod, setPendingPeriod] = useState<PeriodRange | null>(null);
 
   const handleOpenPeriodModal = useCallback(() => {
@@ -120,6 +119,7 @@ export default function TransactionsScreen() {
     setPeriodModalVisible(false);
     if (pendingPeriod && pendingPeriod !== period) {
       setPeriod(pendingPeriod);
+      setPeriodFilterActive(pendingPeriod.preset !== "all");
     }
     setPendingPeriod(null);
   }, [pendingPeriod, period]);
@@ -174,6 +174,24 @@ export default function TransactionsScreen() {
   }, [accounts]);
 
   const PAGE_SIZE = 20;
+  const apiDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const activeSearch = searchQuery.trim();
+  const periodQueryRange = useMemo(() => {
+    if (!periodFilterActive || period.preset === "all") {
+      return { startDate: undefined, endDate: undefined };
+    }
+
+    return {
+      startDate: apiDate(period.start),
+      endDate: apiDate(period.end),
+    };
+  }, [period, periodFilterActive]);
 
   const {
     data: transactionPages,
@@ -184,12 +202,25 @@ export default function TransactionsScreen() {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ["transactions", "infinite"],
+    queryKey: [
+      "transactions",
+      "infinite",
+      filterType,
+      activeSearch,
+      periodQueryRange.startDate,
+      periodQueryRange.endDate,
+    ],
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       const result = await transactionService.getAll({
         page: pageParam as number,
         per_page: PAGE_SIZE,
+        type: filterType !== "all" ? filterType : undefined,
+        start_date: periodQueryRange.startDate,
+        end_date: periodQueryRange.endDate,
+        search: activeSearch || undefined,
+        sort_by: "id",
+        sort_order: "desc",
       });
       if (!result.success || !result.data) {
         throw new Error(result.error || "Failed to load transactions");
@@ -222,26 +253,41 @@ export default function TransactionsScreen() {
         : undefined,
   });
 
-  const transactions = useMemo(
-    () => transactionPages?.pages.flatMap((p) => p.data) ?? [],
-    [transactionPages],
-  );
+  const transactions = useMemo(() => {
+    const seen = new Set<number>();
+    return (
+      transactionPages?.pages.flatMap((p) =>
+        p.data.filter((transaction) => {
+          if (seen.has(transaction.id)) return false;
+          seen.add(transaction.id);
+          return true;
+        }),
+      ) ?? []
+    );
+  }, [transactionPages]);
 
-  // Current-month totals (server-side, accurate regardless of pagination/filters)
-  const monthRange = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    const fmt = (d: Date) => d.toISOString().split("T")[0];
-    return { start: fmt(start), end: fmt(end) };
-  }, []);
+  const statsRange = useMemo(() => {
+    if (period.preset === "all") {
+      return { start: undefined, end: undefined };
+    }
 
-  const { data: monthStats } = useQuery({
-    queryKey: ["transactions", "month-stats", monthRange.start, monthRange.end],
+    return {
+      start: apiDate(period.start),
+      end: apiDate(period.end),
+    };
+  }, [period]);
+
+  const { data: summaryStats } = useQuery({
+    queryKey: [
+      "transactions",
+      "summary-stats",
+      statsRange.start,
+      statsRange.end,
+    ],
     queryFn: async () => {
       const result = await transactionService.getAll({
-        start_date: monthRange.start,
-        end_date: monthRange.end,
+        start_date: statsRange.start,
+        end_date: statsRange.end,
         per_page: 1,
       });
       if (result.success && result.data) {
@@ -259,14 +305,14 @@ export default function TransactionsScreen() {
   });
 
   const periodPool = useMemo(() => {
-    if (period.preset === "all") return transactions;
+    if (!periodFilterActive || period.preset === "all") return transactions;
     const start = period.start.getTime();
     const end = period.end.getTime();
     return transactions.filter((t) => {
       const d = new Date(t.date).getTime();
       return d >= start && d <= end;
     });
-  }, [transactions, period]);
+  }, [transactions, period, periodFilterActive]);
 
   const filteredTransactions = useCallback(() => {
     let filtered = [...periodPool];
@@ -283,17 +329,12 @@ export default function TransactionsScreen() {
       );
     }
     filtered.sort((a, b) => {
-      if (sortBy === "date") {
-        const dA = new Date(a.date).getTime();
-        const dB = new Date(b.date).getTime();
-        return sortOrder === "desc" ? dB - dA : dA - dB;
-      }
-      const aA = parseFloat(String(a.amount)) || 0;
-      const aB = parseFloat(String(b.amount)) || 0;
-      return sortOrder === "desc" ? aB - aA : aA - aB;
+      const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return Number(b.id) - Number(a.id);
     });
     return filtered;
-  }, [periodPool, searchQuery, sortBy, sortOrder, filterType]);
+  }, [periodPool, searchQuery, filterType]);
 
   const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
@@ -386,8 +427,8 @@ export default function TransactionsScreen() {
     return groups;
   }, [filteredTransactions]);
 
-  const totalIncome = monthStats?.income ?? 0;
-  const totalExpense = monthStats?.expenses ?? 0;
+  const totalIncome = summaryStats?.income ?? 0;
+  const totalExpense = summaryStats?.expenses ?? 0;
 
   return (
     <SafeAreaView
@@ -579,7 +620,7 @@ export default function TransactionsScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : filteredTransactions().length === 0 ? (
+      ) : groupedTransactions.length === 0 ? (
         <View style={styles.emptyStateWrap}>
           <EmptyState
             icon={Receipt}
@@ -624,8 +665,11 @@ export default function TransactionsScreen() {
             />
           }
         >
-          {groupedTransactions.map((group) => (
-            <View key={group.date} style={{ gap: spacing.xs }}>
+          {groupedTransactions.map((group, groupIndex) => (
+            <View
+              key={`${group.date}-${group.data[0]?.id ?? groupIndex}`}
+              style={{ gap: spacing.xs }}
+            >
               <Text
                 style={[styles.dateHeader, { color: colors.onSurfaceVariant }]}
               >

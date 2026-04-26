@@ -1,5 +1,14 @@
-import API_CONFIG, { apiRequest, buildApiUrl, getAuthToken } from '../config/api';
-import { Transaction, TransactionFormData, ApiResponse, PaginatedResponse } from '../types';
+import API_CONFIG, {
+  apiRequest,
+  buildApiUrl,
+  getAuthToken,
+} from "../config/api";
+import {
+  Transaction,
+  TransactionFormData,
+  ApiResponse,
+  PaginatedResponse,
+} from "../types";
 
 interface TransactionFilters {
   page?: number;
@@ -10,17 +19,19 @@ interface TransactionFilters {
   start_date?: string;
   end_date?: string;
   search?: string;
+  sort_by?: "date" | "amount" | "id";
+  sort_order?: "asc" | "desc";
 }
 
 export const transactionService = {
   getAll: async (
-    filters: TransactionFilters = {}
+    filters: TransactionFilters = {},
   ): Promise<ApiResponse<PaginatedResponse<Transaction>>> => {
     const token = await getAuthToken();
     const queryString = new URLSearchParams(
       Object.entries(filters)
         .filter(([_, v]) => v !== undefined && v !== null)
-        .map(([k, v]) => [k, String(v)])
+        .map(([k, v]) => [k, String(v)]),
     ).toString();
 
     const endpoint = queryString
@@ -28,23 +39,28 @@ export const transactionService = {
       : API_CONFIG.ENDPOINTS.TRANSACTIONS;
 
     return apiRequest<PaginatedResponse<Transaction>>(endpoint, {
-      method: 'GET',
+      method: "GET",
       token,
     });
   },
 
   getById: async (id: number): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
-    return apiRequest<Transaction>(`${API_CONFIG.ENDPOINTS.TRANSACTIONS}/${id}`, {
-      method: 'GET',
-      token,
-    });
+    return apiRequest<Transaction>(
+      `${API_CONFIG.ENDPOINTS.TRANSACTIONS}/${id}`,
+      {
+        method: "GET",
+        token,
+      },
+    );
   },
 
-  create: async (data: TransactionFormData): Promise<ApiResponse<Transaction>> => {
+  create: async (
+    data: TransactionFormData,
+  ): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
     return apiRequest<Transaction>(API_CONFIG.ENDPOINTS.TRANSACTION_CREATE, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(data),
       token,
     });
@@ -52,31 +68,42 @@ export const transactionService = {
 
   update: async (
     id: number,
-    data: Partial<TransactionFormData>
+    data: Partial<TransactionFormData>,
   ): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
-    return apiRequest<Transaction>(`${API_CONFIG.ENDPOINTS.TRANSACTION_UPDATE}/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-      token,
-    });
+    return apiRequest<Transaction>(
+      `${API_CONFIG.ENDPOINTS.TRANSACTION_UPDATE}/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        token,
+      },
+    );
   },
 
   delete: async (id: number): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
-    return apiRequest<void>(`${API_CONFIG.ENDPOINTS.TRANSACTION_DELETE}/${id}`, {
-      method: 'DELETE',
-      token,
-    });
+    return apiRequest<void>(
+      `${API_CONFIG.ENDPOINTS.TRANSACTION_DELETE}/${id}`,
+      {
+        method: "DELETE",
+        token,
+      },
+    );
   },
 
-  bulkCreate: async (transactions: TransactionFormData[]): Promise<ApiResponse<Transaction[]>> => {
+  bulkCreate: async (
+    transactions: TransactionFormData[],
+  ): Promise<ApiResponse<Transaction[]>> => {
     const token = await getAuthToken();
-    return apiRequest<Transaction[]>(API_CONFIG.ENDPOINTS.TRANSACTION_BULK_CREATE, {
-      method: 'POST',
-      body: JSON.stringify({ transactions }),
-      token,
-    });
+    return apiRequest<Transaction[]>(
+      API_CONFIG.ENDPOINTS.TRANSACTION_BULK_CREATE,
+      {
+        method: "POST",
+        body: JSON.stringify({ transactions }),
+        token,
+      },
+    );
   },
 
   processReceipt: async (file: {
@@ -90,12 +117,12 @@ export const transactionService = {
       return {
         success: false,
         status: 401,
-        error: 'Authentication required',
+        error: "Authentication required",
       };
     }
 
     const formData = new FormData();
-    formData.append('receipt_file', {
+    formData.append("receipt_file", {
       uri: file.uri,
       name: file.name,
       type: file.type,
@@ -105,12 +132,12 @@ export const transactionService = {
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.TRANSACTION_PROCESS_RECEIPT),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
           },
           body: formData,
-        }
+        },
       );
 
       const data = await response.json();
@@ -123,7 +150,7 @@ export const transactionService = {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : "Network error",
       };
     }
   },
@@ -139,12 +166,12 @@ export const transactionService = {
       return {
         success: false,
         status: 401,
-        error: 'Authentication required',
+        error: "Authentication required",
       };
     }
 
     const formData = new FormData();
-    formData.append('csv_file', {
+    formData.append("csv_file", {
       uri: file.uri,
       name: file.name,
       type: file.type,
@@ -154,12 +181,12 @@ export const transactionService = {
       const response = await fetch(
         buildApiUrl(API_CONFIG.ENDPOINTS.TRANSACTION_PROCESS_CSV),
         {
-          method: 'POST',
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
           },
           body: formData,
-        }
+        },
       );
 
       const data = await response.json();
@@ -172,28 +199,28 @@ export const transactionService = {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Network error',
+        error: error instanceof Error ? error.message : "Network error",
       };
     }
   },
 
   searchMerchants: async (
-    searchTerm: string = '',
-    limit: number = 8
+    searchTerm: string = "",
+    limit: number = 8,
   ): Promise<ApiResponse<string[]>> => {
     const token = await getAuthToken();
     const queryParams = new URLSearchParams();
     if (searchTerm) {
-      queryParams.append('search', searchTerm);
+      queryParams.append("search", searchTerm);
     }
-    queryParams.append('limit', String(limit));
+    queryParams.append("limit", String(limit));
 
     return apiRequest<string[]>(
       `${API_CONFIG.ENDPOINTS.TRANSACTION_MERCHANTS}?${queryParams.toString()}`,
       {
-        method: 'GET',
+        method: "GET",
         token,
-      }
+      },
     );
   },
 
@@ -206,7 +233,7 @@ export const transactionService = {
   }): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
     return apiRequest<Transaction>(API_CONFIG.ENDPOINTS.TRANSACTION_TRANSFER, {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify(transferData),
       token,
     });
