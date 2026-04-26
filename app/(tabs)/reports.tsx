@@ -4,46 +4,89 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  Dimensions,
-  TouchableOpacity,
-} from "react-native";
-import {
   Text,
-  Surface,
+  Pressable,
   ActivityIndicator,
-  Divider,
-  Chip,
-} from "react-native-paper";
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import {
+  ArrowDownLeft,
+  ArrowDownRight,
+  ArrowUpLeft,
+  ArrowUpRight,
+  BarChart3,
+  Calendar,
+  ChartLine,
+  ChartPie,
+  CreditCard,
+  FileText,
+  Landmark,
+  Minus,
+  Receipt,
+  Scale,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
-import { BrandedHeader } from "../../src/components";
+import {
+  ScreenHeader,
+  Card,
+  IconBadge,
+  EmptyState,
+  Badge,
+} from "../../src/components/ui";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
-import { formatPercentage } from "../../src/utils/format";
+import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 type ReportType = "summary" | "category" | "networth" | "income" | "balance";
 type CategoryTypeFilter = "all" | "income" | "expense" | "asset" | "liability";
 type PeriodFilter = "monthly" | "quarterly" | "yearly" | "custom";
 
-const { width: screenWidth } = Dimensions.get("window");
+interface ReportTypeOption {
+  value: ReportType;
+  label: string;
+  icon: LucideIcon;
+}
+
+const REPORT_TYPES: ReportTypeOption[] = [
+  { value: "summary", label: "Summary", icon: ChartLine },
+  { value: "category", label: "Category", icon: ChartPie },
+  { value: "networth", label: "Net Worth", icon: TrendingUp },
+  { value: "income", label: "P&L", icon: FileText },
+  { value: "balance", label: "Balance", icon: Scale },
+];
+
+const CATEGORY_PALETTE = [
+  "#3B82F6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#F97316",
+  "#EC4899",
+  "#06B6D4",
+  "#84CC16",
+  "#6366F1",
+];
 
 export default function ReportsScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
 
   const [reportType, setReportType] = useState<ReportType>("summary");
-  const [months, setMonths] = useState(6);
+  const [months] = useState(6);
 
-  // Category breakdown filters
   const [categoryTypeFilter, setCategoryTypeFilter] =
     useState<CategoryTypeFilter>("expense");
 
-  // Income statement filters
   const [incomeStatementPeriod, setIncomeStatementPeriod] =
     useState<PeriodFilter>("monthly");
   const [incomeStartDate, setIncomeStartDate] = useState(() => {
@@ -55,12 +98,11 @@ export default function ReportsScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  // Balance sheet filters
   const [balanceSheetDate, setBalanceSheetDate] = useState(new Date());
   const [showBalanceDatePicker, setShowBalanceDatePicker] = useState(false);
 
   const categoryTypeOptions: { value: CategoryTypeFilter; label: string }[] = [
-    { value: "all", label: "All Types" },
+    { value: "all", label: "All" },
     { value: "income", label: "Income" },
     { value: "expense", label: "Expense" },
     { value: "asset", label: "Asset" },
@@ -71,31 +113,25 @@ export default function ReportsScreen() {
     { value: "monthly", label: "This Month" },
     { value: "quarterly", label: "This Quarter" },
     { value: "yearly", label: "This Year" },
-    { value: "custom", label: "Custom Range" },
+    { value: "custom", label: "Custom" },
   ];
 
-  // Handle period change for income statement
   const handlePeriodChange = (period: PeriodFilter) => {
     setIncomeStatementPeriod(period);
     const today = new Date();
-
     if (period === "monthly") {
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-      setIncomeStartDate(firstDay);
+      setIncomeStartDate(new Date(today.getFullYear(), today.getMonth(), 1));
       setIncomeEndDate(today);
     } else if (period === "quarterly") {
       const quarter = Math.floor(today.getMonth() / 3);
-      const firstDay = new Date(today.getFullYear(), quarter * 3, 1);
-      setIncomeStartDate(firstDay);
+      setIncomeStartDate(new Date(today.getFullYear(), quarter * 3, 1));
       setIncomeEndDate(today);
     } else if (period === "yearly") {
-      const firstDay = new Date(today.getFullYear(), 0, 1);
-      setIncomeStartDate(firstDay);
+      setIncomeStartDate(new Date(today.getFullYear(), 0, 1));
       setIncomeEndDate(today);
     }
   };
 
-  // Monthly summary query
   const {
     data: summaryData,
     isLoading: isLoadingSummary,
@@ -104,40 +140,29 @@ export default function ReportsScreen() {
   } = useQuery({
     queryKey: ["reports", "monthly-summary", months],
     queryFn: async () => {
-      try {
-        const result = await reportService.getMonthlySummary(months);
-        if (result.success && result.data) {
-          // API returns: { data: { labels: [], income: [], expenses: [], assets: [], liabilities: [] } }
-          const responseData = result.data as any;
-          const data = responseData?.data || responseData;
-
-          // Transform chart data format to table format
-          if (data && data.labels && Array.isArray(data.labels)) {
-            const tableData: MonthlySummary[] = data.labels.map(
-              (label: string, index: number) => ({
-                month: label,
-                income: data.income?.[index] || 0,
-                expenses: data.expenses?.[index] || 0,
-                net:
-                  (data.income?.[index] || 0) - (data.expenses?.[index] || 0),
-              }),
-            );
-            return tableData;
-          }
-
-          // Fallback if already in array format
-          return Array.isArray(data) ? data : [];
+      const result = await reportService.getMonthlySummary(months);
+      if (result.success && result.data) {
+        const responseData = result.data as any;
+        const data = responseData?.data || responseData;
+        if (data && data.labels && Array.isArray(data.labels)) {
+          const tableData: MonthlySummary[] = data.labels.map(
+            (label: string, index: number) => ({
+              month: label,
+              income: data.income?.[index] || 0,
+              expenses: data.expenses?.[index] || 0,
+              net: (data.income?.[index] || 0) - (data.expenses?.[index] || 0),
+            }),
+          );
+          return tableData;
         }
-        return [];
-      } catch (error: any) {
-        return [];
+        return Array.isArray(data) ? data : [];
       }
+      return [];
     },
     enabled: reportType === "summary",
   });
 
-  // Summary stats query
-  const { data: summaryStatsData, isLoading: isLoadingStats } = useQuery({
+  const { data: summaryStatsData } = useQuery({
     queryKey: ["reports", "summary-stats", months],
     queryFn: async () => {
       const result = await reportService.getSummaryStats(months);
@@ -150,7 +175,6 @@ export default function ReportsScreen() {
     enabled: reportType === "summary",
   });
 
-  // Category breakdown query
   const {
     data: categoryData,
     isLoading: isLoadingCategory,
@@ -165,24 +189,9 @@ export default function ReportsScreen() {
           : {};
       const result = await reportService.getCategoryBreakdown(params);
       if (result.success && result.data) {
-        // API returns: { data: { labels: [], values: [], colors: [] } }
         const responseData = result.data as any;
         const data = responseData?.data || responseData;
-
-        // Transform chart data format to table format
         if (data && data.labels && Array.isArray(data.labels)) {
-          const defaultColors = [
-            "#3B82F6",
-            "#10B981",
-            "#F59E0B",
-            "#EF4444",
-            "#8B5CF6",
-            "#F97316",
-            "#EC4899",
-            "#06B6D4",
-            "#84CC16",
-            "#6366F1",
-          ];
           const tableData: CategoryBreakdown[] = data.labels.map(
             (label: string, index: number) => ({
               category_id: index,
@@ -190,13 +199,11 @@ export default function ReportsScreen() {
               amount: data.values?.[index] || 0,
               color:
                 data.colors?.[index] ||
-                defaultColors[index % defaultColors.length],
+                CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
             }),
           );
           return tableData;
         }
-
-        // Fallback if already in array format
         return Array.isArray(data) ? data : [];
       }
       return [];
@@ -204,7 +211,6 @@ export default function ReportsScreen() {
     enabled: reportType === "category",
   });
 
-  // Net worth timeline query
   const {
     data: netWorthData,
     isLoading: isLoadingNetWorth,
@@ -215,7 +221,6 @@ export default function ReportsScreen() {
     queryFn: async () => {
       const result = await reportService.getNetWorthTimeline(months);
       if (result.success && result.data) {
-        // API returns: { data: { labels: [], netWorth: [] } }
         const responseData = result.data as any;
         return responseData?.data || responseData;
       }
@@ -224,7 +229,6 @@ export default function ReportsScreen() {
     enabled: reportType === "networth",
   });
 
-  // Income statement query
   const {
     data: incomeStatementData,
     isLoading: isLoadingIncome,
@@ -251,7 +255,6 @@ export default function ReportsScreen() {
     enabled: reportType === "income",
   });
 
-  // Balance sheet query
   const {
     data: balanceSheetData,
     isLoading: isLoadingBalance,
@@ -273,17 +276,18 @@ export default function ReportsScreen() {
   });
 
   const isLoading =
-    isLoadingSummary ||
-    isLoadingCategory ||
-    isLoadingIncome ||
-    isLoadingBalance ||
-    isLoadingNetWorth;
+    (reportType === "summary" && isLoadingSummary) ||
+    (reportType === "category" && isLoadingCategory) ||
+    (reportType === "networth" && isLoadingNetWorth) ||
+    (reportType === "income" && isLoadingIncome) ||
+    (reportType === "balance" && isLoadingBalance);
+
   const isRefetching =
     isRefetchingSummary ||
     isRefetchingCategory ||
+    isRefetchingNetWorth ||
     isRefetchingIncome ||
-    isRefetchingBalance ||
-    isRefetchingNetWorth;
+    isRefetchingBalance;
 
   const handleRefresh = () => {
     switch (reportType) {
@@ -305,7 +309,6 @@ export default function ReportsScreen() {
     }
   };
 
-  // Calculate totals for summary
   const summaryTotals = useMemo(() => {
     if (!summaryData || summaryData.length === 0) {
       return { income: 0, expenses: 0, net: 0 };
@@ -320,503 +323,479 @@ export default function ReportsScreen() {
     );
   }, [summaryData]);
 
-  // Render summary statistics
-  const renderSummaryStats = () => {
-    const stats = summaryStatsData as {
-      total_income?: number;
-      total_expenses?: number;
-      net_savings?: number;
-      savings_rate?: number;
-      total_assets?: number;
-      total_liabilities?: number;
-    } | null;
+  const heroGradient = (isDark ? gradients.primaryNight : gradients.primary) as any;
 
-    if (!stats) return null;
-
+  const renderHero = (
+    label: string,
+    value: number,
+    icon: LucideIcon,
+    deltaLabel?: string,
+    deltaPositive?: boolean,
+  ) => {
+    const Icon = icon;
+    const Delta =
+      deltaLabel === undefined
+        ? null
+        : deltaPositive
+          ? TrendingUp
+          : TrendingDown;
     return (
-      <View style={styles.statsContainer}>
-        <Text
-          variant="titleMedium"
-          style={[styles.sectionTitle, { color: colors.onSurface }]}
-        >
-          Summary Statistics ({months} Months)
-        </Text>
-        <View style={styles.statsGrid}>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Income
+      <LinearGradient
+        colors={heroGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.hero, shadow.md]}
+      >
+        <View style={styles.heroTopRow}>
+          <View style={styles.heroIcon}>
+            <Icon size={22} color="#ffffff" strokeWidth={2.2} />
+          </View>
+          <View style={styles.heroTopText}>
+            <Text style={styles.heroLabel}>{label}</Text>
+            <Text style={styles.heroValue} numberOfLines={1}>
+              {formatAmount(value)}
             </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.tertiary, fontWeight: "600" }}
-            >
-              {formatAmount(stats.total_income || 0)}
-            </Text>
-          </Surface>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Expenses
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.error, fontWeight: "600" }}
-            >
-              {formatAmount(stats.total_expenses || 0)}
-            </Text>
-          </Surface>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Net Savings
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.primary, fontWeight: "600" }}
-            >
-              {formatAmount(stats.net_savings || 0)}
-            </Text>
-          </Surface>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Savings Rate
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.primary, fontWeight: "600" }}
-            >
-              {stats.savings_rate || 0}%
-            </Text>
-          </Surface>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Assets
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.tertiary, fontWeight: "600" }}
-            >
-              {formatAmount(stats.total_assets || 0)}
-            </Text>
-          </Surface>
-          <Surface
-            style={[styles.statCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Liabilities
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.error, fontWeight: "600" }}
-            >
-              {formatAmount(stats.total_liabilities || 0)}
-            </Text>
-          </Surface>
+            {deltaLabel !== undefined && Delta && (
+              <View style={styles.heroDeltaRow}>
+                <Delta size={14} color="#ffffff" strokeWidth={2.4} />
+                <Text style={styles.heroDeltaText}>{deltaLabel}</Text>
+              </View>
+            )}
+          </View>
         </View>
+      </LinearGradient>
+    );
+  };
+
+  const renderFilterPills = <T extends string>(
+    value: T,
+    options: { value: T; label: string }[],
+    onChange: (v: T) => void,
+  ) => (
+    <View style={styles.pillShell}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.pillRow}
+        keyboardShouldPersistTaps="handled"
+      >
+        {options.map((opt) => {
+          const active = value === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              onPress={() => onChange(opt.value)}
+              style={[
+                styles.pill,
+                {
+                  backgroundColor: active
+                    ? colors.primary
+                    : colors.surfaceVariant,
+                },
+              ]}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.pillLabel,
+                  {
+                    color: active ? colors.onPrimary : colors.onSurfaceVariant,
+                  },
+                ]}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
+  const renderDateButton = (date: Date, onPress: () => void) => (
+    <Pressable
+      onPress={onPress}
+      style={[styles.dateChip, { backgroundColor: colors.surfaceVariant }]}
+    >
+      <Calendar size={14} color={colors.onSurfaceVariant} strokeWidth={2.2} />
+      <Text style={[styles.dateChipText, { color: colors.onSurface }]}>
+        {date.toLocaleDateString()}
+      </Text>
+    </Pressable>
+  );
+
+  const renderStatPair = (
+    leftLabel: string,
+    leftValue: number,
+    leftIcon: LucideIcon,
+    leftColor: string,
+    rightLabel: string,
+    rightValue: number,
+    rightIcon: LucideIcon,
+    rightColor: string,
+  ) => {
+    const LeftIcon = leftIcon;
+    const RightIcon = rightIcon;
+    return (
+      <View style={styles.statRow}>
+        <Card variant="elevated" padding="lg" radiusSize="xl" style={styles.statCard}>
+          <View style={styles.statTopRow}>
+            <View
+              style={[
+                styles.statIconWrap,
+                { backgroundColor: leftColor + "22" },
+              ]}
+            >
+              <LeftIcon size={18} color={leftColor} strokeWidth={2.4} />
+            </View>
+          </View>
+          <Text style={[styles.statLabel, { color: colors.onSurfaceVariant }]}>
+            {leftLabel}
+          </Text>
+          <Text
+            style={[styles.statValue, { color: leftColor }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {formatAmount(leftValue)}
+          </Text>
+        </Card>
+        <Card variant="elevated" padding="lg" radiusSize="xl" style={styles.statCard}>
+          <View style={styles.statTopRow}>
+            <View
+              style={[
+                styles.statIconWrap,
+                { backgroundColor: rightColor + "22" },
+              ]}
+            >
+              <RightIcon size={18} color={rightColor} strokeWidth={2.4} />
+            </View>
+          </View>
+          <Text style={[styles.statLabel, { color: colors.onSurfaceVariant }]}>
+            {rightLabel}
+          </Text>
+          <Text
+            style={[styles.statValue, { color: rightColor }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
+            {formatAmount(rightValue)}
+          </Text>
+        </Card>
       </View>
     );
   };
 
-  // Render monthly summary
+  const renderSectionTitle = (text: string) => (
+    <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
+      {text}
+    </Text>
+  );
+
   const renderMonthlySummary = () => {
     if (!summaryData || summaryData.length === 0) {
       return (
-        <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="chart-line"
-            size={48}
-            color={colors.onSurfaceVariant}
-          />
-          <Text
-            variant="bodyMedium"
-            style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
-          >
-            No data available
-          </Text>
-        </View>
+        <EmptyState
+          icon={ChartLine}
+          title="No data yet"
+          message="Add transactions to see monthly trends here."
+          compact
+        />
       );
     }
 
+    const maxAbs = Math.max(
+      1,
+      ...summaryData.map((m) =>
+        Math.max(m.income || 0, m.expenses || 0, Math.abs(m.net || 0)),
+      ),
+    );
+
     return (
       <>
-        {/* Summary totals */}
-        <View style={styles.totalsGrid}>
-          <Surface
-            style={[styles.totalCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <MaterialCommunityIcons
-              name="arrow-up-circle"
-              size={24}
-              color={colors.tertiary}
-            />
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Income
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.tertiary, fontWeight: "600" }}
-            >
-              {formatAmount(summaryTotals.income)}
-            </Text>
-          </Surface>
+        {renderHero(
+          `Net Savings · ${months} mo`,
+          summaryTotals.net,
+          Wallet,
+          summaryTotals.net >= 0 ? "Positive trend" : "Negative trend",
+          summaryTotals.net >= 0,
+        )}
 
-          <Surface
-            style={[styles.totalCard, { backgroundColor: colors.surface }]}
-            elevation={1}
-          >
-            <MaterialCommunityIcons
-              name="arrow-down-circle"
-              size={24}
-              color={colors.error}
-            />
-            <Text
-              variant="bodySmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Expenses
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.error, fontWeight: "600" }}
-            >
-              {formatAmount(summaryTotals.expenses)}
-            </Text>
-          </Surface>
-        </View>
+        {renderStatPair(
+          "Total Income",
+          summaryTotals.income,
+          ArrowDownLeft,
+          colors.tertiary,
+          "Total Expenses",
+          summaryTotals.expenses,
+          ArrowUpRight,
+          colors.error,
+        )}
 
-        <Surface
-          style={[styles.netCard, { backgroundColor: colors.primaryContainer }]}
-          elevation={1}
-        >
-          <Text variant="bodyMedium" style={{ color: colors.primary }}>
-            Net Savings
-          </Text>
-          <Text
-            variant="headlineMedium"
-            style={{ color: colors.primary, fontWeight: "bold" }}
-          >
-            {formatAmount(summaryTotals.net)}
-          </Text>
-        </Surface>
-
-        {/* Monthly breakdown */}
-        <Text
-          variant="titleMedium"
-          style={[styles.sectionTitle, { color: colors.onSurface }]}
-        >
-          Monthly Breakdown
-        </Text>
-
-        <Surface
-          style={[styles.tableContainer, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          {/* Table header */}
-          <View
-            style={[
-              styles.tableRow,
-              { backgroundColor: colors.surfaceVariant },
-            ]}
-          >
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { flex: 1.5, color: colors.onSurface },
-              ]}
-            >
-              Month
-            </Text>
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { color: colors.onSurface, textAlign: "right" },
-              ]}
-            >
-              Income
-            </Text>
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { color: colors.onSurface, textAlign: "right" },
-              ]}
-            >
-              Expenses
-            </Text>
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { color: colors.onSurface, textAlign: "right" },
-              ]}
-            >
-              Net
-            </Text>
-          </View>
-
-          {/* Table rows */}
-          {summaryData.map((month, index) => (
-            <React.Fragment key={month.month}>
-              <View style={styles.tableRow}>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    { flex: 1.5, color: colors.onSurface },
-                  ]}
-                >
-                  {month.month}
-                </Text>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    { color: colors.tertiary, textAlign: "right" },
-                  ]}
-                >
-                  {formatAmount(month.income || 0)}
-                </Text>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    { color: colors.error, textAlign: "right" },
-                  ]}
-                >
-                  {formatAmount(month.expenses || 0)}
-                </Text>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    {
-                      color:
-                        (month.net || 0) >= 0 ? colors.tertiary : colors.error,
-                      textAlign: "right",
-                      fontWeight: "500",
-                    },
-                  ]}
-                >
-                  {formatAmount(month.net || 0)}
-                </Text>
+        {renderSectionTitle("Monthly Breakdown")}
+        <Card variant="elevated" padding={0} radiusSize="xl">
+          {summaryData.map((m, idx) => {
+            const incomeRatio = (m.income || 0) / maxAbs;
+            const expenseRatio = (m.expenses || 0) / maxAbs;
+            const netPositive = (m.net || 0) >= 0;
+            return (
+              <View
+                key={m.month}
+                style={[
+                  styles.monthRow,
+                  idx < summaryData.length - 1 && {
+                    borderBottomColor: colors.outlineVariant,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={styles.monthHeader}>
+                  <Text
+                    style={[styles.monthLabel, { color: colors.onSurface }]}
+                  >
+                    {m.month}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.monthNet,
+                      {
+                        color: netPositive ? colors.tertiary : colors.error,
+                      },
+                    ]}
+                  >
+                    {netPositive ? "+" : ""}
+                    {formatAmount(m.net || 0)}
+                  </Text>
+                </View>
+                <View style={styles.barRow}>
+                  <ArrowDownLeft
+                    size={12}
+                    color={colors.tertiary}
+                    strokeWidth={2.4}
+                  />
+                  <View
+                    style={[
+                      styles.barTrack,
+                      { backgroundColor: colors.surfaceVariant },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.barFill,
+                        {
+                          backgroundColor: colors.tertiary,
+                          width: `${Math.max(incomeRatio * 100, 2)}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.barValue, { color: colors.onSurfaceVariant }]}
+                  >
+                    {formatAmount(m.income || 0)}
+                  </Text>
+                </View>
+                <View style={styles.barRow}>
+                  <ArrowUpRight
+                    size={12}
+                    color={colors.error}
+                    strokeWidth={2.4}
+                  />
+                  <View
+                    style={[
+                      styles.barTrack,
+                      { backgroundColor: colors.surfaceVariant },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.barFill,
+                        {
+                          backgroundColor: colors.error,
+                          width: `${Math.max(expenseRatio * 100, 2)}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text
+                    style={[styles.barValue, { color: colors.onSurfaceVariant }]}
+                  >
+                    {formatAmount(m.expenses || 0)}
+                  </Text>
+                </View>
               </View>
-              {index < summaryData.length - 1 && <Divider />}
-            </React.Fragment>
-          ))}
-        </Surface>
+            );
+          })}
+        </Card>
 
-        {/* Summary Statistics */}
-        {renderSummaryStats()}
+        {summaryStatsData && (
+          <>
+            {renderSectionTitle(`Statistics · ${months} mo`)}
+            <View style={styles.statsGrid}>
+              {renderMiniStat(
+                "Net Savings",
+                formatAmount(summaryStatsData.net_savings || 0),
+                colors.primary,
+              )}
+              {renderMiniStat(
+                "Savings Rate",
+                `${summaryStatsData.savings_rate || 0}%`,
+                colors.primary,
+              )}
+              {renderMiniStat(
+                "Total Assets",
+                formatAmount(summaryStatsData.total_assets || 0),
+                colors.tertiary,
+              )}
+              {renderMiniStat(
+                "Total Liabilities",
+                formatAmount(summaryStatsData.total_liabilities || 0),
+                colors.error,
+              )}
+            </View>
+          </>
+        )}
       </>
     );
   };
 
-  // Render category breakdown
+  const renderMiniStat = (label: string, value: string, color: string) => (
+    <Card
+      key={label}
+      variant="elevated"
+      padding="md"
+      radiusSize="lg"
+      style={styles.miniStatCard}
+    >
+      <Text style={[styles.miniStatLabel, { color: colors.onSurfaceVariant }]}>
+        {label}
+      </Text>
+      <Text
+        style={[styles.miniStatValue, { color }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {value}
+      </Text>
+    </Card>
+  );
+
   const renderCategoryBreakdown = () => {
-    // Filter section - using Chips instead of Menu for better reliability
-    const filterSection = (
-      <View style={styles.filterSection}>
-        <Text
-          variant="bodyMedium"
-          style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
-        >
-          Filter by Type:
-        </Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.periodChips}>
-            {categoryTypeOptions.map((option) => (
-              <Chip
-                key={option.value}
-                selected={categoryTypeFilter === option.value}
-                onPress={() => setCategoryTypeFilter(option.value)}
-                style={styles.periodChip}
-                mode={categoryTypeFilter === option.value ? "flat" : "outlined"}
-              >
-                {option.label}
-              </Chip>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
+    const filterRow = renderFilterPills(
+      categoryTypeFilter,
+      categoryTypeOptions,
+      setCategoryTypeFilter,
     );
 
     if (!categoryData || categoryData.length === 0) {
       return (
         <>
-          {filterSection}
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="chart-pie"
-              size={48}
-              color={colors.onSurfaceVariant}
-            />
-            <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
-            >
-              No data available for{" "}
-              {categoryTypeFilter === "all"
-                ? "all categories"
-                : categoryTypeFilter}
-            </Text>
-          </View>
+          {filterRow}
+          <EmptyState
+            icon={ChartPie}
+            title="Nothing to chart"
+            message="No data available for this category type."
+            compact
+          />
         </>
       );
     }
 
-    const totalAmount = categoryData.reduce(
+    const total = categoryData.reduce(
       (sum, cat) => sum + (cat.amount || 0),
       0,
     );
+    const heroIcon =
+      categoryTypeFilter === "income"
+        ? ArrowDownLeft
+        : categoryTypeFilter === "asset"
+          ? Landmark
+          : categoryTypeFilter === "liability"
+            ? CreditCard
+            : ArrowUpRight;
 
     return (
       <>
-        {filterSection}
+        {filterRow}
+        {renderHero(
+          `Total ${
+            categoryTypeFilter === "all" ? "Amount" : capitalize(categoryTypeFilter)
+          }`,
+          total,
+          heroIcon,
+        )}
 
-        <Surface
-          style={[
-            styles.totalCard,
-            { backgroundColor: colors.surface, marginBottom: 16 },
-          ]}
-          elevation={1}
-        >
-          <MaterialCommunityIcons
-            name="chart-pie"
-            size={24}
-            color={
-              categoryTypeFilter === "income" ? colors.tertiary : colors.error
-            }
-          />
-          <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-            Total{" "}
-            {categoryTypeFilter === "all"
-              ? "Amount"
-              : categoryTypeFilter.charAt(0).toUpperCase() +
-                categoryTypeFilter.slice(1)}
-          </Text>
-          <Text
-            variant="headlineSmall"
-            style={{
-              color:
-                categoryTypeFilter === "income"
-                  ? colors.tertiary
-                  : colors.error,
-              fontWeight: "600",
-            }}
-          >
-            {formatAmount(totalAmount)}
-          </Text>
-        </Surface>
-
-        <Text
-          variant="titleMedium"
-          style={[styles.sectionTitle, { color: colors.onSurface }]}
-        >
-          By Category
-        </Text>
-
-        <Surface
-          style={[styles.categoryList, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          {categoryData.map((category, index) => {
-            const percentage =
-              totalAmount > 0
-                ? ((category.amount || 0) / totalAmount) * 100
-                : 0;
-
+        {renderSectionTitle("Breakdown")}
+        <Card variant="elevated" padding="lg" radiusSize="xl">
+          {categoryData.map((cat, index) => {
+            const pct = total > 0 ? ((cat.amount || 0) / total) * 100 : 0;
+            const dotColor = cat.color || CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
             return (
-              <React.Fragment key={category.category_id || index}>
-                <View style={styles.categoryItem}>
-                  <View style={styles.categoryInfo}>
+              <View
+                key={cat.category_id ?? index}
+                style={[
+                  styles.categoryItem,
+                  index < categoryData.length - 1 && {
+                    borderBottomColor: colors.outlineVariant,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={styles.categoryHeader}>
+                  <View
+                    style={[styles.categoryDot, { backgroundColor: dotColor }]}
+                  />
+                  <Text
+                    style={[styles.categoryName, { color: colors.onSurface }]}
+                    numberOfLines={1}
+                  >
+                    {cat.category_name || "Unknown"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.categoryAmount,
+                      { color: colors.onSurface },
+                    ]}
+                  >
+                    {formatAmount(cat.amount || 0)}
+                  </Text>
+                </View>
+                <View style={styles.categoryBarRow}>
+                  <View
+                    style={[
+                      styles.barTrack,
+                      { backgroundColor: colors.surfaceVariant, flex: 1 },
+                    ]}
+                  >
                     <View
                       style={[
-                        styles.categoryDot,
-                        { backgroundColor: category.color || colors.primary },
-                      ]}
-                    />
-                    <Text
-                      variant="bodyMedium"
-                      style={{ color: colors.onSurface, flex: 1 }}
-                    >
-                      {category.category_name || "Unknown"}
-                    </Text>
-                    <Text
-                      variant="bodySmall"
-                      style={{ color: colors.onSurfaceVariant }}
-                    >
-                      {formatPercentage(percentage)}
-                    </Text>
-                  </View>
-                  <View style={styles.categoryBarContainer}>
-                    <View
-                      style={[
-                        styles.categoryBar,
+                        styles.barFill,
                         {
-                          backgroundColor: colors.surfaceVariant,
+                          backgroundColor: dotColor,
+                          width: `${Math.max(pct, 2)}%`,
                         },
                       ]}
-                    >
-                      <View
-                        style={[
-                          styles.categoryBarFill,
-                          {
-                            backgroundColor: category.color || colors.primary,
-                            width: `${percentage}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      variant="bodyMedium"
-                      style={{ color: colors.onSurface, fontWeight: "500" }}
-                    >
-                      {formatAmount(category.amount || 0)}
-                    </Text>
+                    />
                   </View>
+                  <Text
+                    style={[styles.categoryPct, { color: colors.onSurfaceVariant }]}
+                  >
+                    {pct.toFixed(1)}%
+                  </Text>
                 </View>
-                {index < categoryData.length - 1 && (
-                  <Divider style={{ marginVertical: 8 }} />
-                )}
-              </React.Fragment>
+              </View>
             );
           })}
-        </Surface>
+        </Card>
       </>
     );
   };
 
-  // Render net worth timeline
   const renderNetWorthTimeline = () => {
     const data = netWorthData as {
       labels?: string[];
@@ -825,703 +804,369 @@ export default function ReportsScreen() {
 
     if (!data || !data.labels || data.labels.length === 0) {
       return (
-        <View style={styles.emptyState}>
-          <MaterialCommunityIcons
-            name="chart-timeline-variant"
-            size={48}
-            color={colors.onSurfaceVariant}
-          />
-          <Text
-            variant="bodyMedium"
-            style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
-          >
-            No net worth data available
-          </Text>
-        </View>
+        <EmptyState
+          icon={TrendingUp}
+          title="No timeline yet"
+          message="Add accounts and transactions to track your net worth over time."
+          compact
+        />
       );
     }
 
-    const currentNetWorth = data.netWorth?.[data.netWorth.length - 1] || 0;
-    const previousNetWorth = data.netWorth?.[0] || 0;
-    const change = currentNetWorth - previousNetWorth;
-    const changePercent =
-      previousNetWorth !== 0 ? (change / Math.abs(previousNetWorth)) * 100 : 0;
+    const current = data.netWorth?.[data.netWorth.length - 1] || 0;
+    const previous = data.netWorth?.[0] || 0;
+    const change = current - previous;
+    const changePct =
+      previous !== 0 ? (change / Math.abs(previous)) * 100 : 0;
+
+    const maxAbs = Math.max(
+      1,
+      ...(data.netWorth || []).map((v) => Math.abs(v)),
+    );
 
     return (
       <>
-        <Surface
-          style={[styles.netCard, { backgroundColor: colors.primaryContainer }]}
-          elevation={1}
-        >
-          <Text variant="bodyMedium" style={{ color: colors.primary }}>
-            Current Net Worth
-          </Text>
-          <Text
-            variant="headlineMedium"
-            style={{ color: colors.primary, fontWeight: "bold" }}
-          >
-            {formatAmount(currentNetWorth)}
-          </Text>
-          <View
-            style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}
-          >
-            <MaterialCommunityIcons
-              name={change >= 0 ? "arrow-up" : "arrow-down"}
-              size={16}
-              color={change >= 0 ? colors.tertiary : colors.error}
-            />
-            <Text
-              style={{
-                color: change >= 0 ? colors.tertiary : colors.error,
-                marginLeft: 4,
-              }}
-            >
-              {formatAmount(Math.abs(change))} ({changePercent.toFixed(1)}%)
-            </Text>
-          </View>
-        </Surface>
+        {renderHero(
+          "Current Net Worth",
+          current,
+          Wallet,
+          `${change >= 0 ? "+" : ""}${formatAmount(change)} (${changePct.toFixed(1)}%)`,
+          change >= 0,
+        )}
 
-        <Text
-          variant="titleMedium"
-          style={[styles.sectionTitle, { color: colors.onSurface }]}
-        >
-          Net Worth Timeline
-        </Text>
-
-        <Surface
-          style={[styles.tableContainer, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <View
-            style={[
-              styles.tableRow,
-              { backgroundColor: colors.surfaceVariant },
-            ]}
-          >
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { flex: 1, color: colors.onSurface },
-              ]}
-            >
-              Month
-            </Text>
-            <Text
-              style={[
-                styles.tableHeaderCell,
-                { flex: 1, color: colors.onSurface, textAlign: "right" },
-              ]}
-            >
-              Net Worth
-            </Text>
-          </View>
-
-          {data.labels.map((label, index) => (
-            <React.Fragment key={label}>
-              <View style={styles.tableRow}>
-                <Text
+        {renderSectionTitle("Timeline")}
+        <Card variant="elevated" padding="lg" radiusSize="xl">
+          {data.labels.map((label, index) => {
+            const v = data.netWorth?.[index] || 0;
+            const ratio = Math.abs(v) / maxAbs;
+            const positive = v >= 0;
+            return (
+              <View
+                key={label}
+                style={[
+                  styles.timelineRow,
+                  index < (data.labels?.length || 0) - 1 && {
+                    borderBottomColor: colors.outlineVariant,
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                  },
+                ]}
+              >
+                <View style={styles.timelineHeader}>
+                  <Text
+                    style={[styles.timelineLabel, { color: colors.onSurface }]}
+                  >
+                    {label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.timelineValue,
+                      { color: positive ? colors.tertiary : colors.error },
+                    ]}
+                  >
+                    {formatAmount(v)}
+                  </Text>
+                </View>
+                <View
                   style={[
-                    styles.tableCell,
-                    { flex: 1, color: colors.onSurface },
+                    styles.barTrack,
+                    { backgroundColor: colors.surfaceVariant, marginTop: 8 },
                   ]}
                 >
-                  {label}
-                </Text>
-                <Text
-                  style={[
-                    styles.tableCell,
-                    {
-                      flex: 1,
-                      color:
-                        (data.netWorth?.[index] || 0) >= 0
-                          ? colors.tertiary
-                          : colors.error,
-                      textAlign: "right",
-                      fontWeight: "500",
-                    },
-                  ]}
-                >
-                  {formatAmount(data.netWorth?.[index] || 0)}
-                </Text>
+                  <View
+                    style={[
+                      styles.barFill,
+                      {
+                        backgroundColor: positive ? colors.tertiary : colors.error,
+                        width: `${Math.max(ratio * 100, 2)}%`,
+                      },
+                    ]}
+                  />
+                </View>
               </View>
-              {index < data.labels.length - 1 && <Divider />}
-            </React.Fragment>
-          ))}
-        </Surface>
+            );
+          })}
+        </Card>
       </>
     );
   };
 
-  // Render income statement
   const renderIncomeStatement = () => {
-    // Period filter section
-    const filterSection = (
-      <View style={styles.filterSection}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.periodChips}>
-            {periodOptions.map((option) => (
-              <Chip
-                key={option.value}
-                selected={incomeStatementPeriod === option.value}
-                onPress={() => handlePeriodChange(option.value)}
-                style={styles.periodChip}
-                mode={
-                  incomeStatementPeriod === option.value ? "flat" : "outlined"
-                }
-              >
-                {option.label}
-              </Chip>
-            ))}
-          </View>
-        </ScrollView>
-
-        {incomeStatementPeriod === "custom" && (
-          <View style={styles.datePickerRow}>
-            <TouchableOpacity
-              style={[
-                styles.dateButton,
-                { backgroundColor: colors.surfaceVariant },
-              ]}
-              onPress={() => setShowStartPicker(true)}
-            >
-              <MaterialCommunityIcons
-                name="calendar"
-                size={18}
-                color={colors.onSurfaceVariant}
-              />
-              <Text style={{ color: colors.onSurface, marginLeft: 8 }}>
-                {incomeStartDate.toLocaleDateString()}
-              </Text>
-            </TouchableOpacity>
-            <Text style={{ color: colors.onSurfaceVariant }}>to</Text>
-            <TouchableOpacity
-              style={[
-                styles.dateButton,
-                { backgroundColor: colors.surfaceVariant },
-              ]}
-              onPress={() => setShowEndPicker(true)}
-            >
-              <MaterialCommunityIcons
-                name="calendar"
-                size={18}
-                color={colors.onSurfaceVariant}
-              />
-              <Text style={{ color: colors.onSurface, marginLeft: 8 }}>
-                {incomeEndDate.toLocaleDateString()}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+    const filterRow = renderFilterPills(
+      incomeStatementPeriod,
+      periodOptions,
+      handlePeriodChange,
     );
 
     const data = incomeStatementData as {
-      income?: {
-        items?: { category: string; amount: number }[];
-        total?: number;
-      };
-      expenses?: {
-        items?: { category: string; amount: number }[];
-        total?: number;
-      };
+      income?: { items?: { category: string; amount: number }[]; total?: number };
+      expenses?: { items?: { category: string; amount: number }[]; total?: number };
       net_income?: number;
       profit_margin?: number;
       period?: { start_date: string; end_date: string };
     } | null;
 
-    if (!data) {
-      return (
-        <>
-          {filterSection}
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="file-document"
-              size={48}
-              color={colors.onSurfaceVariant}
-            />
-            <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
-            >
-              No data available
-            </Text>
-          </View>
-        </>
-      );
-    }
-
     return (
       <>
-        {filterSection}
+        {filterRow}
 
-        {data.period && (
-          <Text
-            variant="bodySmall"
-            style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}
-          >
-            Period: {new Date(data.period.start_date).toLocaleDateString()} -{" "}
-            {new Date(data.period.end_date).toLocaleDateString()}
-          </Text>
+        {incomeStatementPeriod === "custom" && (
+          <View style={styles.customRangeRow}>
+            {renderDateButton(incomeStartDate, () => setShowStartPicker(true))}
+            <Text style={{ color: colors.onSurfaceVariant }}>to</Text>
+            {renderDateButton(incomeEndDate, () => setShowEndPicker(true))}
+          </View>
         )}
 
-        {/* Income Section */}
-        <Surface
-          style={[styles.statementSection, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <View style={styles.statementHeader}>
-            <MaterialCommunityIcons
-              name="arrow-up-circle"
-              size={24}
-              color={colors.tertiary}
-            />
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, flex: 1, marginLeft: 8 }}
-            >
-              Revenue / Income
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.tertiary, fontWeight: "600" }}
-            >
-              {formatAmount(data.income?.total || 0)}
-            </Text>
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-          {data.income?.items && data.income.items.length > 0 ? (
-            data.income.items.map((item, index) => (
-              <View key={index} style={styles.statementRow}>
-                <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                  {item.category}
-                </Text>
-                <Text style={{ color: colors.onSurface }}>
-                  {formatAmount(item.amount)}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text
-              style={{ color: colors.onSurfaceVariant, fontStyle: "italic" }}
-            >
-              No income recorded
-            </Text>
-          )}
-        </Surface>
+        {!data ? (
+          <EmptyState
+            icon={FileText}
+            title="No statement"
+            message="No data available for the selected period."
+            compact
+          />
+        ) : (
+          <>
+            {renderHero(
+              "Net Income",
+              data.net_income || 0,
+              Receipt,
+              data.profit_margin !== undefined
+                ? `Profit margin ${data.profit_margin}%`
+                : undefined,
+              (data.net_income || 0) >= 0,
+            )}
 
-        {/* Expenses Section */}
-        <Surface
-          style={[styles.statementSection, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <View style={styles.statementHeader}>
-            <MaterialCommunityIcons
-              name="arrow-down-circle"
-              size={24}
-              color={colors.error}
-            />
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, flex: 1, marginLeft: 8 }}
-            >
-              Expenses
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.error, fontWeight: "600" }}
-            >
-              {formatAmount(data.expenses?.total || 0)}
-            </Text>
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-          {data.expenses?.items && data.expenses.items.length > 0 ? (
-            data.expenses.items.map((item, index) => (
-              <View key={index} style={styles.statementRow}>
-                <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                  {item.category}
-                </Text>
-                <Text style={{ color: colors.onSurface }}>
-                  ({formatAmount(item.amount)})
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text
-              style={{ color: colors.onSurfaceVariant, fontStyle: "italic" }}
-            >
-              No expenses recorded
-            </Text>
-          )}
-        </Surface>
+            {renderStatementSection(
+              "Revenue / Income",
+              ArrowDownLeft,
+              colors.tertiary,
+              data.income?.items || [],
+              data.income?.total || 0,
+              "category",
+            )}
 
-        {/* Net Income */}
-        <Surface
-          style={[
-            styles.netIncomeCard,
-            {
-              backgroundColor:
-                (data.net_income || 0) >= 0
-                  ? colors.tertiaryContainer
-                  : colors.errorContainer,
-            },
-          ]}
-          elevation={1}
-        >
-          <Text
-            variant="titleMedium"
-            style={{
-              color:
-                (data.net_income || 0) >= 0 ? colors.tertiary : colors.error,
-            }}
-          >
-            Net Income
-          </Text>
-          <Text
-            variant="headlineMedium"
-            style={{
-              color:
-                (data.net_income || 0) >= 0 ? colors.tertiary : colors.error,
-              fontWeight: "bold",
-            }}
-          >
-            {formatAmount(data.net_income || 0)}
-          </Text>
-          {data.profit_margin !== undefined && (
-            <Text
-              style={{
-                color:
-                  (data.net_income || 0) >= 0 ? colors.tertiary : colors.error,
-                marginTop: 4,
-              }}
-            >
-              Profit Margin: {data.profit_margin}%
-            </Text>
-          )}
-        </Surface>
+            {renderStatementSection(
+              "Expenses",
+              ArrowUpRight,
+              colors.error,
+              data.expenses?.items || [],
+              data.expenses?.total || 0,
+              "category",
+              true,
+            )}
+          </>
+        )}
       </>
     );
   };
 
-  // Render balance sheet
-  const renderBalanceSheet = () => {
-    // Date filter section
-    const filterSection = (
-      <View style={styles.filterRow}>
-        <Text variant="bodyMedium" style={{ color: colors.onSurfaceVariant }}>
-          As of Date:
-        </Text>
-        <TouchableOpacity
-          style={[
-            styles.dateButton,
-            { backgroundColor: colors.surfaceVariant },
-          ]}
-          onPress={() => setShowBalanceDatePicker(true)}
-        >
-          <MaterialCommunityIcons
-            name="calendar"
-            size={18}
-            color={colors.onSurfaceVariant}
-          />
-          <Text style={{ color: colors.onSurface, marginLeft: 8 }}>
-            {balanceSheetDate.toLocaleDateString()}
+  const renderStatementSection = (
+    title: string,
+    icon: LucideIcon,
+    color: string,
+    items: { category?: string; name?: string; amount: number; type?: string }[],
+    total: number,
+    nameField: "category" | "name",
+    parenthesize = false,
+  ) => {
+    const Icon = icon;
+    return (
+      <Card variant="elevated" padding="lg" radiusSize="xl" style={{ marginTop: spacing.sm }}>
+        <View style={styles.statementHeader}>
+          <IconBadge icon={icon} tone={color === colors.error ? "danger" : "success"} size="md" />
+          <Text style={[styles.statementTitle, { color: colors.onSurface }]}>
+            {title}
           </Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={[styles.statementTotal, { color }]}>
+            {parenthesize ? `(${formatAmount(total)})` : formatAmount(total)}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.statementDivider,
+            { backgroundColor: colors.outlineVariant },
+          ]}
+        />
+        {items.length === 0 ? (
+          <Text style={[styles.statementEmpty, { color: colors.onSurfaceVariant }]}>
+            None recorded
+          </Text>
+        ) : (
+          items.map((item, idx) => (
+            <View key={idx} style={styles.statementRow}>
+              <Text
+                style={[styles.statementItemName, { color: colors.onSurfaceVariant }]}
+                numberOfLines={1}
+              >
+                {item[nameField] || "Unknown"}
+              </Text>
+              <Text style={[styles.statementItemAmount, { color: colors.onSurface }]}>
+                {parenthesize
+                  ? `(${formatAmount(item.amount)})`
+                  : formatAmount(item.amount)}
+              </Text>
+            </View>
+          ))
+        )}
+      </Card>
     );
+  };
 
+  const renderBalanceSheet = () => {
     const data = balanceSheetData as {
       assets?: {
         total?: number;
-        cash_and_bank?: {
-          items: { name: string; type: string; amount: number }[];
-          total: number;
-        };
-        other_assets?: {
-          items: { category: string; amount: number }[];
-          total: number;
-        };
-        loans_receivable?: {
-          items: { name: string; amount: number }[];
-          total: number;
-        };
+        cash_and_bank?: { items: { name: string; type: string; amount: number }[]; total: number };
+        other_assets?: { items: { category: string; amount: number }[]; total: number };
+        loans_receivable?: { items: { name: string; amount: number }[]; total: number };
       };
       liabilities?: {
         total?: number;
-        other_liabilities?: {
-          items: { category: string; amount: number }[];
-          total: number;
-        };
-        loans_payable?: {
-          items: { name: string; amount: number }[];
-          total: number;
-        };
+        other_liabilities?: { items: { category: string; amount: number }[]; total: number };
+        loans_payable?: { items: { name: string; amount: number }[]; total: number };
       };
       net_worth?: number;
       as_of_date?: string;
     } | null;
 
-    if (!data) {
-      return (
-        <>
-          {filterSection}
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="scale-balance"
-              size={48}
-              color={colors.onSurfaceVariant}
-            />
-            <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
-            >
-              No data available
-            </Text>
-          </View>
-        </>
-      );
-    }
-
     return (
       <>
-        {filterSection}
-
-        {data.as_of_date && (
-          <Text
-            variant="bodySmall"
-            style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}
-          >
-            As of: {new Date(data.as_of_date).toLocaleDateString()}
+        <View style={styles.balanceDateRow}>
+          <Text style={[styles.balanceDateLabel, { color: colors.onSurfaceVariant }]}>
+            As of
           </Text>
+          {renderDateButton(balanceSheetDate, () => setShowBalanceDatePicker(true))}
+        </View>
+
+        {!data ? (
+          <EmptyState
+            icon={Scale}
+            title="No balance sheet"
+            message="No data available for the selected date."
+            compact
+          />
+        ) : (
+          <>
+            {renderHero("Net Worth", data.net_worth || 0, Wallet)}
+
+            {renderStatPair(
+              "Total Assets",
+              data.assets?.total || 0,
+              Landmark,
+              colors.tertiary,
+              "Total Liabilities",
+              data.liabilities?.total || 0,
+              CreditCard,
+              colors.error,
+            )}
+
+            {renderSectionTitle("Assets")}
+            {renderBalanceSubsection(
+              "Cash & Bank",
+              data.assets?.cash_and_bank?.items.map((i) => ({
+                name: i.name,
+                meta: i.type,
+                amount: i.amount,
+              })) || [],
+              data.assets?.cash_and_bank?.total || 0,
+              colors.tertiary,
+            )}
+            {renderBalanceSubsection(
+              "Other Assets",
+              data.assets?.other_assets?.items.map((i) => ({
+                name: i.category,
+                amount: i.amount,
+              })) || [],
+              data.assets?.other_assets?.total || 0,
+              colors.tertiary,
+            )}
+            {renderBalanceSubsection(
+              "Loans Receivable",
+              data.assets?.loans_receivable?.items.map((i) => ({
+                name: i.name,
+                amount: i.amount,
+              })) || [],
+              data.assets?.loans_receivable?.total || 0,
+              colors.tertiary,
+            )}
+
+            {renderSectionTitle("Liabilities")}
+            {renderBalanceSubsection(
+              "Other Liabilities",
+              data.liabilities?.other_liabilities?.items.map((i) => ({
+                name: i.category,
+                amount: i.amount,
+              })) || [],
+              data.liabilities?.other_liabilities?.total || 0,
+              colors.error,
+            )}
+            {renderBalanceSubsection(
+              "Loans Payable",
+              data.liabilities?.loans_payable?.items.map((i) => ({
+                name: i.name,
+                amount: i.amount,
+              })) || [],
+              data.liabilities?.loans_payable?.total || 0,
+              colors.error,
+            )}
+          </>
         )}
-
-        {/* Assets */}
-        <Surface
-          style={[styles.statementSection, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <View style={styles.statementHeader}>
-            <MaterialCommunityIcons
-              name="bank"
-              size={24}
-              color={colors.tertiary}
-            />
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, flex: 1, marginLeft: 8 }}
-            >
-              Assets
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.tertiary, fontWeight: "600" }}
-            >
-              {formatAmount(data.assets?.total || 0)}
-            </Text>
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-
-          {/* Cash & Bank */}
-          {data.assets?.cash_and_bank &&
-            data.assets.cash_and_bank.items.length > 0 && (
-              <View style={styles.subsection}>
-                <Text
-                  variant="bodyMedium"
-                  style={{
-                    color: colors.onSurface,
-                    fontWeight: "500",
-                    marginBottom: 8,
-                  }}
-                >
-                  Cash & Bank Accounts (
-                  {formatAmount(data.assets.cash_and_bank.total)})
-                </Text>
-                {data.assets.cash_and_bank.items.map((item, index) => (
-                  <View key={index} style={styles.statementRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.onSurface }}>
-                        {item.name}
-                      </Text>
-                      <Text
-                        style={{ color: colors.onSurfaceVariant, fontSize: 12 }}
-                      >
-                        {item.type}
-                      </Text>
-                    </View>
-                    <Text style={{ color: colors.onSurface }}>
-                      {formatAmount(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-          {/* Other Assets */}
-          {data.assets?.other_assets &&
-            data.assets.other_assets.items.length > 0 && (
-              <View style={styles.subsection}>
-                <Text
-                  variant="bodyMedium"
-                  style={{
-                    color: colors.onSurface,
-                    fontWeight: "500",
-                    marginBottom: 8,
-                  }}
-                >
-                  Other Assets ({formatAmount(data.assets.other_assets.total)})
-                </Text>
-                {data.assets.other_assets.items.map((item, index) => (
-                  <View key={index} style={styles.statementRow}>
-                    <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                      {item.category}
-                    </Text>
-                    <Text style={{ color: colors.onSurface }}>
-                      {formatAmount(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-          {/* Loans Receivable */}
-          {data.assets?.loans_receivable &&
-            data.assets.loans_receivable.items.length > 0 && (
-              <View style={styles.subsection}>
-                <Text
-                  variant="bodyMedium"
-                  style={{
-                    color: colors.onSurface,
-                    fontWeight: "500",
-                    marginBottom: 8,
-                  }}
-                >
-                  Loans Receivable (
-                  {formatAmount(data.assets.loans_receivable.total)})
-                </Text>
-                {data.assets.loans_receivable.items.map((item, index) => (
-                  <View key={index} style={styles.statementRow}>
-                    <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                      {item.name}
-                    </Text>
-                    <Text style={{ color: colors.onSurface }}>
-                      {formatAmount(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-        </Surface>
-
-        {/* Liabilities */}
-        <Surface
-          style={[styles.statementSection, { backgroundColor: colors.surface }]}
-          elevation={1}
-        >
-          <View style={styles.statementHeader}>
-            <MaterialCommunityIcons
-              name="credit-card"
-              size={24}
-              color={colors.error}
-            />
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurface, flex: 1, marginLeft: 8 }}
-            >
-              Liabilities
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.error, fontWeight: "600" }}
-            >
-              {formatAmount(data.liabilities?.total || 0)}
-            </Text>
-          </View>
-          <Divider style={{ marginVertical: 8 }} />
-
-          {/* Other Liabilities */}
-          {data.liabilities?.other_liabilities &&
-            data.liabilities.other_liabilities.items.length > 0 && (
-              <View style={styles.subsection}>
-                <Text
-                  variant="bodyMedium"
-                  style={{
-                    color: colors.onSurface,
-                    fontWeight: "500",
-                    marginBottom: 8,
-                  }}
-                >
-                  Other Liabilities (
-                  {formatAmount(data.liabilities.other_liabilities.total)})
-                </Text>
-                {data.liabilities.other_liabilities.items.map((item, index) => (
-                  <View key={index} style={styles.statementRow}>
-                    <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                      {item.category}
-                    </Text>
-                    <Text style={{ color: colors.onSurface }}>
-                      {formatAmount(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-          {/* Loans Payable */}
-          {data.liabilities?.loans_payable &&
-            data.liabilities.loans_payable.items.length > 0 && (
-              <View style={styles.subsection}>
-                <Text
-                  variant="bodyMedium"
-                  style={{
-                    color: colors.onSurface,
-                    fontWeight: "500",
-                    marginBottom: 8,
-                  }}
-                >
-                  Loans Payable (
-                  {formatAmount(data.liabilities.loans_payable.total)})
-                </Text>
-                {data.liabilities.loans_payable.items.map((item, index) => (
-                  <View key={index} style={styles.statementRow}>
-                    <Text style={{ color: colors.onSurfaceVariant, flex: 1 }}>
-                      {item.name}
-                    </Text>
-                    <Text style={{ color: colors.onSurface }}>
-                      {formatAmount(item.amount)}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-          {!data.liabilities?.other_liabilities?.items?.length &&
-            !data.liabilities?.loans_payable?.items?.length && (
-              <Text
-                style={{ color: colors.onSurfaceVariant, fontStyle: "italic" }}
-              >
-                No liabilities
-              </Text>
-            )}
-        </Surface>
-
-        {/* Net Worth */}
-        <Surface
-          style={[
-            styles.netIncomeCard,
-            { backgroundColor: colors.primaryContainer },
-          ]}
-          elevation={1}
-        >
-          <Text variant="titleMedium" style={{ color: colors.primary }}>
-            Net Worth
-          </Text>
-          <Text
-            variant="headlineMedium"
-            style={{ color: colors.primary, fontWeight: "bold" }}
-          >
-            {formatAmount(data.net_worth || 0)}
-          </Text>
-        </Surface>
       </>
+    );
+  };
+
+  const renderBalanceSubsection = (
+    title: string,
+    items: { name: string; meta?: string; amount: number }[],
+    total: number,
+    color: string,
+  ) => {
+    if (items.length === 0) return null;
+    return (
+      <Card
+        variant="elevated"
+        padding="lg"
+        radiusSize="xl"
+        style={{ marginBottom: spacing.sm }}
+      >
+        <View style={styles.subsectionHeader}>
+          <Text style={[styles.subsectionTitle, { color: colors.onSurface }]}>
+            {title}
+          </Text>
+          <Badge label={formatAmount(total)} tone="neutral" size="sm" />
+        </View>
+        <View
+          style={[
+            styles.statementDivider,
+            { backgroundColor: colors.outlineVariant },
+          ]}
+        />
+        {items.map((item, idx) => (
+          <View key={idx} style={styles.statementRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={[styles.statementItemName, { color: colors.onSurface }]}
+                numberOfLines={1}
+              >
+                {item.name}
+              </Text>
+              {item.meta && (
+                <Text
+                  style={[
+                    styles.statementItemMeta,
+                    { color: colors.onSurfaceVariant },
+                  ]}
+                >
+                  {item.meta}
+                </Text>
+              )}
+            </View>
+            <Text style={[styles.statementItemAmount, { color }]}>
+              {formatAmount(item.amount)}
+            </Text>
+          </View>
+        ))}
+      </Card>
     );
   };
 
@@ -1533,7 +1178,6 @@ export default function ReportsScreen() {
         </View>
       );
     }
-
     switch (reportType) {
       case "summary":
         return renderMonthlySummary();
@@ -1555,63 +1199,60 @@ export default function ReportsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader title="Reports" subtitle="Review trends and statements" />
+      <View style={styles.headerWrap}>
+        <ScreenHeader title="Reports" subtitle="Trends and statements" />
+      </View>
 
-      {/* Report type selector */}
-      <View style={styles.segmentContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={styles.reportTypeChips}>
-            <Chip
-              selected={reportType === "summary"}
-              onPress={() => setReportType("summary")}
-              icon="chart-line"
-              style={styles.reportChip}
-              mode={reportType === "summary" ? "flat" : "outlined"}
-            >
-              Summary
-            </Chip>
-            <Chip
-              selected={reportType === "category"}
-              onPress={() => setReportType("category")}
-              icon="chart-pie"
-              style={styles.reportChip}
-              mode={reportType === "category" ? "flat" : "outlined"}
-            >
-              Category
-            </Chip>
-            <Chip
-              selected={reportType === "networth"}
-              onPress={() => setReportType("networth")}
-              icon="chart-timeline-variant"
-              style={styles.reportChip}
-              mode={reportType === "networth" ? "flat" : "outlined"}
-            >
-              Net Worth
-            </Chip>
-            <Chip
-              selected={reportType === "income"}
-              onPress={() => setReportType("income")}
-              icon="file-document"
-              style={styles.reportChip}
-              mode={reportType === "income" ? "flat" : "outlined"}
-            >
-              P&L
-            </Chip>
-            <Chip
-              selected={reportType === "balance"}
-              onPress={() => setReportType("balance")}
-              icon="scale-balance"
-              style={styles.reportChip}
-              mode={reportType === "balance" ? "flat" : "outlined"}
-            >
-              Balance
-            </Chip>
-          </View>
+      {/* Report type pills */}
+      <View style={styles.pillShell}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillRow}
+        >
+          {REPORT_TYPES.map((rt) => {
+            const active = reportType === rt.value;
+            const Icon = rt.icon;
+            return (
+              <Pressable
+                key={rt.value}
+                onPress={() => setReportType(rt.value)}
+                style={[
+                  styles.reportPill,
+                  {
+                    backgroundColor: active
+                      ? colors.primary
+                      : colors.surfaceVariant,
+                  },
+                ]}
+                hitSlop={6}
+              >
+                <Icon
+                  size={14}
+                  color={active ? colors.onPrimary : colors.onSurfaceVariant}
+                  strokeWidth={2.4}
+                />
+                <Text
+                  style={[
+                    styles.pillLabel,
+                    {
+                      color: active
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
+                    },
+                  ]}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                >
+                  {rt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
       <ScrollView
-        style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
@@ -1626,13 +1267,12 @@ export default function ReportsScreen() {
         {renderContent()}
       </ScrollView>
 
-      {/* Date Pickers */}
       {showStartPicker && (
         <DateTimePicker
           value={incomeStartDate}
           mode="date"
           display="default"
-          onChange={(event, date) => {
+          onChange={(_, date) => {
             setShowStartPicker(false);
             if (date) setIncomeStartDate(date);
           }}
@@ -1643,7 +1283,7 @@ export default function ReportsScreen() {
           value={incomeEndDate}
           mode="date"
           display="default"
-          onChange={(event, date) => {
+          onChange={(_, date) => {
             setShowEndPicker(false);
             if (date) setIncomeEndDate(date);
           }}
@@ -1654,7 +1294,7 @@ export default function ReportsScreen() {
           value={balanceSheetDate}
           mode="date"
           display="default"
-          onChange={(event, date) => {
+          onChange={(_, date) => {
             setShowBalanceDatePicker(false);
             if (date) setBalanceSheetDate(date);
           }}
@@ -1664,32 +1304,18 @@ export default function ReportsScreen() {
   );
 }
 
+function capitalize(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    padding: 16,
-    paddingBottom: 8,
-  },
-  title: {
-    fontWeight: "bold",
-  },
-  segmentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
-  reportTypeChips: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  reportChip: {
-    height: 36,
-  },
+  container: { flex: 1 },
+  headerWrap: { paddingHorizontal: spacing.lg },
   scrollContent: {
-    padding: 16,
-    paddingTop: 0,
-    paddingBottom: 32,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: 120,
+    gap: spacing.md,
   },
   loadingContainer: {
     flex: 1,
@@ -1697,158 +1323,334 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 64,
   },
-  emptyState: {
-    alignItems: "center",
-    paddingVertical: 64,
+
+  pillShell: {
+    height: 54,
+    justifyContent: "center",
   },
-  totalsGrid: {
+  pillRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    alignItems: "center",
+  },
+  pill: {
+    height: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  reportPill: {
+    height: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-  totalCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
     alignItems: "center",
-    gap: 4,
+    gap: 6,
   },
-  netCard: {
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    marginBottom: 20,
+  pillLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
-  sectionTitle: {
-    fontWeight: "600",
-    marginBottom: 12,
-  },
-  tableContainer: {
-    borderRadius: 12,
+
+  // Hero
+  hero: {
+    padding: spacing.lg,
+    borderRadius: radius.xxl,
     overflow: "hidden",
   },
-  tableRow: {
+  heroTopRow: {
     flexDirection: "row",
-    padding: 12,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
   },
-  tableHeaderCell: {
-    flex: 1,
-    fontWeight: "600",
+  heroIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroTopText: {
+    flexShrink: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  heroLabel: {
+    color: "rgba(255,255,255,0.85)",
     fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.4,
   },
-  tableCell: {
+  heroValue: {
+    color: "#ffffff",
+    fontSize: 26,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  heroDeltaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+  },
+  heroDeltaText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  // Stat pair
+  statRow: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  statCard: {
     flex: 1,
-    fontSize: 13,
+    minHeight: 96,
   },
-  filterRow: {
+  statTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 16,
+    marginBottom: spacing.sm,
   },
-  filterButton: {
+  statIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginTop: 2,
+  },
+
+  // Section title
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    marginTop: spacing.sm,
+  },
+
+  // Month rows
+  monthRow: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    gap: 6,
+  },
+  monthHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  monthLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  monthNet: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  barRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  barTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  barFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  barValue: {
+    fontSize: 11,
+    fontWeight: "600",
+    minWidth: 80,
+    textAlign: "right",
+  },
+
+  // Stats grid
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  miniStatCard: {
+    flexBasis: "48%",
+    flexGrow: 1,
     gap: 4,
   },
-  filterSection: {
-    marginBottom: 16,
+  miniStatLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
-  periodChips: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
+  miniStatValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: -0.2,
   },
-  periodChip: {
-    height: 32,
-  },
-  datePickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  dateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  categoryList: {
-    padding: 16,
-    borderRadius: 12,
-  },
+
+  // Category list
   categoryItem: {
-    paddingVertical: 4,
+    paddingVertical: spacing.md,
+    gap: 8,
   },
-  categoryInfo: {
+  categoryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    gap: spacing.sm,
   },
   categoryDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
-  categoryBarContainer: {
+  categoryName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  categoryAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  categoryBarRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
   },
-  categoryBar: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
+  categoryPct: {
+    fontSize: 11,
+    fontWeight: "700",
+    minWidth: 44,
+    textAlign: "right",
   },
-  categoryBarFill: {
-    height: "100%",
-    borderRadius: 4,
+
+  // Timeline
+  timelineRow: {
+    paddingVertical: spacing.md,
   },
-  statementSection: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+  timelineHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
+  timelineLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  timelineValue: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  // Custom range
+  customRangeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  dateChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  dateChipText: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  balanceDateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  balanceDateLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  // Statement section
   statementHeader: {
     flexDirection: "row",
     alignItems: "center",
+    gap: spacing.sm,
+  },
+  statementTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  statementTotal: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  statementDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginVertical: spacing.sm,
   },
   statementRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 6,
+    gap: spacing.sm,
   },
-  subsection: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.05)",
+  statementItemName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
   },
-  netIncomeCard: {
-    padding: 20,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 4,
+  statementItemMeta: {
+    fontSize: 11,
+    fontWeight: "500",
+    marginTop: 2,
   },
-  statsContainer: {
-    marginTop: 20,
+  statementItemAmount: {
+    fontSize: 13,
+    fontWeight: "700",
   },
-  statsGrid: {
+  statementEmpty: {
+    fontSize: 13,
+    fontStyle: "italic",
+    paddingVertical: 4,
+  },
+
+  // Subsection
+  subsectionHeader: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  statCard: {
-    width: (screenWidth - 48) / 2 - 4,
-    padding: 12,
-    borderRadius: 8,
     alignItems: "center",
-    gap: 4,
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  subsectionTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: -0.2,
   },
 });
