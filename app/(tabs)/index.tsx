@@ -1312,7 +1312,7 @@ export default function DashboardScreen() {
           <LinearGradient
             colors={
               isDark
-                ? (["#0f213d", "#0b1830"] as any)
+                ? (gradients.primaryNight as any)
                 : (gradients.ocean as any)
             }
             start={{ x: 0, y: 0 }}

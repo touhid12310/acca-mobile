@@ -265,7 +265,7 @@ export default function AccountsScreen() {
       >
         {/* Total Balance Hero */}
         <LinearGradient
-          colors={(isDark ? gradients.primaryDark : gradients.primary) as any}
+          colors={(isDark ? gradients.primaryNight : gradients.primary) as any}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, shadow.md]}

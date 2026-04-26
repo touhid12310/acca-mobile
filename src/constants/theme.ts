@@ -60,6 +60,10 @@ export const shadow = {
 export const gradients = {
   primary: ["#6366f1", "#8b5cf6"],
   primaryDark: ["#4f46e5", "#7c3aed"],
+  // Hero card gradient for dark mode — same navy family as the AI insights
+  // card, lifted a couple shades so it reads as an elevated card rather than
+  // blending into the background.
+  primaryNight: ["#1e3a64", "#16294a"],
   success: ["#10b981", "#059669"],
   danger: ["#ef4444", "#dc2626"],
   warning: ["#f59e0b", "#d97706"],
