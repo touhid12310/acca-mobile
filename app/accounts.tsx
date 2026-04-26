@@ -48,7 +48,6 @@ import {
   Badge,
   Input,
   AlertBar,
-  Chip,
 } from "../src/components/ui";
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
@@ -418,40 +417,73 @@ export default function AccountsScreen() {
                 >
                   Account type
                 </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.typeChips}
-                >
-                  {accountTypeOptions.map((opt) => (
-                    <Chip
-                      key={opt.value}
-                      label={opt.label}
-                      selected={formData.account_type === opt.value}
-                      onPress={() =>
-                        setFormData({ ...formData, account_type: opt.value })
-                      }
-                    />
-                  ))}
-                </ScrollView>
+                <View style={styles.typeChipsShell}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.typeChips}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {accountTypeOptions.map((opt) => {
+                      const active = formData.account_type === opt.value;
+                      return (
+                        <Pressable
+                          key={opt.value}
+                          onPress={() =>
+                            setFormData({
+                              ...formData,
+                              account_type: opt.value,
+                            })
+                          }
+                          style={[
+                            styles.typeChipPill,
+                            {
+                              backgroundColor: active
+                                ? colors.primary
+                                : colors.surfaceVariant,
+                            },
+                          ]}
+                          hitSlop={6}
+                        >
+                          <Text
+                            style={[
+                              styles.typeChipLabel,
+                              {
+                                color: active
+                                  ? colors.onPrimary
+                                  : colors.onSurfaceVariant,
+                              },
+                            ]}
+                            numberOfLines={1}
+                            allowFontScaling={false}
+                          >
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
 
                 <View style={styles.sheetButtons}>
-                  <Button
-                    label="Cancel"
-                    variant="secondary"
-                    onPress={closeModal}
-                    fullWidth
-                    style={{ flex: 1 }}
-                  />
-                  <Button
-                    label="Add"
-                    variant="primary"
-                    onPress={handleSave}
-                    loading={createMutation.isPending}
-                    fullWidth
-                    icon={BadgePlus}
-                    style={{ flex: 1 }}
-                  />
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Cancel"
+                      variant="secondary"
+                      onPress={closeModal}
+                      fullWidth
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      label="Add"
+                      variant="primary"
+                      onPress={handleSave}
+                      loading={createMutation.isPending}
+                      icon={BadgePlus}
+                      fullWidth
+                    />
+                  </View>
                 </View>
               </ScrollView>
             </Pressable>
@@ -661,16 +693,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: spacing.lg,
   },
   sheet: {
-    margin: spacing.lg,
     padding: spacing.xl,
     borderRadius: radius.xxl,
     gap: spacing.md,
-    alignSelf: "stretch",
     maxHeight: "85%",
     maxWidth: 520,
-    width: "100%",
+    alignSelf: "stretch",
   },
   sheetTitle: {
     fontSize: 20,
@@ -684,9 +715,29 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
+  typeChipsShell: {
+    height: 54,
+    justifyContent: "center",
+    marginHorizontal: -spacing.xl,
+  },
   typeChips: {
+    paddingHorizontal: spacing.xl,
     gap: spacing.sm,
-    paddingBottom: spacing.xs,
+    alignItems: "center",
+  },
+  typeChipPill: {
+    height: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeChipLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   sheetButtons: {
     flexDirection: "row",

@@ -22,14 +22,22 @@ export function Chip({ label, selected, onPress, icon: Icon, style }: ChipProps)
   return (
     <Pressable
       onPress={onPress}
+      hitSlop={6}
       style={({ pressed }) => [
         styles.container,
-        { backgroundColor: bg, opacity: pressed ? 0.8 : 1 },
+        {
+          backgroundColor: bg,
+          opacity: pressed ? 0.8 : 1,
+        },
         style,
       ]}
     >
       {Icon && <Icon size={14} color={fg} strokeWidth={2.3} />}
-      <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+      <Text
+        style={[styles.label, { color: fg }]}
+        numberOfLines={1}
+        allowFontScaling={false}
+      >
         {label}
       </Text>
     </Pressable>
@@ -38,15 +46,19 @@ export function Chip({ label, selected, onPress, icon: Icon, style }: ChipProps)
 
 const styles = StyleSheet.create({
   container: {
+    height: 38,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    justifyContent: "center",
+    gap: 6,
     paddingHorizontal: spacing.md,
-    paddingVertical: 7,
     borderRadius: radius.pill,
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
 });
