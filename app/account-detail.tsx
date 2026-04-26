@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   TextInput,
   Button,
-  Divider,
   IconButton,
   Menu,
   Chip,
@@ -1038,14 +1037,25 @@ export default function AccountDetailScreen() {
                 ]}
                 elevation={1}
               >
-                <MaterialCommunityIcons
-                  name="file-upload"
-                  size={48}
-                  color={colors.primary}
-                />
+                <View
+                  style={[
+                    styles.reconcileIconBadge,
+                    { backgroundColor: colors.primaryContainer },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="file-upload-outline"
+                    size={32}
+                    color={colors.primary}
+                  />
+                </View>
                 <Text
-                  variant="titleMedium"
-                  style={{ color: colors.onSurface, marginTop: 12 }}
+                  variant="titleLarge"
+                  style={{
+                    color: colors.onSurface,
+                    marginTop: 16,
+                    fontWeight: "700",
+                  }}
                 >
                   Upload Bank Statement
                 </Text>
@@ -1054,25 +1064,35 @@ export default function AccountDetailScreen() {
                   style={{
                     color: colors.onSurfaceVariant,
                     textAlign: "center",
-                    marginTop: 8,
+                    marginTop: 6,
+                    lineHeight: 18,
                   }}
                 >
                   Upload a CSV file from your bank to match transactions with
                   your records
                 </Text>
 
-                <Divider style={{ marginVertical: 20, width: "100%" }} />
-
-                <View style={styles.reconcileRow}>
+                <View
+                  style={[
+                    styles.reconcileBalancePill,
+                    { backgroundColor: colors.surfaceVariant },
+                  ]}
+                >
                   <Text
-                    variant="bodyMedium"
-                    style={{ color: colors.onSurfaceVariant }}
+                    variant="labelMedium"
+                    style={{
+                      color: colors.onSurfaceVariant,
+                      letterSpacing: 0.4,
+                      textTransform: "uppercase",
+                      fontSize: 11,
+                      fontWeight: "700",
+                    }}
                   >
-                    Account Balance:
+                    Account Balance
                   </Text>
                   <Text
                     variant="titleMedium"
-                    style={{ color: colors.onSurface, fontWeight: "600" }}
+                    style={{ color: colors.onSurface, fontWeight: "700" }}
                   >
                     {formatAmount(accountBalance)}
                   </Text>
@@ -1084,36 +1104,51 @@ export default function AccountDetailScreen() {
                   onPress={handlePickCsv}
                   loading={isProcessingCsv}
                   disabled={isProcessingCsv}
-                  style={{ marginTop: 20, width: "100%" }}
+                  style={{ marginTop: 16, width: "100%" }}
                 >
                   {isProcessingCsv ? "Processing..." : "Choose CSV File"}
                 </Button>
 
-                <View style={{ marginTop: 20, width: "100%" }}>
+                <View style={styles.reconcileRequirements}>
                   <Text
                     variant="labelMedium"
-                    style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+                    style={{
+                      color: colors.onSurface,
+                      marginBottom: 10,
+                      fontWeight: "700",
+                      letterSpacing: 0.3,
+                      textTransform: "uppercase",
+                      fontSize: 11,
+                    }}
                   >
-                    CSV Format Required:
+                    CSV Format Required
                   </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    â€¢ Date, Description, Amount, Type, Payee, Reference
-                  </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    â€¢ Date format: YYYY-MM-DD
-                  </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    â€¢ Type: income, expense, or transfer
-                  </Text>
+                  {[
+                    "Date, Description, Amount, Type, Payee, Reference",
+                    "Date format: YYYY-MM-DD",
+                    "Type: income, expense, or transfer",
+                  ].map((line) => (
+                    <View key={line} style={styles.reconcileBulletRow}>
+                      <Text
+                        style={[
+                          styles.reconcileBullet,
+                          { color: colors.primary },
+                        ]}
+                      >
+                        {"•"}
+                      </Text>
+                      <Text
+                        variant="bodySmall"
+                        style={{
+                          color: colors.onSurfaceVariant,
+                          flex: 1,
+                          lineHeight: 18,
+                        }}
+                      >
+                        {line}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               </Surface>
             </ScrollView>
@@ -1645,13 +1680,46 @@ const styles = StyleSheet.create({
   },
   reconcileCard: {
     padding: 24,
-    borderRadius: 16,
+    borderRadius: 20,
     alignItems: "center",
+  },
+  reconcileIconBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   reconcileRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     width: "100%",
+  },
+  reconcileBalancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 20,
+  },
+  reconcileRequirements: {
+    marginTop: 20,
+    width: "100%",
+  },
+  reconcileBulletRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 6,
+  },
+  reconcileBullet: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "700",
+    marginTop: 1,
   },
   editCard: {
     padding: 20,

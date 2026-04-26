@@ -5,7 +5,6 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -153,24 +152,6 @@ export default function AccountsScreen() {
       }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const result = await accountService.delete(id);
-      if (!result.success) throw new Error(formatApiError(result));
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-    onError: (error: Error) =>
-      setErrorDialog({
-        visible: true,
-        title: "Cannot Delete Account",
-        message: error.message,
-      }),
-  });
-
   const openAddModal = () => {
     setFormData({ account_name: "", account_type: "Bank Account", balance: "" });
     setModalVisible(true);
@@ -188,21 +169,6 @@ export default function AccountsScreen() {
       return;
     }
     createMutation.mutate(formData);
-  };
-
-  const handleDelete = (account: Account) => {
-    Alert.alert(
-      "Delete Account",
-      `Are you sure you want to delete "${account.account_name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMutation.mutate(account.id),
-        },
-      ],
-    );
   };
 
   const handleAccountPress = (account: Account) =>
@@ -320,10 +286,9 @@ export default function AccountsScreen() {
                   variant="elevated"
                   padding="lg"
                   radiusSize="xl"
-                  onPress={() => handleAccountPress(account)}
                 >
                   <Pressable
-                    onLongPress={() => handleDelete(account)}
+                    onPress={() => handleAccountPress(account)}
                     style={styles.accountInner}
                   >
                     <IconBadge icon={Icon} tone="primary" size="lg" shape="rounded" />
