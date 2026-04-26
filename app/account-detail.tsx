@@ -17,7 +17,6 @@ import {
   IconButton,
   Menu,
   Chip,
-  Portal,
   Modal,
 } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,6 +30,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { radius, shadow, spacing } from "../src/constants/theme";
 import { HeroCard } from "../src/components/ui";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import accountService from "../src/services/accountService";
 import transactionService from "../src/services/transactionService";
@@ -89,6 +89,7 @@ export default function AccountDetailScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const accountId = Number(id);
 
@@ -100,12 +101,6 @@ export default function AccountDetailScreen() {
     account_type: "Bank Account",
     balance: "",
   });
-  const [errorDialog, setErrorDialog] = useState({
-    visible: false,
-    title: "",
-    message: "",
-  });
-
   // Reconcile state
   const [isProcessingCsv, setIsProcessingCsv] = useState(false);
   const [reconcileData, setReconcileData] = useState<ReconcileTransaction[]>(
@@ -205,14 +200,9 @@ export default function AccountDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["account", accountId] });
-      Alert.alert("Success", "Account updated successfully");
+      toast.success("Account updated");
     },
-    onError: (error: Error) =>
-      setErrorDialog({
-        visible: true,
-        title: "Unable to Update",
-        message: error.message,
-      }),
+    onError: (error: Error) => toast.error(error.message || "Could not update account"),
   });
 
   const deleteMutation = useMutation({
@@ -223,19 +213,15 @@ export default function AccountDetailScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      toast.success("Account deleted");
       router.back();
     },
-    onError: (error: Error) =>
-      setErrorDialog({
-        visible: true,
-        title: "Cannot Delete Account",
-        message: error.message,
-      }),
+    onError: (error: Error) => toast.error(error.message || "Could not delete account"),
   });
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
-      Alert.alert("Error", "Please enter an account name");
+      toast.error("Please enter an account name");
       return;
     }
     updateMutation.mutate(formData);
@@ -243,12 +229,9 @@ export default function AccountDetailScreen() {
 
   const handleDelete = () => {
     if (transactionsList.length > 0) {
-      setErrorDialog({
-        visible: true,
-        title: "Cannot Delete Account",
-        message:
-          "This account has transactions. Remove or reassign all transactions before deleting.",
-      });
+      toast.error(
+        "Remove or reassign all transactions before deleting this account.",
+      );
       return;
     }
     Alert.alert(
@@ -382,15 +365,14 @@ export default function AccountDetailScreen() {
         // Load categories for expense type by default
         await loadCategories("expense");
 
-        Alert.alert(
-          "Success",
-          `Processed ${bankTransactions.length} transactions. ${matched} matched, ${unmatched} unmatched.`,
+        toast.success(
+          `${bankTransactions.length} processed — ${matched} matched, ${unmatched} unmatched`,
         );
       } else {
-        Alert.alert("Error", response.error || "Failed to process CSV");
+        toast.error(response.error || "Failed to process CSV");
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick or process CSV file");
+      toast.error("Failed to pick or process CSV file");
     } finally {
       setIsProcessingCsv(false);
     }
@@ -418,12 +400,12 @@ export default function AccountDetailScreen() {
   const handleSaveSingle = async (index: number) => {
     const tx = reconcileData[index];
     if (!tx.merchant_name || !tx.amount || !tx.date || !tx.type) {
-      Alert.alert("Error", "Please fill in all required fields");
+      toast.error("Please fill in all required fields");
       return;
     }
 
     if (tx.type !== "transfer" && !tx.category_id) {
-      Alert.alert("Error", "Please select a category");
+      toast.error("Please select a category");
       return;
     }
 
@@ -449,12 +431,12 @@ export default function AccountDetailScreen() {
         queryClient.invalidateQueries({
           queryKey: ["transactions", "account", accountId],
         });
-        Alert.alert("Success", "Transaction saved");
+        toast.success("Transaction saved");
       } else {
-        Alert.alert("Error", result.error || "Failed to save transaction");
+        toast.error(result.error || "Failed to save transaction");
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to save transaction");
+      toast.error("Failed to save transaction");
     } finally {
       setSavingIndex(null);
     }
@@ -484,10 +466,7 @@ export default function AccountDetailScreen() {
     );
 
     if (invalidTx) {
-      Alert.alert(
-        "Error",
-        "Please fill in all required fields for all transactions",
-      );
+      toast.error("Please fill in all required fields for all transactions");
       return;
     }
 
@@ -513,12 +492,12 @@ export default function AccountDetailScreen() {
         queryClient.invalidateQueries({
           queryKey: ["transactions", "account", accountId],
         });
-        Alert.alert("Success", `${transactions.length} transactions saved`);
+        toast.success(`${transactions.length} transactions saved`);
       } else {
-        Alert.alert("Error", result.error || "Failed to save transactions");
+        toast.error(result.error || "Failed to save transactions");
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to save transactions");
+      toast.error("Failed to save transactions");
     } finally {
       setSavingAll(false);
     }
@@ -713,53 +692,6 @@ export default function AccountDetailScreen() {
           </Text>
         </TouchableOpacity>
       </View>
-
-      <Portal>
-        <Modal
-          visible={errorDialog.visible}
-          onDismiss={() =>
-            setErrorDialog({ visible: false, title: "", message: "" })
-          }
-          contentContainerStyle={[
-            styles.errorModal,
-            { backgroundColor: colors.surface },
-          ]}
-        >
-          <View
-            style={[
-              styles.errorIconWrap,
-              { backgroundColor: `${colors.error}14` },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="alert-circle-outline"
-              size={28}
-              color={colors.error}
-            />
-          </View>
-          <Text
-            variant="titleLarge"
-            style={[styles.errorTitle, { color: colors.onSurface }]}
-          >
-            {errorDialog.title}
-          </Text>
-          <Text
-            variant="bodyMedium"
-            style={[styles.errorText, { color: colors.onSurfaceVariant }]}
-          >
-            {errorDialog.message}
-          </Text>
-          <Button
-            mode="contained"
-            onPress={() =>
-              setErrorDialog({ visible: false, title: "", message: "" })
-            }
-            style={styles.errorButton}
-          >
-            Got it
-          </Button>
-        </Modal>
-      </Portal>
 
       {/* Tab Content */}
       {activeTab === "transactions" && (
@@ -1858,32 +1790,5 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     marginTop: 12,
-  },
-  errorModal: {
-    margin: 24,
-    padding: 24,
-    borderRadius: 24,
-    alignItems: "center",
-    gap: 14,
-  },
-  errorIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  errorTitle: {
-    fontWeight: "700",
-    textAlign: "center",
-  },
-  errorText: {
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  errorButton: {
-    marginTop: 8,
-    minWidth: 120,
-    borderRadius: 14,
   },
 });

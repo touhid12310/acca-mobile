@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -35,7 +35,6 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
-  TriangleAlert,
   Wallet,
   X,
   LucideIcon,
@@ -44,6 +43,7 @@ import { RectButton, Swipeable } from "react-native-gesture-handler";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
+import { useToast } from "../../src/contexts/NotificationContext";
 import {
   ScreenHeader,
   Chip,
@@ -53,7 +53,6 @@ import {
   Button,
   AlertBar,
   Badge,
-  ConfirmDialog,
   PeriodModal,
   computePeriodRange,
   PeriodRange,
@@ -85,6 +84,7 @@ export default function TransactionsScreen() {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const toast = useToast();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<FilterType>("all");
@@ -92,7 +92,8 @@ export default function TransactionsScreen() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(new Set());
+  const pendingDeleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [periodModalVisible, setPeriodModalVisible] = useState(false);
@@ -139,10 +140,69 @@ export default function TransactionsScreen() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
     },
-    onError: (error: Error) => {
-      setErrorMessage(error.message);
+    onError: (error: Error, id) => {
+      setPendingDeleteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      pendingDeleteTimers.current.delete(id);
+      toast.error(error.message || "Could not delete transaction");
     },
   });
+
+  const UNDO_WINDOW_MS = 4500;
+
+  const handleDeleteWithUndo = useCallback(
+    (transaction: Transaction) => {
+      const id = transaction.id;
+      const existingTimer = pendingDeleteTimers.current.get(id);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      setPendingDeleteIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+
+      const timer = setTimeout(() => {
+        pendingDeleteTimers.current.delete(id);
+        deleteMutation.mutate(id);
+      }, UNDO_WINDOW_MS);
+      pendingDeleteTimers.current.set(id, timer);
+
+      const label = transaction.merchant_name || transaction.description || "Transaction";
+      toast.info(`${label} deleted`, {
+        duration: UNDO_WINDOW_MS,
+        action: {
+          label: "Undo",
+          onPress: () => {
+            const t = pendingDeleteTimers.current.get(id);
+            if (t) clearTimeout(t);
+            pendingDeleteTimers.current.delete(id);
+            setPendingDeleteIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          },
+        },
+      });
+    },
+    [deleteMutation, toast],
+  );
+
+  useEffect(() => {
+    const timers = pendingDeleteTimers.current;
+    return () => {
+      timers.forEach((timer, id) => {
+        clearTimeout(timer);
+        deleteMutation.mutate(id);
+      });
+      timers.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: accountsData } = useQuery({
     queryKey: ["accounts"],
@@ -314,7 +374,7 @@ export default function TransactionsScreen() {
   }, [transactions, period, periodFilterActive]);
 
   const filteredTransactions = useCallback(() => {
-    let filtered = [...periodPool];
+    let filtered = periodPool.filter((t) => !pendingDeleteIds.has(t.id));
     if (filterType !== "all") {
       filtered = filtered.filter((t) => t.type === filterType);
     }
@@ -328,7 +388,7 @@ export default function TransactionsScreen() {
       );
     }
     return filtered;
-  }, [periodPool, searchQuery, filterType]);
+  }, [periodPool, searchQuery, filterType, pendingDeleteIds]);
 
   const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
@@ -681,8 +741,7 @@ export default function TransactionsScreen() {
                     }}
                     onDelete={() => {
                       setExpandedRowId(null);
-                      setSelectedTransaction(t);
-                      setShowDeleteConfirm(true);
+                      handleDeleteWithUndo(t);
                     }}
                     icon={getIcon(t.type)}
                     tone={getTone(t.type)}
@@ -845,7 +904,11 @@ export default function TransactionsScreen() {
                 <Pressable
                   onPress={() => {
                     setShowActionSheet(false);
-                    setTimeout(() => setShowDeleteConfirm(true), 150);
+                    if (selectedTransaction) {
+                      const t = selectedTransaction;
+                      setSelectedTransaction(null);
+                      setTimeout(() => handleDeleteWithUndo(t), 150);
+                    }
                   }}
                   style={({ pressed }) => [
                     styles.actionSheetButton,
@@ -878,22 +941,6 @@ export default function TransactionsScreen() {
         </Pressable>
       </Modal>
 
-      <ConfirmDialog
-        visible={showDeleteConfirm}
-        title="Delete transaction?"
-        message="This action cannot be undone. The transaction will be permanently removed."
-        icon={TriangleAlert}
-        confirmLabel="Delete"
-        loading={deleteMutation.isPending}
-        onCancel={() => setShowDeleteConfirm(false)}
-        onConfirm={() => {
-          if (selectedTransaction) {
-            deleteMutation.mutate(selectedTransaction.id);
-          }
-          setShowDeleteConfirm(false);
-          setSelectedTransaction(null);
-        }}
-      />
     </SafeAreaView>
   );
 }

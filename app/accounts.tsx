@@ -32,13 +32,13 @@ import {
   Smartphone,
   Sparkles,
   Star,
-  TriangleAlert,
   Wallet,
   LucideIcon,
 } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import {
   ScreenHeader,
   Card,
@@ -47,7 +47,6 @@ import {
   EmptyState,
   Badge,
   Input,
-  AlertBar,
   HeroCard,
 } from "../src/components/ui";
 import accountService from "../src/services/accountService";
@@ -99,13 +98,9 @@ export default function AccountsScreen() {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const toast = useToast();
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [errorDialog, setErrorDialog] = useState<{
-    visible: boolean;
-    title: string;
-    message: string;
-  }>({ visible: false, title: "", message: "" });
   const [formData, setFormData] = useState({
     account_name: "",
     account_type: "Bank Account" as string,
@@ -139,17 +134,14 @@ export default function AccountsScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      const name = variables.account_name?.trim();
+      toast.success(name ? `${name} created` : "Account created");
       closeModal();
     },
-    onError: (error: Error) =>
-      setErrorDialog({
-        visible: true,
-        title: "Unable to Save",
-        message: error.message,
-      }),
+    onError: (error: Error) => toast.error(error.message || "Could not save account"),
   });
 
   const openAddModal = () => {
@@ -161,11 +153,7 @@ export default function AccountsScreen() {
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
-      setErrorDialog({
-        visible: true,
-        title: "Missing information",
-        message: "Please enter an account name",
-      });
+      toast.error("Please enter an account name");
       return;
     }
     createMutation.mutate(formData);
@@ -487,61 +475,6 @@ export default function AccountsScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Error Modal */}
-      <Modal
-        visible={errorDialog.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={() =>
-          setErrorDialog({ visible: false, title: "", message: "" })
-        }
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() =>
-            setErrorDialog({ visible: false, title: "", message: "" })
-          }
-        >
-          <Pressable
-            style={[
-              styles.confirmCard,
-              { backgroundColor: colors.surface },
-              shadow.lg,
-            ]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View
-              style={[
-                styles.confirmIcon,
-                { backgroundColor: colors.errorContainer },
-              ]}
-            >
-              <TriangleAlert
-                size={28}
-                color={colors.error}
-                strokeWidth={2.2}
-              />
-            </View>
-            <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
-              {errorDialog.title}
-            </Text>
-            <Text
-              style={[styles.confirmText, { color: colors.onSurfaceVariant }]}
-            >
-              {errorDialog.message}
-            </Text>
-            <Button
-              label="Got it"
-              variant="primary"
-              fullWidth
-              onPress={() =>
-                setErrorDialog({ visible: false, title: "", message: "" })
-              }
-              style={{ alignSelf: "stretch", marginTop: spacing.md }}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -737,31 +670,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.md,
     marginTop: spacing.xl,
-  },
-  confirmCard: {
-    margin: spacing.xl,
-    padding: spacing.xxl,
-    borderRadius: radius.xxl,
-    alignItems: "center",
-    gap: spacing.md,
-    maxWidth: 400,
-  },
-  confirmIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  confirmTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    textAlign: "center",
-  },
-  confirmText: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-    maxWidth: 300,
   },
 });

@@ -33,6 +33,7 @@ import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import budgetService from "../src/services/budgetService";
@@ -73,6 +74,7 @@ export default function BudgetsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -164,11 +166,13 @@ export default function BudgetsScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
       closeModal();
+      const name = variables.name?.trim();
+      toast.success(name ? `${name} created` : "Budget created");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not save budget"),
   });
 
   const updateMutation = useMutation({
@@ -197,8 +201,9 @@ export default function BudgetsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
       closeModal();
+      toast.success("Budget updated");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not update budget"),
   });
 
   const deleteMutation = useMutation({
@@ -209,8 +214,9 @@ export default function BudgetsScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      toast.success("Budget deleted");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not delete budget"),
   });
 
   const openModal = (budget?: Budget) => {
@@ -290,18 +296,18 @@ export default function BudgetsScreen() {
 
   const handleSave = () => {
     if (!formData.name.trim()) {
-      Alert.alert("Error", "Please enter a budget name");
+      toast.error("Please enter a budget name");
       return;
     }
     if (selectedCategories.length === 0) {
-      Alert.alert("Error", "Please select at least one category");
+      toast.error("Please select at least one category");
       return;
     }
     if (
       !formData.budgeted_amount ||
       parseFloat(formData.budgeted_amount) <= 0
     ) {
-      Alert.alert("Error", "Please enter a valid amount");
+      toast.error("Please enter a valid amount");
       return;
     }
 

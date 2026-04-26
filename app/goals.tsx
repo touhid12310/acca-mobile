@@ -25,6 +25,7 @@ import { router } from "expo-router";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import goalService from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
@@ -57,6 +58,7 @@ export default function GoalsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false);
@@ -118,11 +120,13 @@ export default function GoalsScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["goals"] });
       closeModal();
+      const name = variables.name?.trim();
+      toast.success(name ? `Goal "${name}" created` : "Goal created");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not save goal"),
   });
 
   const addAmountMutation = useMutation({
@@ -131,11 +135,26 @@ export default function GoalsScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      const goal = selectedGoal;
       queryClient.invalidateQueries({ queryKey: ["goals"] });
       closeAddAmountModal();
+      if (goal) {
+        const newTotal = (Number(goal.current_amount) || 0) + variables.amount;
+        const target = Number(goal.target_amount) || 0;
+        if (target > 0 && newTotal >= target) {
+          toast.success(`You reached your goal "${goal.name}"!`, {
+            title: "Goal complete",
+            duration: 5000,
+          });
+        } else {
+          toast.success(`${formatAmount(variables.amount)} added to ${goal.name}`);
+        }
+      } else {
+        toast.success("Amount added");
+      }
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not add amount"),
   });
 
   const deleteMutation = useMutation({
@@ -146,8 +165,9 @@ export default function GoalsScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["goals"] });
+      toast.success("Goal deleted");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not delete goal"),
   });
 
   const openModal = () => {
@@ -180,11 +200,11 @@ export default function GoalsScreen() {
 
   const handleSave = () => {
     if (!formData.name.trim()) {
-      Alert.alert("Error", "Please enter a goal name");
+      toast.error("Please enter a goal name");
       return;
     }
     if (!formData.target_amount || parseFloat(formData.target_amount) <= 0) {
-      Alert.alert("Error", "Please enter a valid target amount");
+      toast.error("Please enter a valid target amount");
       return;
     }
     createMutation.mutate(formData);
@@ -194,7 +214,7 @@ export default function GoalsScreen() {
     if (!selectedGoal) return;
     const amount = parseFloat(amountToAdd);
     if (!amount || amount <= 0) {
-      Alert.alert("Error", "Please enter a valid amount");
+      toast.error("Please enter a valid amount");
       return;
     }
     addAmountMutation.mutate({ id: selectedGoal.id, amount });

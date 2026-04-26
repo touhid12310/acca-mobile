@@ -48,11 +48,14 @@ import {
   computePeriodRange,
   PeriodRange,
   HeroCard,
+  AlertBar,
 } from "../../src/components/ui";
 import dashboardService, {
   DashboardData,
 } from "../../src/services/dashboardService";
 import transactionService from "../../src/services/transactionService";
+import budgetService from "../../src/services/budgetService";
+import goalService from "../../src/services/goalService";
 import { formatRelativeTime } from "../../src/utils/date";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
@@ -196,6 +199,90 @@ export default function DashboardScreen() {
       up: change >= 0,
     };
   }, [displayedIncome, displayedExpenses, lastMonthTotals]);
+
+  // Budgets + goals — for inline alert banners
+  const { data: budgetsList } = useQuery({
+    queryKey: ["budgets"],
+    queryFn: async () => {
+      const result = await budgetService.getAll();
+      const payload: any = result.data;
+      const rows =
+        (Array.isArray(payload?.data?.data) && payload.data.data) ||
+        (Array.isArray(payload?.data) && payload.data) ||
+        (Array.isArray(payload) && payload) ||
+        [];
+      return rows;
+    },
+  });
+
+  const { data: goalsList } = useQuery({
+    queryKey: ["goals"],
+    queryFn: async () => {
+      const result = await goalService.getAll();
+      const payload: any = result.data;
+      const rows =
+        (Array.isArray(payload?.data?.data) && payload.data.data) ||
+        (Array.isArray(payload?.data) && payload.data) ||
+        (Array.isArray(payload) && payload) ||
+        [];
+      return rows;
+    },
+  });
+
+  type DashboardAlert = {
+    id: string;
+    tone: "error" | "warning" | "success";
+    title: string;
+    message: string;
+    onPress: () => void;
+  };
+
+  const alerts = React.useMemo<DashboardAlert[]>(() => {
+    const out: DashboardAlert[] = [];
+
+    const budgets: any[] = Array.isArray(budgetsList) ? budgetsList : [];
+    for (const b of budgets) {
+      const budgeted = parseFloat(String(b.budgeted_amount ?? b.amount ?? 0));
+      const spent = parseFloat(String(b.spent_amount ?? b.spent ?? 0));
+      if (budgeted <= 0) continue;
+      const pct = (spent / budgeted) * 100;
+      if (pct >= 100) {
+        out.push({
+          id: `budget-over-${b.id}`,
+          tone: "error",
+          title: "Budget exceeded",
+          message: `${b.name} is ${Math.round(pct)}% spent (${formatAmount(spent)} of ${formatAmount(budgeted)})`,
+          onPress: () => router.push("/budgets"),
+        });
+      } else if (pct >= 80) {
+        out.push({
+          id: `budget-warn-${b.id}`,
+          tone: "warning",
+          title: "Budget nearing limit",
+          message: `${b.name} is ${Math.round(pct)}% spent`,
+          onPress: () => router.push("/budgets"),
+        });
+      }
+    }
+
+    const goals: any[] = Array.isArray(goalsList) ? goalsList : [];
+    for (const g of goals) {
+      const target = parseFloat(String(g.target_amount ?? 0));
+      const current = parseFloat(String(g.current_amount ?? 0));
+      if (target <= 0) continue;
+      if (g.is_completed === true || current >= target) {
+        out.push({
+          id: `goal-done-${g.id}`,
+          tone: "success",
+          title: "Goal reached",
+          message: `You hit your goal: ${g.name}`,
+          onPress: () => router.push("/goals"),
+        });
+      }
+    }
+
+    return out.slice(0, 3);
+  }, [budgetsList, goalsList, formatAmount]);
 
   // Cashflow trend (weekly / monthly / yearly)
   type Granularity = "weekly" | "monthly" | "yearly";
@@ -536,6 +623,20 @@ export default function DashboardScreen() {
             )}
           </Pressable>
         </View>
+
+        {alerts.length > 0 && (
+          <View style={styles.alertsStack}>
+            {alerts.map((alert) => (
+              <Pressable key={alert.id} onPress={alert.onPress}>
+                <AlertBar
+                  tone={alert.tone}
+                  title={alert.title}
+                  message={alert.message}
+                />
+              </Pressable>
+            ))}
+          </View>
+        )}
 
         {/* Hero Balance Card — Premium card design */}
         <HeroCard style={styles.hero}>
@@ -1433,6 +1534,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+  },
+  alertsStack: {
+    gap: spacing.sm,
   },
   greetingLabel: {
     fontSize: 13,

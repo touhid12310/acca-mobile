@@ -7,11 +7,13 @@ import React, {
   useRef,
   ReactNode,
 } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { getAuthToken, saveAuthToken, removeAuthToken } from '../config/api';
 import authService from '../services/authService';
+import pushService from '../services/pushService';
 import { User } from '../types';
+import { notifyToast } from './NotificationContext';
 
 // Session validation interval (30 seconds)
 const SESSION_CHECK_INTERVAL = 30000;
@@ -117,6 +119,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Register the device for push notifications when authenticated. Best-effort:
+  // failures are silent (e.g. emulator, missing backend endpoint, denied perms).
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (cancelled) return;
+        await pushService.registerDevice(token);
+      } catch {
+        // ignore — push is non-critical
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, isAuthenticated]);
 
   const login = async (
     email: string,
@@ -236,6 +256,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
+      if (token) {
+        try {
+          await pushService.unregisterDevice(token);
+        } catch {
+          // ignore
+        }
+      }
       await authService.logout();
     } catch (error) {
       // Logout failed, still clear local auth
@@ -264,8 +291,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsAuthenticated(false);
     setSessionExpired(true);
 
-    // Show alert
-    Alert.alert('Session Expired', message);
+    notifyToast.warning(message, {
+      title: 'Session expired',
+      duration: 6000,
+    });
   }, [queryClient]);
 
   // Validate session with the server

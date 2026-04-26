@@ -24,6 +24,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 
 import { useTheme } from "../src/contexts/ThemeContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import categoryService from "../src/services/categoryService";
 
@@ -113,6 +114,7 @@ const getValidIcon = (icon?: string): string => {
 export default function CategoriesScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const [activeTab, setActiveTab] = useState<CategoryType>("income");
   const [modalVisible, setModalVisible] = useState(false);
@@ -163,8 +165,9 @@ export default function CategoriesScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
       closeModal();
+      toast.success("Category created");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not save category"),
   });
 
   const createSubcategoryMutation = useMutation({
@@ -187,8 +190,9 @@ export default function CategoriesScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
       closeSubcategoryModal();
+      toast.success("Subcategory created");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not save subcategory"),
   });
 
   const deleteCategoryMutation = useMutation({
@@ -205,10 +209,11 @@ export default function CategoriesScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success(variables.isSubcategory ? "Subcategory deleted" : "Category deleted");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not delete category"),
   });
 
   const openModal = (type?: CategoryType) => {
@@ -242,7 +247,7 @@ export default function CategoriesScreen() {
 
   const handleSaveCategory = () => {
     if (!formData.name.trim()) {
-      Alert.alert("Error", "Please enter a category name");
+      toast.error("Please enter a category name");
       return;
     }
     createCategoryMutation.mutate(formData);
@@ -250,7 +255,7 @@ export default function CategoriesScreen() {
 
   const handleSaveSubcategory = () => {
     if (!subcategoryFormData.name.trim()) {
-      Alert.alert("Error", "Please enter a subcategory name");
+      toast.error("Please enter a subcategory name");
       return;
     }
     if (!selectedParentCategory) return;
@@ -265,7 +270,7 @@ export default function CategoriesScreen() {
     isSubcategory: boolean,
   ) => {
     if ((item as Category).is_default) {
-      Alert.alert("Cannot Delete", "Default categories cannot be deleted");
+      toast.error("Default categories cannot be deleted");
       return;
     }
     const itemType = isSubcategory ? "subcategory" : "category";

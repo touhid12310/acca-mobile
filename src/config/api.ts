@@ -102,6 +102,10 @@ const API_CONFIG = {
     SETTINGS: '/settings',
     SETTINGS_UPDATE: '/settings',
 
+    // Devices (push notifications)
+    DEVICES_REGISTER: '/devices/register',
+    DEVICES_UNREGISTER: '/devices/unregister',
+
     // File uploads
     UPLOAD: '/upload',
     UPLOAD_AVATAR: '/upload/avatar',

@@ -31,6 +31,7 @@ import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import billService from "../src/services/billService";
@@ -77,6 +78,7 @@ export default function SchedulesScreen() {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const toast = useToast();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -171,11 +173,19 @@ export default function SchedulesScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["bills"] });
       closeModal();
+      const date = variables.next_due_date
+        ? new Date(variables.next_due_date).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
+        : null;
+      toast.success(date ? `Schedule saved — next on ${date}` : "Schedule saved");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not save schedule"),
   });
 
   const deleteMutation = useMutation({
@@ -186,8 +196,9 @@ export default function SchedulesScreen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bills"] });
+      toast.success("Schedule deleted");
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => toast.error(error.message || "Could not delete schedule"),
   });
 
   const openModal = () => {
@@ -211,11 +222,11 @@ export default function SchedulesScreen() {
 
   const handleSave = () => {
     if (!formData.vendor.trim()) {
-      Alert.alert("Error", "Please enter a vendor name");
+      toast.error("Please enter a vendor name");
       return;
     }
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
-      Alert.alert("Error", "Please enter a valid amount");
+      toast.error("Please enter a valid amount");
       return;
     }
     createMutation.mutate(formData);
