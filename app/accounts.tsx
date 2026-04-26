@@ -94,7 +94,7 @@ const getAccountIcon = (type: string = ""): LucideIcon => {
 };
 
 export default function AccountsScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
@@ -229,12 +229,9 @@ export default function AccountsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Total Balance Hero */}
-        <LinearGradient
-          colors={(isDark ? gradients.primaryNight : gradients.primary) as any}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.hero, shadow.md]}
-        >
+        <View style={[styles.hero, shadow.lg]}>
+          <View style={styles.heroGlowA} pointerEvents="none" />
+          <View style={styles.heroGlowB} pointerEvents="none" />
           <View style={styles.heroTopRow}>
             <View style={styles.heroIcon}>
               <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
@@ -267,7 +264,7 @@ export default function AccountsScreen() {
               <Text style={styles.heroMetaLabel}>Top account</Text>
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {viewAccounts.length > 0 ? (
           <View style={{ gap: spacing.md }}>
@@ -567,6 +564,27 @@ const styles = StyleSheet.create({
     borderRadius: radius.xxl,
     gap: spacing.xs,
     overflow: "hidden",
+    backgroundColor: "#0f213d",
+  },
+  heroGlowA: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#6366f1",
+    opacity: 0.22,
+    top: -80,
+    right: -60,
+  },
+  heroGlowB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "#a855f7",
+    opacity: 0.18,
+    bottom: -40,
+    left: -30,
   },
   heroTopRow: {
     flexDirection: "row",

@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Bell,
   Building2,
@@ -49,7 +48,7 @@ import {
   ConfirmDialog,
 } from "../../src/components/ui";
 import { getInitials } from "../../src/utils/format";
-import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import { radius, shadow, spacing } from "../../src/constants/theme";
 
 type MenuItem = {
   icon: LucideIcon;
@@ -68,7 +67,7 @@ type MenuSection = {
 
 export default function MoreScreen() {
   const { user, logout } = useAuth();
-  const { colors, themeMode, setThemeMode, isDark } = useTheme();
+  const { colors, themeMode, setThemeMode } = useTheme();
   const { currency, availableCurrencies, updateCurrency, isCurrencyUpdating } =
     useCurrency();
 
@@ -239,12 +238,9 @@ export default function MoreScreen() {
       >
         {/* Profile Card */}
         <Pressable onPress={() => router.push("/profile")}>
-          <LinearGradient
-            colors={(isDark ? gradients.primaryNight : gradients.primary) as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.profileCard, shadow.md]}
-          >
+          <View style={[styles.profileCard, shadow.lg]}>
+            <View style={styles.profileGlowA} pointerEvents="none" />
+            <View style={styles.profileGlowB} pointerEvents="none" />
             {(user as any)?.profile_picture_url ? (
               <Image
                 source={{ uri: (user as any).profile_picture_url }}
@@ -266,7 +262,7 @@ export default function MoreScreen() {
               </Text>
             </View>
             <ChevronRight size={22} color="#ffffff" strokeWidth={2.2} />
-          </LinearGradient>
+          </View>
         </Pressable>
 
         {/* Menu Sections */}
@@ -613,6 +609,28 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     borderRadius: radius.xxl,
     gap: spacing.md,
+    backgroundColor: "#0f213d",
+    overflow: "hidden",
+  },
+  profileGlowA: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#6366f1",
+    opacity: 0.22,
+    top: -80,
+    right: -60,
+  },
+  profileGlowB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "#a855f7",
+    opacity: 0.18,
+    bottom: -40,
+    left: -30,
   },
   profileAvatar: {
     width: 56,
