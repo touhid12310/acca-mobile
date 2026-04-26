@@ -11,7 +11,10 @@ import {
   Text,
   Modal,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import {
   useQuery,
   useQueryClient,
@@ -37,14 +40,7 @@ import {
   X,
   LucideIcon,
 } from "lucide-react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  runOnJS,
-  Easing,
-} from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { RectButton, Swipeable } from "react-native-gesture-handler";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
@@ -102,7 +98,8 @@ export default function TransactionsScreen() {
   const [filterChanging, setFilterChanging] = useState(false);
   const [sortBy, setSortBy] = useState<"date" | "amount">("date");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
@@ -198,11 +195,12 @@ export default function TransactionsScreen() {
       }
       const payload = result.data as any;
       // Handle Laravel-paginated response wrapped in either { data: { data, current_page, ... } } or directly
-      const meta = payload?.data?.current_page !== undefined
-        ? payload.data
-        : payload?.current_page !== undefined
-          ? payload
-          : null;
+      const meta =
+        payload?.data?.current_page !== undefined
+          ? payload.data
+          : payload?.current_page !== undefined
+            ? payload
+            : null;
       let data: Transaction[] = [];
       if (meta && Array.isArray(meta.data)) {
         data = meta.data;
@@ -224,7 +222,7 @@ export default function TransactionsScreen() {
   });
 
   const transactions = useMemo(
-    () => (transactionPages?.pages.flatMap((p) => p.data) ?? []),
+    () => transactionPages?.pages.flatMap((p) => p.data) ?? [],
     [transactionPages],
   );
 
@@ -298,31 +296,46 @@ export default function TransactionsScreen() {
 
   const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
-      case "income": return ArrowDownLeft;
-      case "expense": return ArrowUpRight;
-      case "transfer": return ArrowLeftRight;
-      case "asset": return Wallet;
-      case "liability": return CreditCard;
-      default: return Receipt;
+      case "income":
+        return ArrowDownLeft;
+      case "expense":
+        return ArrowUpRight;
+      case "transfer":
+        return ArrowLeftRight;
+      case "asset":
+        return Wallet;
+      case "liability":
+        return CreditCard;
+      default:
+        return Receipt;
     }
   };
 
   const getTone = (type: TransactionType) => {
     switch (type) {
-      case "income": return "success" as const;
-      case "expense": return "danger" as const;
-      case "transfer": return "primary" as const;
-      case "asset": return "success" as const;
-      case "liability": return "warning" as const;
-      default: return "neutral" as const;
+      case "income":
+        return "success" as const;
+      case "expense":
+        return "danger" as const;
+      case "transfer":
+        return "primary" as const;
+      case "asset":
+        return "success" as const;
+      case "liability":
+        return "warning" as const;
+      default:
+        return "neutral" as const;
     }
   };
 
   const getAmountColor = (type: TransactionType) => {
     switch (type) {
-      case "income": return colors.tertiary;
-      case "expense": return colors.error;
-      default: return colors.onSurface;
+      case "income":
+        return colors.tertiary;
+      case "expense":
+        return colors.error;
+      default:
+        return colors.onSurface;
     }
   };
 
@@ -423,12 +436,7 @@ export default function TransactionsScreen() {
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: incomeBg },
-          ]}
-        >
+        <View style={[styles.summaryCard, { backgroundColor: incomeBg }]}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
               <View
@@ -457,12 +465,7 @@ export default function TransactionsScreen() {
             {formatAmount(totalIncome)}
           </Text>
         </View>
-        <View
-          style={[
-            styles.summaryCard,
-            { backgroundColor: expenseBg },
-          ]}
-        >
+        <View style={[styles.summaryCard, { backgroundColor: expenseBg }]}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
               <View
@@ -471,7 +474,11 @@ export default function TransactionsScreen() {
                   { backgroundColor: summaryIconBg },
                 ]}
               >
-                <ArrowUpRight size={18} color={colors.error} strokeWidth={2.4} />
+                <ArrowUpRight
+                  size={18}
+                  color={colors.error}
+                  strokeWidth={2.4}
+                />
               </View>
               <Text style={[styles.summaryLabel, { color: expenseFg }]}>
                 Total Expenses
@@ -490,7 +497,9 @@ export default function TransactionsScreen() {
       </View>
 
       {errorMessage && (
-        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+        <View
+          style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}
+        >
           <AlertBar
             tone="error"
             message={errorMessage}
@@ -595,8 +604,7 @@ export default function TransactionsScreen() {
             const { layoutMeasurement, contentOffset, contentSize } =
               nativeEvent;
             const distanceFromBottom =
-              contentSize.height -
-              (contentOffset.y + layoutMeasurement.height);
+              contentSize.height - (contentOffset.y + layoutMeasurement.height);
             if (
               distanceFromBottom < 400 &&
               hasNextPage &&
@@ -633,8 +641,9 @@ export default function TransactionsScreen() {
                     t={t}
                     isLast={idx === group.data.length - 1}
                     expanded={expandedRowId === t.id}
-                    onToggleExpand={() =>
-                      setExpandedRowId((prev) => (prev === t.id ? null : t.id))
+                    onOpen={() => setExpandedRowId(t.id)}
+                    onClose={() =>
+                      setExpandedRowId((prev) => (prev === t.id ? null : prev))
                     }
                     onLongPress={() => {
                       setExpandedRowId(null);
@@ -727,10 +736,7 @@ export default function TransactionsScreen() {
                   />
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text
-                      style={[
-                        styles.actionTitle,
-                        { color: colors.onSurface },
-                      ]}
+                      style={[styles.actionTitle, { color: colors.onSurface }]}
                       numberOfLines={1}
                     >
                       {selectedTransaction.merchant_name ||
@@ -753,7 +759,10 @@ export default function TransactionsScreen() {
                       )}
                     </Text>
                     <Text
-                      style={[styles.actionDate, { color: colors.onSurfaceVariant }]}
+                      style={[
+                        styles.actionDate,
+                        { color: colors.onSurfaceVariant },
+                      ]}
                     >
                       {formatDate(selectedTransaction.date, {
                         weekday: "short",
@@ -774,15 +783,16 @@ export default function TransactionsScreen() {
                       },
                     ]}
                   >
-                    <X
-                      size={18}
-                      color={colors.onSurface}
-                      strokeWidth={2.4}
-                    />
+                    <X size={18} color={colors.onSurface} strokeWidth={2.4} />
                   </Pressable>
                 </View>
 
-                <View style={[styles.divider, { backgroundColor: colors.outlineVariant }]} />
+                <View
+                  style={[
+                    styles.divider,
+                    { backgroundColor: colors.outlineVariant },
+                  ]}
+                />
 
                 <Pressable
                   onPress={() => {
@@ -868,16 +878,14 @@ export default function TransactionsScreen() {
                 { backgroundColor: colors.errorContainer },
               ]}
             >
-              <TriangleAlert
-                size={28}
-                color={colors.error}
-                strokeWidth={2.2}
-              />
+              <TriangleAlert size={28} color={colors.error} strokeWidth={2.2} />
             </View>
             <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
               Delete transaction?
             </Text>
-            <Text style={[styles.confirmText, { color: colors.onSurfaceVariant }]}>
+            <Text
+              style={[styles.confirmText, { color: colors.onSurfaceVariant }]}
+            >
               This action cannot be undone. The transaction will be permanently
               removed.
             </Text>
@@ -912,12 +920,14 @@ export default function TransactionsScreen() {
 }
 
 const ACTION_WIDTH = 132;
+const TRANSACTION_ROW_HEIGHT = 72;
 
 interface TransactionRowProps {
   t: Transaction;
   isLast: boolean;
   expanded: boolean;
-  onToggleExpand: () => void;
+  onOpen: () => void;
+  onClose: () => void;
   onLongPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -932,7 +942,8 @@ function TransactionRow({
   t,
   isLast,
   expanded,
-  onToggleExpand,
+  onOpen,
+  onClose,
   onLongPress,
   onEdit,
   onDelete,
@@ -942,47 +953,68 @@ function TransactionRow({
   formatAmount,
   colors,
 }: TransactionRowProps) {
-  const translateX = useSharedValue(ACTION_WIDTH);
-  const startX = useSharedValue(ACTION_WIDTH);
+  const swipeableRef = React.useRef<Swipeable>(null);
 
   React.useEffect(() => {
-    translateX.value = withTiming(expanded ? 0 : ACTION_WIDTH, {
-      duration: 160,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [expanded, translateX]);
+    if (!expanded) {
+      swipeableRef.current?.close();
+    }
+  }, [expanded]);
 
-  const setExpandedJS = (v: boolean) => {
-    if (v !== expanded) onToggleExpand();
+  const handleRowPress = () => {
+    if (expanded) {
+      swipeableRef.current?.close();
+      onClose();
+      return;
+    }
+
+    swipeableRef.current?.openRight();
+    onOpen();
   };
 
-  const panGesture = Gesture.Pan()
-    .activeOffsetX([-8, 8])
-    .onStart(() => {
-      startX.value = translateX.value;
-    })
-    .onUpdate((e) => {
-      const next = startX.value + e.translationX;
-      translateX.value = Math.max(0, Math.min(ACTION_WIDTH, next));
-    })
-    .onEnd((e) => {
-      const shouldOpen =
-        translateX.value < ACTION_WIDTH / 2 || e.velocityX < -500;
-      const target = shouldOpen ? 0 : ACTION_WIDTH;
-      translateX.value = withTiming(target, {
-        duration: 160,
-        easing: Easing.out(Easing.cubic),
-      });
-      runOnJS(setExpandedJS)(shouldOpen);
-    });
-
-  const slideStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const renderRightActions = () => (
+    <View style={styles.slideActions}>
+      <RectButton
+        onPress={() => {
+          swipeableRef.current?.close();
+          onEdit();
+        }}
+        rippleColor="rgba(255,255,255,0.2)"
+        style={[styles.slideAction, { backgroundColor: colors.primary }]}
+      >
+        <View style={styles.slideActionContent}>
+          <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
+          <Text style={styles.slideActionLabel}>Edit</Text>
+        </View>
+      </RectButton>
+      <RectButton
+        onPress={() => {
+          swipeableRef.current?.close();
+          onDelete();
+        }}
+        rippleColor="rgba(255,255,255,0.2)"
+        style={[styles.slideAction, { backgroundColor: colors.error }]}
+      >
+        <View style={styles.slideActionContent}>
+          <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
+          <Text style={styles.slideActionLabel}>Delete</Text>
+        </View>
+      </RectButton>
+    </View>
+  );
 
   return (
-    <View
-      style={[
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      rightThreshold={ACTION_WIDTH * 0.35}
+      overshootRight={false}
+      friction={1.15}
+      overshootFriction={8}
+      dragOffsetFromRightEdge={5}
+      onSwipeableWillOpen={onOpen}
+      onSwipeableClose={onClose}
+      containerStyle={[
         styles.txnRowOuter,
         {
           borderBottomColor: colors.outlineVariant,
@@ -990,82 +1022,39 @@ function TransactionRow({
         },
       ]}
     >
-      <GestureDetector gesture={panGesture}>
-        <Pressable onPress={onToggleExpand} onLongPress={onLongPress}>
-          {({ pressed }) => (
-            <View style={[styles.txnRow, { opacity: pressed ? 0.6 : 1 }]}>
-              <IconBadge icon={icon} tone={tone} size="md" />
-              <View style={styles.txnTextBlock}>
-                <Text
-                  style={[styles.txnTitle, { color: colors.onSurface }]}
-                  numberOfLines={1}
-                >
-                  {t.merchant_name || t.description || "Transaction"}
-                </Text>
-                <View style={styles.txnMetaRow}>
-                  <Text
-                    style={[styles.txnSub, { color: colors.onSurfaceVariant }]}
-                  >
-                    {formatDate(t.date)}
-                  </Text>
-                  {t.category && (
-                    <Badge label={t.category.name} tone="neutral" size="sm" />
-                  )}
-                </View>
-              </View>
+      <Pressable onPress={handleRowPress} onLongPress={onLongPress}>
+        {({ pressed }) => (
+          <View style={[styles.txnRow, { opacity: pressed ? 0.6 : 1 }]}>
+            <IconBadge icon={icon} tone={tone} size="md" />
+            <View style={styles.txnTextBlock}>
               <Text
-                style={[styles.txnAmount, { color: amountColor }]}
+                style={[styles.txnTitle, { color: colors.onSurface }]}
                 numberOfLines={1}
               >
-                {t.type === "expense"
-                  ? "−"
-                  : t.type === "income"
-                    ? "+"
-                    : ""}
-                {formatAmount(parseFloat(String(t.amount)) || 0)}
+                {t.merchant_name || t.description || "Transaction"}
               </Text>
+              <View style={styles.txnMetaRow}>
+                <Text
+                  style={[styles.txnSub, { color: colors.onSurfaceVariant }]}
+                >
+                  {formatDate(t.date)}
+                </Text>
+                {t.category && (
+                  <Badge label={t.category.name} tone="neutral" size="sm" />
+                )}
+              </View>
             </View>
-          )}
-        </Pressable>
-      </GestureDetector>
-
-      {/* Action overlay slides in from the right when expanded */}
-      <Animated.View
-        pointerEvents={expanded ? "auto" : "none"}
-        style={[styles.slideActions, { width: ACTION_WIDTH }, slideStyle]}
-      >
-        <View
-          style={[styles.slideAction, { backgroundColor: colors.primary }]}
-        >
-          <Pressable
-            onPress={onEdit}
-            android_ripple={{ color: "rgba(255,255,255,0.2)" }}
-            style={({ pressed }) => [
-              styles.slideActionInner,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
-            <Text style={styles.slideActionLabel}>Edit</Text>
-          </Pressable>
-        </View>
-        <View
-          style={[styles.slideAction, { backgroundColor: colors.error }]}
-        >
-          <Pressable
-            onPress={onDelete}
-            android_ripple={{ color: "rgba(255,255,255,0.2)" }}
-            style={({ pressed }) => [
-              styles.slideActionInner,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
-            <Text style={styles.slideActionLabel}>Delete</Text>
-          </Pressable>
-        </View>
-      </Animated.View>
-    </View>
+            <Text
+              style={[styles.txnAmount, { color: amountColor }]}
+              numberOfLines={1}
+            >
+              {t.type === "expense" ? "−" : t.type === "income" ? "+" : ""}
+              {formatAmount(parseFloat(String(t.amount)) || 0)}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </Swipeable>
   );
 }
 
@@ -1237,6 +1226,7 @@ const styles = StyleSheet.create({
   txnRowOuter: {
     position: "relative",
     overflow: "hidden",
+    minHeight: TRANSACTION_ROW_HEIGHT,
   },
   paginationLoader: {
     paddingVertical: spacing.lg,
@@ -1248,30 +1238,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    minHeight: TRANSACTION_ROW_HEIGHT,
+    paddingVertical: spacing.sm,
   },
   slideActions: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    right: 0,
+    width: ACTION_WIDTH,
     flexDirection: "row",
+    height: TRANSACTION_ROW_HEIGHT,
+    backgroundColor: "#ef4444",
   },
   slideAction: {
     width: ACTION_WIDTH / 2,
-    height: "100%",
-  },
-  slideActionInner: {
-    flex: 1,
+    height: TRANSACTION_ROW_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    overflow: "hidden",
+  },
+  slideActionContent: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
   },
   slideActionLabel: {
     color: "#ffffff",
     fontSize: 11,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    lineHeight: 14,
+    textAlign: "center",
+    includeFontPadding: false,
   },
   txnTextBlock: {
     flex: 1,
