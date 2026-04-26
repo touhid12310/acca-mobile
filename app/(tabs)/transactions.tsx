@@ -83,13 +83,6 @@ const FILTERS: { key: FilterType; label: string }[] = [
 export default function TransactionsScreen() {
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
-  const summaryCardBg = isDark ? "#0f213d" : colors.surfaceVariant;
-  const summaryLabelColor = isDark
-    ? "rgba(255,255,255,0.75)"
-    : colors.onSurfaceVariant;
-  const summaryIconBg = isDark
-    ? "rgba(255,255,255,0.1)"
-    : "rgba(15,33,61,0.08)";
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
 
@@ -479,76 +472,50 @@ export default function TransactionsScreen() {
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
-        <View style={[styles.summaryCard, { backgroundColor: summaryCardBg }]}>
-          {isDark && (
-            <View style={styles.summaryGlowA} pointerEvents="none" />
-          )}
+        <SummaryCard isDark={isDark}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View
-                style={[
-                  styles.summaryIconWrap,
-                  { backgroundColor: summaryIconBg },
-                ]}
-              >
+              <View style={styles.summaryIconWrap}>
                 <ArrowDownLeft
                   size={16}
-                  color={isDark ? "#34d399" : colors.tertiary}
+                  color="#34d399"
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={[styles.summaryLabel, { color: summaryLabelColor }]}>
-                Total Income
-              </Text>
+              <Text style={styles.summaryLabel}>Total Income</Text>
             </View>
           </View>
           <Text
-            style={[
-              styles.summaryValue,
-              { color: isDark ? "#34d399" : colors.tertiary },
-            ]}
+            style={[styles.summaryValue, { color: "#34d399" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
             {formatAmount(totalIncome)}
           </Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: summaryCardBg }]}>
-          {isDark && (
-            <View style={styles.summaryGlowB} pointerEvents="none" />
-          )}
+        </SummaryCard>
+        <SummaryCard isDark={isDark}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View
-                style={[
-                  styles.summaryIconWrap,
-                  { backgroundColor: summaryIconBg },
-                ]}
-              >
+              <View style={styles.summaryIconWrap}>
                 <ArrowUpRight
                   size={16}
-                  color={isDark ? "#fb923c" : colors.error}
+                  color="#fb923c"
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={[styles.summaryLabel, { color: summaryLabelColor }]}>
-                Total Expenses
-              </Text>
+              <Text style={styles.summaryLabel}>Total Expenses</Text>
             </View>
           </View>
           <Text
-            style={[
-              styles.summaryValue,
-              { color: isDark ? "#fb923c" : colors.error },
-            ]}
+            style={[styles.summaryValue, { color: "#fb923c" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
             {formatAmount(totalExpense)}
           </Text>
-        </View>
+        </SummaryCard>
       </View>
 
       {errorMessage && (
@@ -1086,6 +1053,40 @@ function TransactionRow({
   );
 }
 
+function SummaryCard({
+  isDark,
+  children,
+}: {
+  isDark: boolean;
+  children: React.ReactNode;
+}) {
+  if (isDark) {
+    return (
+      <View style={[styles.summaryCard, { backgroundColor: "#0f213d" }]}>
+        <View
+          style={[styles.summaryGlowA, { backgroundColor: "#6366f1" }]}
+          pointerEvents="none"
+        />
+        {children}
+      </View>
+    );
+  }
+  return (
+    <LinearGradient
+      colors={gradients.ocean as any}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.summaryCard}
+    >
+      <View
+        style={[styles.summaryGlowA, { backgroundColor: "#a855f7" }]}
+        pointerEvents="none"
+      />
+      {children}
+    </LinearGradient>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1137,20 +1138,9 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
+    opacity: 0.32,
     top: -50,
     right: -40,
-  },
-  summaryGlowB: {
-    position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   summaryTopRow: {
     flexDirection: "row",
@@ -1167,6 +1157,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1175,6 +1166,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 14,
     flexShrink: 1,
+    color: "rgba(255,255,255,0.75)",
   },
   summaryValue: {
     fontSize: 17,

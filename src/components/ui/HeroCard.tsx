@@ -18,9 +18,8 @@ interface HeroCardProps {
 
 /**
  * Brand hero/balance card with a unified look across the app.
- * - Dark mode: deep navy `#0f213d` + indigo/violet glow blobs.
- * - Light mode: indigo→violet `gradients.primary` linear gradient.
- * Both modes show white text content and look like the same surface family.
+ * - Dark mode: deep navy `#0f213d` base + indigo/violet glow blobs.
+ * - Light mode: ocean (sky-blue → indigo) linear gradient.
  */
 export function HeroCard({
   children,
@@ -41,11 +40,13 @@ export function HeroCard({
 
   return (
     <LinearGradient
-      colors={gradients.primary as any}
+      colors={gradients.ocean as any}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.base, withShadow && shadow.lg, style]}
     >
+      <View style={styles.glowA} pointerEvents="none" />
+      <View style={styles.glowB} pointerEvents="none" />
       {children}
     </LinearGradient>
   );
