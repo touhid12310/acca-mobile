@@ -26,7 +26,7 @@ import {
   Chip,
 } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useQuery } from '@tanstack/react-query';
@@ -257,11 +257,9 @@ export default function TransactionFormContent({
     updateField('subcategory_id', null);
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      updateField('date', selectedDate);
-    }
+  const handleDateConfirm = (selectedDate: Date) => {
+    setShowDatePicker(false);
+    updateField('date', selectedDate);
   };
 
   // Process receipt with AI
@@ -913,14 +911,13 @@ export default function TransactionFormContent({
             </TouchableOpacity>
           </View>
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={formData.date}
-              mode="date"
-              display="default"
-              onChange={handleDateChange}
-            />
-          )}
+          <ThemedDatePicker
+            visible={showDatePicker}
+            value={formData.date}
+            title="Transaction date"
+            onCancel={() => setShowDatePicker(false)}
+            onConfirm={handleDateConfirm}
+          />
 
           {/* Merchant/Description */}
           <View style={styles.section}>

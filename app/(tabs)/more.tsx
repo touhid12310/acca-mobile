@@ -240,7 +240,7 @@ export default function MoreScreen() {
         {/* Profile Card */}
         <Pressable onPress={() => router.push("/profile")}>
           <LinearGradient
-            colors={gradients.primary as any}
+            colors={(isDark ? gradients.primaryNight : gradients.primary) as any}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.profileCard, shadow.md]}

@@ -31,8 +31,6 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
-
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
 import {
@@ -41,6 +39,7 @@ import {
   IconBadge,
   EmptyState,
   Badge,
+  ThemedDatePicker,
 } from "../../src/components/ui";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
@@ -1267,39 +1266,36 @@ export default function ReportsScreen() {
         {renderContent()}
       </ScrollView>
 
-      {showStartPicker && (
-        <DateTimePicker
-          value={incomeStartDate}
-          mode="date"
-          display="default"
-          onChange={(_, date) => {
-            setShowStartPicker(false);
-            if (date) setIncomeStartDate(date);
-          }}
-        />
-      )}
-      {showEndPicker && (
-        <DateTimePicker
-          value={incomeEndDate}
-          mode="date"
-          display="default"
-          onChange={(_, date) => {
-            setShowEndPicker(false);
-            if (date) setIncomeEndDate(date);
-          }}
-        />
-      )}
-      {showBalanceDatePicker && (
-        <DateTimePicker
-          value={balanceSheetDate}
-          mode="date"
-          display="default"
-          onChange={(_, date) => {
-            setShowBalanceDatePicker(false);
-            if (date) setBalanceSheetDate(date);
-          }}
-        />
-      )}
+      <ThemedDatePicker
+        visible={showStartPicker}
+        value={incomeStartDate}
+        title="Start date"
+        onCancel={() => setShowStartPicker(false)}
+        onConfirm={(date) => {
+          setShowStartPicker(false);
+          setIncomeStartDate(date);
+        }}
+      />
+      <ThemedDatePicker
+        visible={showEndPicker}
+        value={incomeEndDate}
+        title="End date"
+        onCancel={() => setShowEndPicker(false)}
+        onConfirm={(date) => {
+          setShowEndPicker(false);
+          setIncomeEndDate(date);
+        }}
+      />
+      <ThemedDatePicker
+        visible={showBalanceDatePicker}
+        value={balanceSheetDate}
+        title="As of date"
+        onCancel={() => setShowBalanceDatePicker(false)}
+        onConfirm={(date) => {
+          setShowBalanceDatePicker(false);
+          setBalanceSheetDate(date);
+        }}
+      />
     </SafeAreaView>
   );
 }

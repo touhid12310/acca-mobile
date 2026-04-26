@@ -4,7 +4,6 @@ import {
   Dimensions,
   Easing,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +11,10 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, shadow, spacing } from "../../constants/theme";
+import { ThemedDatePicker } from "./ThemedDatePicker";
 
 export type PeriodPreset =
   | "this_month"
@@ -221,12 +218,10 @@ export function PeriodModal({
       computePeriodRange("custom_month", { anchorMonth: { year, month } }),
     );
 
-  const handleDateChange = (which: "start" | "end") => (
-    event: DateTimePickerEvent,
-    selected?: Date,
-  ) => {
-    if (Platform.OS === "android") setPickerMode("none");
-    if (event.type === "dismissed" || !selected) return;
+  const handleDateConfirm = (selected: Date) => {
+    const which = pickerMode;
+    setPickerMode("none");
+    if (which === "none") return;
 
     const start = which === "start" ? selected : current.start;
     let end = which === "end" ? selected : current.end;
@@ -415,16 +410,15 @@ export function PeriodModal({
             </Pressable>
           </View>
 
-          {pickerMode !== "none" && (
-            <DateTimePicker
-              mode="date"
-              display={Platform.OS === "ios" ? "inline" : "default"}
-              value={pickerMode === "start" ? current.start : current.end}
-              onChange={handleDateChange(pickerMode)}
-              maximumDate={pickerMode === "start" ? current.end : undefined}
-              minimumDate={pickerMode === "end" ? current.start : undefined}
-            />
-          )}
+          <ThemedDatePicker
+            visible={pickerMode !== "none"}
+            value={pickerMode === "end" ? current.end : current.start}
+            title={pickerMode === "end" ? "End date" : "Start date"}
+            minDate={pickerMode === "end" ? current.start : undefined}
+            maxDate={pickerMode === "start" ? current.end : undefined}
+            onCancel={() => setPickerMode("none")}
+            onConfirm={handleDateConfirm}
+          />
         </Animated.View>
       </Animated.View>
     </Modal>

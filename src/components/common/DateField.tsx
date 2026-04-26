@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Platform, TouchableOpacity, View } from 'react-native';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { TouchableOpacity, View } from 'react-native';
 import { TextInput } from 'react-native-paper';
+
+import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 
 type DateFieldProps = {
   label: string;
@@ -54,20 +55,9 @@ export default function DateField({
 
   const pickerValue = useMemo(() => parseDateValue(value), [value]);
 
-  const handleChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (Platform.OS === 'android') {
-      setShowPicker(false);
-    }
-
-    if (event.type === 'dismissed' || !selectedDate) {
-      return;
-    }
-
+  const handleConfirm = (selectedDate: Date) => {
+    setShowPicker(false);
     onChange(formatAsIsoDate(selectedDate));
-
-    if (Platform.OS === 'ios') {
-      setShowPicker(false);
-    }
   };
 
   return (
@@ -92,16 +82,15 @@ export default function DateField({
         </View>
       </TouchableOpacity>
 
-      {showPicker && (
-        <DateTimePicker
-          value={pickerValue}
-          mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={handleChange}
-          minimumDate={minimumDate}
-          maximumDate={maximumDate}
-        />
-      )}
+      <ThemedDatePicker
+        visible={showPicker}
+        value={pickerValue}
+        title={label}
+        onCancel={() => setShowPicker(false)}
+        onConfirm={handleConfirm}
+        minDate={minimumDate}
+        maxDate={maximumDate}
+      />
     </>
   );
 }

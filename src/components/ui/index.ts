@@ -19,4 +19,5 @@ export { Skeleton } from "./Skeleton";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { PeriodModal, computePeriodRange } from "./PeriodModal";
 export type { PeriodPreset, PeriodRange } from "./PeriodModal";
+export { ThemedDatePicker } from "./ThemedDatePicker";
 export { AppDarkBackground } from "./AppDarkBackground";

@@ -27,9 +27,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
+import { ThemedDatePicker } from "../../src/components/ui/ThemedDatePicker";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
@@ -969,12 +967,8 @@ export default function ChatScreen() {
     setShowChatDatePicker(true);
   };
 
-  const handleChatDateChange = (event: DateTimePickerEvent, date?: Date) => {
+  const handleChatDateConfirm = (date: Date) => {
     setShowChatDatePicker(false);
-    if (event.type === "dismissed" || !date) {
-      return;
-    }
-
     setSelectedChatDate(toDateInputValue(date));
   };
 
@@ -1600,15 +1594,14 @@ export default function ChatScreen() {
         </Surface>
       </KeyboardAvoidingView>
 
-      {showChatDatePicker && (
-        <DateTimePicker
-          value={new Date(`${selectedChatDate}T00:00:00`)}
-          mode="date"
-          display="default"
-          maximumDate={new Date()}
-          onChange={handleChatDateChange}
-        />
-      )}
+      <ThemedDatePicker
+        visible={showChatDatePicker}
+        value={new Date(`${selectedChatDate}T00:00:00`)}
+        title="Select chat date"
+        maxDate={new Date()}
+        onCancel={() => setShowChatDatePicker(false)}
+        onConfirm={handleChatDateConfirm}
+      />
 
       {/* Preview Modal */}
       <Portal>
