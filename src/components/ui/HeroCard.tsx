@@ -31,8 +31,20 @@ export function HeroCard({
   if (isDark) {
     return (
       <View style={[styles.base, styles.darkBg, withShadow && shadow.lg, style]}>
-        <View style={styles.glowA} pointerEvents="none" />
-        <View style={styles.glowB} pointerEvents="none" />
+        <View
+          style={[
+            styles.glowA,
+            { backgroundColor: "#6366f1", opacity: 0.22 },
+          ]}
+          pointerEvents="none"
+        />
+        <View
+          style={[
+            styles.glowB,
+            { backgroundColor: "#a855f7", opacity: 0.18 },
+          ]}
+          pointerEvents="none"
+        />
         {children}
       </View>
     );
@@ -45,8 +57,14 @@ export function HeroCard({
       end={{ x: 1, y: 1 }}
       style={[styles.base, withShadow && shadow.lg, style]}
     >
-      <View style={styles.glowA} pointerEvents="none" />
-      <View style={styles.glowB} pointerEvents="none" />
+      <View
+        style={[styles.glowA, { backgroundColor: "#67e8f9", opacity: 0.5 }]}
+        pointerEvents="none"
+      />
+      <View
+        style={[styles.glowB, { backgroundColor: "#ec4899", opacity: 0.35 }]}
+        pointerEvents="none"
+      />
       {children}
     </LinearGradient>
   );
@@ -65,8 +83,6 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
     top: -80,
     right: -60,
   },
@@ -75,8 +91,6 @@ const styles = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
     bottom: -40,
     left: -30,
   },

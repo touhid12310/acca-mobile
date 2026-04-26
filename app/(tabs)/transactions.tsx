@@ -1064,7 +1064,10 @@ function SummaryCard({
     return (
       <View style={[styles.summaryCard, { backgroundColor: "#0f213d" }]}>
         <View
-          style={[styles.summaryGlowA, { backgroundColor: "#6366f1" }]}
+          style={[
+            styles.summaryGlowA,
+            { backgroundColor: "#6366f1", opacity: 0.22 },
+          ]}
           pointerEvents="none"
         />
         {children}
@@ -1079,7 +1082,10 @@ function SummaryCard({
       style={styles.summaryCard}
     >
       <View
-        style={[styles.summaryGlowA, { backgroundColor: "#a855f7" }]}
+        style={[
+          styles.summaryGlowA,
+          { backgroundColor: "#ec4899", opacity: 0.45 },
+        ]}
         pointerEvents="none"
       />
       {children}
@@ -1138,7 +1144,6 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    opacity: 0.32,
     top: -50,
     right: -40,
   },
