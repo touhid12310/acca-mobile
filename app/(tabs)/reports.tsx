@@ -10,7 +10,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowDownLeft,
   ArrowDownRight,
@@ -43,7 +42,7 @@ import {
 } from "../../src/components/ui";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
-import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import { radius, shadow, spacing } from "../../src/constants/theme";
 
 type ReportType = "summary" | "category" | "networth" | "income" | "balance";
 type CategoryTypeFilter = "all" | "income" | "expense" | "asset" | "liability";
@@ -77,7 +76,7 @@ const CATEGORY_PALETTE = [
 ];
 
 export default function ReportsScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { formatAmount } = useCurrency();
 
   const [reportType, setReportType] = useState<ReportType>("summary");
@@ -322,8 +321,6 @@ export default function ReportsScreen() {
     );
   }, [summaryData]);
 
-  const heroGradient = (isDark ? gradients.primaryNight : gradients.primary) as any;
-
   const renderHero = (
     label: string,
     value: number,
@@ -339,12 +336,9 @@ export default function ReportsScreen() {
           ? TrendingUp
           : TrendingDown;
     return (
-      <LinearGradient
-        colors={heroGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.hero, shadow.md]}
-      >
+      <View style={[styles.hero, shadow.lg]}>
+        <View style={styles.heroGlowA} pointerEvents="none" />
+        <View style={styles.heroGlowB} pointerEvents="none" />
         <View style={styles.heroTopRow}>
           <View style={styles.heroIcon}>
             <Icon size={22} color="#ffffff" strokeWidth={2.2} />
@@ -362,7 +356,7 @@ export default function ReportsScreen() {
             )}
           </View>
         </View>
-      </LinearGradient>
+      </View>
     );
   };
 
@@ -1354,9 +1348,30 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
+    backgroundColor: "#0f213d",
     padding: spacing.lg,
     borderRadius: radius.xxl,
     overflow: "hidden",
+  },
+  heroGlowA: {
+    position: "absolute",
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: "#6366f1",
+    opacity: 0.22,
+    top: -80,
+    right: -60,
+  },
+  heroGlowB: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "#a855f7",
+    opacity: 0.18,
+    bottom: -40,
+    left: -30,
   },
   heroTopRow: {
     flexDirection: "row",
