@@ -12,7 +12,12 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  useMutation,
+  useInfiniteQuery,
+} from "@tanstack/react-query";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -22,7 +27,6 @@ import {
   ChevronDown,
   CreditCard,
   Edit3,
-  MoreVertical,
   Plus,
   Receipt,
   Search,
@@ -37,7 +41,10 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  runOnJS,
+  Easing,
 } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
@@ -168,33 +175,89 @@ export default function TransactionsScreen() {
     return map;
   }, [accounts]);
 
+  const PAGE_SIZE = 20;
+
   const {
-    data: transactionsData,
+    data: transactionPages,
     isLoading,
     isRefetching,
     refetch,
-  } = useQuery({
-    queryKey: ["transactions", "all"],
-    queryFn: async () => {
-      const result = await transactionService.getAll({ per_page: 5000 });
-      if (result.success && result.data) {
-        const laravelResponse = result.data as any;
-        let data: Transaction[] = [];
-        if (laravelResponse.data?.data && Array.isArray(laravelResponse.data.data)) {
-          data = laravelResponse.data.data;
-        } else if (Array.isArray(laravelResponse.data)) {
-          data = laravelResponse.data;
-        } else if (Array.isArray(laravelResponse)) {
-          data = laravelResponse;
-        }
-        return data;
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["transactions", "infinite"],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      const result = await transactionService.getAll({
+        page: pageParam as number,
+        per_page: PAGE_SIZE,
+      });
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Failed to load transactions");
       }
-      throw new Error(result.error || "Failed to load transactions");
+      const payload = result.data as any;
+      // Handle Laravel-paginated response wrapped in either { data: { data, current_page, ... } } or directly
+      const meta = payload?.data?.current_page !== undefined
+        ? payload.data
+        : payload?.current_page !== undefined
+          ? payload
+          : null;
+      let data: Transaction[] = [];
+      if (meta && Array.isArray(meta.data)) {
+        data = meta.data;
+      } else if (Array.isArray(payload?.data)) {
+        data = payload.data;
+      } else if (Array.isArray(payload)) {
+        data = payload;
+      }
+      return {
+        data,
+        currentPage: meta?.current_page ?? (pageParam as number),
+        lastPage: meta?.last_page ?? (pageParam as number),
+      };
     },
+    getNextPageParam: (lastPage) =>
+      lastPage.currentPage < lastPage.lastPage
+        ? lastPage.currentPage + 1
+        : undefined,
   });
 
+  const transactions = useMemo(
+    () => (transactionPages?.pages.flatMap((p) => p.data) ?? []),
+    [transactionPages],
+  );
 
-  const transactions = transactionsData || [];
+  // Current-month totals (server-side, accurate regardless of pagination/filters)
+  const monthRange = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const fmt = (d: Date) => d.toISOString().split("T")[0];
+    return { start: fmt(start), end: fmt(end) };
+  }, []);
+
+  const { data: monthStats } = useQuery({
+    queryKey: ["transactions", "month-stats", monthRange.start, monthRange.end],
+    queryFn: async () => {
+      const result = await transactionService.getAll({
+        start_date: monthRange.start,
+        end_date: monthRange.end,
+        per_page: 1,
+      });
+      if (result.success && result.data) {
+        const payload = result.data as any;
+        const stats = payload?.stats;
+        if (stats) {
+          return {
+            income: Number(stats.total_income) || 0,
+            expenses: Number(stats.total_expenses) || 0,
+          };
+        }
+      }
+      return { income: 0, expenses: 0 };
+    },
+  });
 
   const periodPool = useMemo(() => {
     if (period.preset === "all") return transactions;
@@ -309,17 +372,8 @@ export default function TransactionsScreen() {
     return groups;
   }, [filteredTransactions]);
 
-  const totalIncome = useMemo(() => {
-    return periodPool
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [periodPool]);
-
-  const totalExpense = useMemo(() => {
-    return periodPool
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + (parseFloat(String(t.amount)) || 0), 0);
-  }, [periodPool]);
+  const totalIncome = monthStats?.income ?? 0;
+  const totalExpense = monthStats?.expenses ?? 0;
 
   return (
     <SafeAreaView
@@ -537,6 +591,21 @@ export default function TransactionsScreen() {
             gap: spacing.sm,
           }}
           showsVerticalScrollIndicator={false}
+          onScroll={({ nativeEvent }) => {
+            const { layoutMeasurement, contentOffset, contentSize } =
+              nativeEvent;
+            const distanceFromBottom =
+              contentSize.height -
+              (contentOffset.y + layoutMeasurement.height);
+            if (
+              distanceFromBottom < 400 &&
+              hasNextPage &&
+              !isFetchingNextPage
+            ) {
+              fetchNextPage();
+            }
+          }}
+          scrollEventThrottle={200}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -567,7 +636,6 @@ export default function TransactionsScreen() {
                     onToggleExpand={() =>
                       setExpandedRowId((prev) => (prev === t.id ? null : t.id))
                     }
-                    onPressRow={() => handleEditTransaction(t)}
                     onLongPress={() => {
                       setExpandedRowId(null);
                       setSelectedTransaction(t);
@@ -592,6 +660,11 @@ export default function TransactionsScreen() {
               </Card>
             </View>
           ))}
+          {isFetchingNextPage && (
+            <View style={styles.paginationLoader}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -845,7 +918,6 @@ interface TransactionRowProps {
   isLast: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
-  onPressRow: () => void;
   onLongPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -861,7 +933,6 @@ function TransactionRow({
   isLast,
   expanded,
   onToggleExpand,
-  onPressRow,
   onLongPress,
   onEdit,
   onDelete,
@@ -871,13 +942,39 @@ function TransactionRow({
   formatAmount,
   colors,
 }: TransactionRowProps) {
-  const translateX = useSharedValue(0);
+  const translateX = useSharedValue(ACTION_WIDTH);
+  const startX = useSharedValue(ACTION_WIDTH);
 
   React.useEffect(() => {
-    translateX.value = withTiming(expanded ? -ACTION_WIDTH : 0, {
-      duration: 220,
+    translateX.value = withTiming(expanded ? 0 : ACTION_WIDTH, {
+      duration: 160,
+      easing: Easing.out(Easing.cubic),
     });
   }, [expanded, translateX]);
+
+  const setExpandedJS = (v: boolean) => {
+    if (v !== expanded) onToggleExpand();
+  };
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-8, 8])
+    .onStart(() => {
+      startX.value = translateX.value;
+    })
+    .onUpdate((e) => {
+      const next = startX.value + e.translationX;
+      translateX.value = Math.max(0, Math.min(ACTION_WIDTH, next));
+    })
+    .onEnd((e) => {
+      const shouldOpen =
+        translateX.value < ACTION_WIDTH / 2 || e.velocityX < -500;
+      const target = shouldOpen ? 0 : ACTION_WIDTH;
+      translateX.value = withTiming(target, {
+        duration: 160,
+        easing: Easing.out(Easing.cubic),
+      });
+      runOnJS(setExpandedJS)(shouldOpen);
+    });
 
   const slideStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -893,42 +990,8 @@ function TransactionRow({
         },
       ]}
     >
-      {/* Action panel revealed by sliding the row left */}
-      <View style={[styles.slideActions, { width: ACTION_WIDTH }]}>
-        <Pressable
-          onPress={onEdit}
-          style={({ pressed }) => [
-            styles.slideAction,
-            {
-              backgroundColor: colors.primary,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Edit3 size={18} color="#ffffff" strokeWidth={2.4} />
-          <Text style={styles.slideActionLabel}>Edit</Text>
-        </Pressable>
-        <Pressable
-          onPress={onDelete}
-          style={({ pressed }) => [
-            styles.slideAction,
-            {
-              backgroundColor: colors.error,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Trash2 size={18} color="#ffffff" strokeWidth={2.4} />
-          <Text style={styles.slideActionLabel}>Delete</Text>
-        </Pressable>
-      </View>
-
-      {/* Foreground row that slides */}
-      <Animated.View style={[{ backgroundColor: colors.surface }, slideStyle]}>
-        <Pressable
-          onPress={expanded ? onToggleExpand : onPressRow}
-          onLongPress={onLongPress}
-        >
+      <GestureDetector gesture={panGesture}>
+        <Pressable onPress={onToggleExpand} onLongPress={onLongPress}>
           {({ pressed }) => (
             <View style={[styles.txnRow, { opacity: pressed ? 0.6 : 1 }]}>
               <IconBadge icon={icon} tone={tone} size="md" />
@@ -946,11 +1009,7 @@ function TransactionRow({
                     {formatDate(t.date)}
                   </Text>
                   {t.category && (
-                    <Badge
-                      label={t.category.name}
-                      tone="neutral"
-                      size="sm"
-                    />
+                    <Badge label={t.category.name} tone="neutral" size="sm" />
                   )}
                 </View>
               </View>
@@ -965,28 +1024,46 @@ function TransactionRow({
                     : ""}
                 {formatAmount(parseFloat(String(t.amount)) || 0)}
               </Text>
-              <Pressable
-                onPress={onToggleExpand}
-                hitSlop={8}
-                style={styles.moreBtn}
-              >
-                {expanded ? (
-                  <X
-                    size={18}
-                    color={colors.onSurfaceVariant}
-                    strokeWidth={2}
-                  />
-                ) : (
-                  <MoreVertical
-                    size={18}
-                    color={colors.onSurfaceVariant}
-                    strokeWidth={2}
-                  />
-                )}
-              </Pressable>
             </View>
           )}
         </Pressable>
+      </GestureDetector>
+
+      {/* Action overlay slides in from the right when expanded */}
+      <Animated.View
+        pointerEvents={expanded ? "auto" : "none"}
+        style={[styles.slideActions, { width: ACTION_WIDTH }, slideStyle]}
+      >
+        <View
+          style={[styles.slideAction, { backgroundColor: colors.primary }]}
+        >
+          <Pressable
+            onPress={onEdit}
+            android_ripple={{ color: "rgba(255,255,255,0.2)" }}
+            style={({ pressed }) => [
+              styles.slideActionInner,
+              { opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
+            <Text style={styles.slideActionLabel}>Edit</Text>
+          </Pressable>
+        </View>
+        <View
+          style={[styles.slideAction, { backgroundColor: colors.error }]}
+        >
+          <Pressable
+            onPress={onDelete}
+            android_ripple={{ color: "rgba(255,255,255,0.2)" }}
+            style={({ pressed }) => [
+              styles.slideActionInner,
+              { opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
+            <Text style={styles.slideActionLabel}>Delete</Text>
+          </Pressable>
+        </View>
       </Animated.View>
     </View>
   );
@@ -1161,6 +1238,11 @@ const styles = StyleSheet.create({
     position: "relative",
     overflow: "hidden",
   },
+  paginationLoader: {
+    paddingVertical: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   txnRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1168,19 +1250,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  moreBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-  },
   slideActions: {
     position: "absolute",
-    top: 0,
-    bottom: 0,
+    top: "25%",
+    bottom: "25%",
     right: 0,
     flexDirection: "row",
-    alignItems: "stretch",
   },
   slideAction: {
+    width: ACTION_WIDTH / 2,
+    height: "100%",
+  },
+  slideActionInner: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
