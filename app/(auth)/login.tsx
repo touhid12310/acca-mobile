@@ -11,13 +11,12 @@ import {
 } from "react-native";
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
-import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import { spacing } from "../../src/constants/theme";
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -92,18 +91,21 @@ export default function LoginScreen() {
         >
           {/* Hero */}
           <View style={styles.hero}>
-            <LinearGradient
-              colors={gradients.heroAccent as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.logoBadge, shadow.md]}
-            >
-              <Image
-                source={require("../../assets/logo.png")}
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
-            </LinearGradient>
+            <Image
+              source={
+                isDark
+                  ? require("../../assets/logo-dark.png")
+                  : require("../../assets/logo-light.png")
+              }
+              style={isDark ? styles.logoImageDark : styles.logoImageLight}
+              resizeMode="contain"
+            />
+            <View
+              style={[
+                styles.logoDivider,
+                { backgroundColor: colors.onSurface },
+              ]}
+            />
             <Text style={[styles.title, { color: colors.onSurface }]}>
               Welcome back
             </Text>
@@ -225,14 +227,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  logoBadge: {
-    borderRadius: radius.xl,
-    padding: spacing.md,
+  logoImageDark: {
+    width: 220,
+    height: 33,
     marginBottom: spacing.sm,
   },
-  logoImage: {
-    width: 180,
-    height: 40,
+  logoImageLight: {
+    width: 220,
+    height: 47,
+    marginBottom: spacing.sm,
+  },
+  logoDivider: {
+    width: 220,
+    height: 2,
+    borderRadius: 999,
+    marginBottom: spacing.xs,
   },
   title: {
     fontSize: 28,
