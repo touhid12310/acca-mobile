@@ -1,6 +1,6 @@
-import React from 'react';
-import { Stack } from 'expo-router';
-import { useTheme } from '../../src/contexts/ThemeContext';
+import React from "react";
+import { Stack } from "expo-router";
+import { useTheme } from "../../src/contexts/ThemeContext";
 
 export default function AuthLayout() {
   const { theme } = useTheme();
@@ -12,19 +12,25 @@ export default function AuthLayout() {
         contentStyle: {
           backgroundColor: theme.colors.background,
         },
-        animation: 'slide_from_right',
+        animation: "slide_from_right",
       }}
     >
       <Stack.Screen
         name="login"
         options={{
-          title: 'Login',
+          title: "Login",
         }}
       />
       <Stack.Screen
         name="register"
         options={{
-          title: 'Register',
+          title: "Register",
+        }}
+      />
+      <Stack.Screen
+        name="forgot-password"
+        options={{
+          title: "Forgot Password",
         }}
       />
     </Stack>

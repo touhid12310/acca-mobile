@@ -29,10 +29,12 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { BrandedHeader } from "../src/components";
+import { ConfirmDialog } from "../src/components/ui";
 import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
@@ -1085,58 +1087,16 @@ export default function BudgetsScreen() {
         </Modal>
       </Portal>
 
-      {/* Delete Confirmation Modal */}
-      <Portal>
-        <Modal
-          visible={showDeleteConfirm}
-          onDismiss={() => setShowDeleteConfirm(false)}
-          contentContainerStyle={[
-            styles.deleteConfirmContainer,
-            { backgroundColor: colors.surface },
-          ]}
-        >
-          <MaterialCommunityIcons
-            name="alert-circle"
-            size={48}
-            color={colors.error}
-            style={{ alignSelf: "center" }}
-          />
-          <Text
-            variant="titleLarge"
-            style={[styles.deleteConfirmTitle, { color: colors.onSurface }]}
-          >
-            Delete Budget?
-          </Text>
-          <Text
-            variant="bodyMedium"
-            style={[
-              styles.deleteConfirmText,
-              { color: colors.onSurfaceVariant },
-            ]}
-          >
-            This action cannot be undone. The budget will be permanently
-            removed.
-          </Text>
-          <View style={styles.deleteConfirmButtons}>
-            <Button
-              mode="outlined"
-              onPress={() => setShowDeleteConfirm(false)}
-              style={styles.deleteConfirmButton}
-            >
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              buttonColor={colors.error}
-              onPress={handleConfirmDelete}
-              style={styles.deleteConfirmButton}
-              loading={deleteMutation.isPending}
-            >
-              Delete
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
+      <ConfirmDialog
+        visible={showDeleteConfirm}
+        title="Delete budget?"
+        message="This action cannot be undone. The budget will be permanently removed."
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={handleConfirmDelete}
+      />
     </SafeAreaView>
   );
 }

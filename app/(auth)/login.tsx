@@ -12,7 +12,7 @@ import {
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { Mail, Lock, ShieldCheck } from "lucide-react-native";
+import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
@@ -168,7 +168,7 @@ export default function LoginScreen() {
 
             <Pressable
               style={styles.forgotPassword}
-              onPress={() => {}}
+              onPress={() => router.push("/(auth)/forgot-password")}
               hitSlop={6}
             >
               <Text
@@ -185,6 +185,8 @@ export default function LoginScreen() {
               disabled={isLoading}
               fullWidth
               size="lg"
+              icon={LogIn}
+              style={styles.primaryButton}
             />
           </View>
 
@@ -248,7 +250,8 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     alignSelf: "flex-end",
-    paddingVertical: 2,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   forgotPasswordText: {
     fontSize: 13,
@@ -265,5 +268,8 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 14,
     fontWeight: "700",
+  },
+  primaryButton: {
+    marginTop: spacing.xs,
   },
 });

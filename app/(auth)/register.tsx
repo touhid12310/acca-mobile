@@ -113,7 +113,9 @@ export default function RegisterScreen() {
 
           {/* Form */}
           <View style={styles.form}>
-            {errors.general && <AlertBar tone="error" message={errors.general} />}
+            {errors.general && (
+              <AlertBar tone="error" message={errors.general} />
+            )}
 
             <Input
               label="Full name"
@@ -181,13 +183,16 @@ export default function RegisterScreen() {
               disabled={isLoading}
               fullWidth
               size="lg"
-              style={{ marginTop: spacing.sm }}
+              icon={UserPlus}
+              style={styles.primaryButton}
             />
           </View>
 
           {/* Footer */}
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: colors.onSurfaceVariant }]}>
+            <Text
+              style={[styles.footerText, { color: colors.onSurfaceVariant }]}
+            >
               Already have an account?{" "}
             </Text>
             <Link href="/(auth)/login" asChild>
@@ -250,5 +255,8 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 14,
     fontWeight: "700",
+  },
+  primaryButton: {
+    marginTop: spacing.xs,
   },
 });

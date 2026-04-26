@@ -98,7 +98,15 @@ export function Button({
   const borderWidth = variant === "outline" ? 1.5 : 0;
 
   const content = (
-    <View style={styles.inner}>
+    <View
+      style={[
+        styles.inner,
+        {
+          height: sizeStyles.height,
+          paddingHorizontal: sizeStyles.paddingHorizontal,
+        },
+      ]}
+    >
       {loading ? (
         <ActivityIndicator size="small" color={fgColor} />
       ) : (
@@ -137,7 +145,7 @@ export function Button({
     minHeight: sizeStyles.height,
     minWidth: fullWidth ? undefined : 88,
     width: fullWidth ? "100%" : undefined,
-    paddingHorizontal: sizeStyles.paddingHorizontal,
+    backgroundColor: isGradient ? colors.primary : bgColor,
     borderColor,
     borderWidth,
     opacity: disabled ? 0.5 : 1,
@@ -154,7 +162,7 @@ export function Button({
           styles.container,
           baseStyle,
           shadow.sm,
-          { overflow: "hidden", transform: [{ scale: pressed ? 0.97 : 1 }] },
+          { transform: [{ scale: pressed ? 0.97 : 1 }] },
           style,
         ]}
       >
@@ -162,7 +170,7 @@ export function Button({
           colors={(isDark ? gradients.primaryDark : gradients.primary) as any}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
+          style={styles.fill}
         />
         {content}
       </Pressable>
@@ -186,7 +194,7 @@ export function Button({
       <View
         pointerEvents="none"
         style={[
-          StyleSheet.absoluteFill,
+          styles.fill,
           {
             backgroundColor: bgColor,
             borderColor,
@@ -205,8 +213,15 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
+    overflow: "hidden",
+  },
+  fill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.pill,
   },
   inner: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
