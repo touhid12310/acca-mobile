@@ -53,6 +53,7 @@ import {
   Button,
   AlertBar,
   Badge,
+  ConfirmDialog,
   PeriodModal,
   computePeriodRange,
   PeriodRange,
@@ -853,68 +854,22 @@ export default function TransactionsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Delete Confirm Modal */}
-      <Modal
+      <ConfirmDialog
         visible={showDeleteConfirm}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDeleteConfirm(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setShowDeleteConfirm(false)}
-        >
-          <Pressable
-            style={[
-              styles.confirmCard,
-              { backgroundColor: colors.surface },
-              shadow.lg,
-            ]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View
-              style={[
-                styles.confirmIcon,
-                { backgroundColor: colors.errorContainer },
-              ]}
-            >
-              <TriangleAlert size={28} color={colors.error} strokeWidth={2.2} />
-            </View>
-            <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
-              Delete transaction?
-            </Text>
-            <Text
-              style={[styles.confirmText, { color: colors.onSurfaceVariant }]}
-            >
-              This action cannot be undone. The transaction will be permanently
-              removed.
-            </Text>
-            <View style={styles.confirmButtons}>
-              <Button
-                label="Cancel"
-                variant="secondary"
-                fullWidth
-                onPress={() => setShowDeleteConfirm(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label="Delete"
-                variant="destructive"
-                fullWidth
-                loading={deleteMutation.isPending}
-                onPress={() => {
-                  if (selectedTransaction) {
-                    deleteMutation.mutate(selectedTransaction.id);
-                  }
-                  setShowDeleteConfirm(false);
-                  setSelectedTransaction(null);
-                }}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        title="Delete transaction?"
+        message="This action cannot be undone. The transaction will be permanently removed."
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          if (selectedTransaction) {
+            deleteMutation.mutate(selectedTransaction.id);
+          }
+          setShowDeleteConfirm(false);
+          setSelectedTransaction(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -16,6 +16,7 @@ export { ListRow } from "./ListRow";
 export { ProgressBar } from "./ProgressBar";
 export { Chip } from "./Chip";
 export { Skeleton } from "./Skeleton";
+export { ConfirmDialog } from "./ConfirmDialog";
 export { PeriodModal, computePeriodRange } from "./PeriodModal";
 export type { PeriodPreset, PeriodRange } from "./PeriodModal";
 export { AppDarkBackground } from "./AppDarkBackground";

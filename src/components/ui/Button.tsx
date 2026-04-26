@@ -55,9 +55,24 @@ export function Button({
   const { colors, isDark } = useTheme();
 
   const sizeStyles = {
-    sm: { height: 36, paddingHorizontal: spacing.md, fontSize: 13, iconSize: 16 },
-    md: { height: 46, paddingHorizontal: spacing.lg, fontSize: 15, iconSize: 18 },
-    lg: { height: 54, paddingHorizontal: spacing.xl, fontSize: 16, iconSize: 20 },
+    sm: {
+      height: 36,
+      paddingHorizontal: spacing.md,
+      fontSize: 13,
+      iconSize: 16,
+    },
+    md: {
+      height: 46,
+      paddingHorizontal: spacing.lg,
+      fontSize: 15,
+      iconSize: 18,
+    },
+    lg: {
+      height: 54,
+      paddingHorizontal: spacing.xl,
+      fontSize: 16,
+      iconSize: 20,
+    },
   }[size];
 
   const isGradient = variant === "primary";
@@ -88,7 +103,13 @@ export function Button({
         <ActivityIndicator size="small" color={fgColor} />
       ) : (
         <>
-          {Icon && <Icon size={sizeStyles.iconSize} color={fgColor} strokeWidth={2.2} />}
+          {Icon && (
+            <Icon
+              size={sizeStyles.iconSize}
+              color={fgColor}
+              strokeWidth={2.2}
+            />
+          )}
           <Text
             style={[
               styles.label,
@@ -99,7 +120,13 @@ export function Button({
           >
             {label}
           </Text>
-          {IconRight && <IconRight size={sizeStyles.iconSize} color={fgColor} strokeWidth={2.2} />}
+          {IconRight && (
+            <IconRight
+              size={sizeStyles.iconSize}
+              color={fgColor}
+              strokeWidth={2.2}
+            />
+          )}
         </>
       )}
     </View>
@@ -107,12 +134,15 @@ export function Button({
 
   const baseStyle: ViewStyle = {
     height: sizeStyles.height,
+    minHeight: sizeStyles.height,
+    minWidth: fullWidth ? undefined : 88,
+    width: fullWidth ? "100%" : undefined,
     paddingHorizontal: sizeStyles.paddingHorizontal,
-    backgroundColor: bgColor,
     borderColor,
     borderWidth,
     opacity: disabled ? 0.5 : 1,
     alignSelf: fullWidth ? "stretch" : "flex-start",
+    overflow: "hidden",
   };
 
   if (isGradient) {
@@ -146,11 +176,25 @@ export function Button({
       style={({ pressed }) => [
         styles.container,
         baseStyle,
-        variant === "destructive" || variant === "success" ? shadow.sm : undefined,
+        variant === "destructive" || variant === "success"
+          ? shadow.sm
+          : undefined,
         { transform: [{ scale: pressed ? 0.97 : 1 }] },
         style,
       ]}
     >
+      <View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: bgColor,
+            borderColor,
+            borderWidth,
+            borderRadius: radius.pill,
+          },
+        ]}
+      />
       {content}
     </Pressable>
   );
@@ -171,5 +215,6 @@ const styles = StyleSheet.create({
   label: {
     fontWeight: "600",
     letterSpacing: 0.1,
+    textAlign: "center",
   },
 });

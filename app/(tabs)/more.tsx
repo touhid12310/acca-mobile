@@ -46,6 +46,7 @@ import {
   Card,
   IconBadge,
   Button,
+  ConfirmDialog,
 } from "../../src/components/ui";
 import { getInitials } from "../../src/utils/format";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
@@ -91,12 +92,48 @@ export default function MoreScreen() {
     {
       title: "Finance Management",
       items: [
-        { icon: Building2, label: "Accounts", description: "Manage your bank accounts", onPress: () => router.push("/accounts"), tone: "primary" },
-        { icon: Target, label: "Budgets", description: "Set and track budgets", onPress: () => router.push("/budgets"), tone: "info" },
-        { icon: Flag, label: "Goals", description: "Savings goals tracker", onPress: () => router.push("/goals"), tone: "success" },
-        { icon: CreditCard, label: "Loans", description: "Track loan payments", onPress: () => router.push("/loans"), tone: "warning" },
-        { icon: Calendar, label: "Schedules", description: "Recurring bills reminder", onPress: () => router.push("/schedules"), tone: "primary" },
-        { icon: Tags, label: "Categories", description: "Manage transaction categories", onPress: () => router.push("/categories"), tone: "neutral" },
+        {
+          icon: Building2,
+          label: "Accounts",
+          description: "Manage your bank accounts",
+          onPress: () => router.push("/accounts"),
+          tone: "primary",
+        },
+        {
+          icon: Target,
+          label: "Budgets",
+          description: "Set and track budgets",
+          onPress: () => router.push("/budgets"),
+          tone: "info",
+        },
+        {
+          icon: Flag,
+          label: "Goals",
+          description: "Savings goals tracker",
+          onPress: () => router.push("/goals"),
+          tone: "success",
+        },
+        {
+          icon: CreditCard,
+          label: "Loans",
+          description: "Track loan payments",
+          onPress: () => router.push("/loans"),
+          tone: "warning",
+        },
+        {
+          icon: Calendar,
+          label: "Schedules",
+          description: "Recurring bills reminder",
+          onPress: () => router.push("/schedules"),
+          tone: "primary",
+        },
+        {
+          icon: Tags,
+          label: "Categories",
+          description: "Manage transaction categories",
+          onPress: () => router.push("/categories"),
+          tone: "neutral",
+        },
       ],
     },
     {
@@ -133,22 +170,55 @@ export default function MoreScreen() {
     {
       title: "Security & Privacy",
       items: [
-        { icon: Shield, label: "Login Activity", description: "Manage active sessions", onPress: () => router.push("/sessions"), tone: "info" },
-        { icon: Download, label: "Export Data", description: "Download your data", onPress: () => {}, tone: "neutral" },
+        {
+          icon: Shield,
+          label: "Login Activity",
+          description: "Manage active sessions",
+          onPress: () => router.push("/sessions"),
+          tone: "info",
+        },
+        {
+          icon: Download,
+          label: "Export Data",
+          description: "Download your data",
+          onPress: () => {},
+          tone: "neutral",
+        },
       ],
     },
     {
       title: "Support",
       items: [
-        { icon: HelpCircle, label: "Help & FAQ", onPress: () => {}, tone: "neutral" },
-        { icon: Mail, label: "Contact Support", onPress: () => {}, tone: "neutral" },
-        { icon: Info, label: "About", description: "Version 1.0.0", onPress: () => {}, tone: "neutral" },
+        {
+          icon: HelpCircle,
+          label: "Help & FAQ",
+          onPress: () => {},
+          tone: "neutral",
+        },
+        {
+          icon: Mail,
+          label: "Contact Support",
+          onPress: () => {},
+          tone: "neutral",
+        },
+        {
+          icon: Info,
+          label: "About",
+          description: "Version 1.0.0",
+          onPress: () => {},
+          tone: "neutral",
+        },
       ],
     },
     {
       title: "",
       items: [
-        { icon: LogOut, label: "Logout", onPress: () => setLogoutConfirm(true), destructive: true },
+        {
+          icon: LogOut,
+          label: "Logout",
+          onPress: () => setLogoutConfirm(true),
+          destructive: true,
+        },
       ],
     },
   ];
@@ -204,7 +274,10 @@ export default function MoreScreen() {
           <View key={idx} style={styles.section}>
             {section.title && (
               <Text
-                style={[styles.sectionTitle, { color: colors.onSurfaceVariant }]}
+                style={[
+                  styles.sectionTitle,
+                  { color: colors.onSurfaceVariant },
+                ]}
               >
                 {section.title}
               </Text>
@@ -234,7 +307,9 @@ export default function MoreScreen() {
                       >
                         <IconBadge
                           icon={Icon}
-                          tone={item.destructive ? "danger" : item.tone || "primary"}
+                          tone={
+                            item.destructive ? "danger" : item.tone || "primary"
+                          }
                           size="sm"
                           shape="rounded"
                         />
@@ -344,7 +419,11 @@ export default function MoreScreen() {
                         {label}
                       </Text>
                       {selected && (
-                        <Check size={18} color={colors.primary} strokeWidth={2.4} />
+                        <Check
+                          size={18}
+                          color={colors.primary}
+                          strokeWidth={2.4}
+                        />
                       )}
                     </View>
                   )}
@@ -391,7 +470,11 @@ export default function MoreScreen() {
                 { backgroundColor: colors.surfaceVariant },
               ]}
             >
-              <Search size={18} color={colors.onSurfaceVariant} strokeWidth={2} />
+              <Search
+                size={18}
+                color={colors.onSurfaceVariant}
+                strokeWidth={2}
+              />
               <TextInput
                 placeholder="Search currency"
                 placeholderTextColor={colors.onSurfaceVariant}
@@ -401,7 +484,11 @@ export default function MoreScreen() {
               />
               {currencySearch.length > 0 && (
                 <Pressable onPress={() => setCurrencySearch("")} hitSlop={8}>
-                  <X size={16} color={colors.onSurfaceVariant} strokeWidth={2} />
+                  <X
+                    size={16}
+                    color={colors.onSurfaceVariant}
+                    strokeWidth={2}
+                  />
                 </Pressable>
               )}
             </View>
@@ -431,38 +518,44 @@ export default function MoreScreen() {
                           },
                         ]}
                       >
-                    <Text
-                      style={[
-                        styles.currencySymbol,
-                        { color: colors.onSurface },
-                      ]}
-                    >
-                      {curr.symbol}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.currencyCode,
-                          {
-                            color: selected ? colors.primary : colors.onSurface,
-                          },
-                        ]}
-                      >
-                        {curr.code}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.currencyLabel,
-                          { color: colors.onSurfaceVariant },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {curr.label}
-                      </Text>
-                    </View>
-                    {selected && (
-                      <Check size={20} color={colors.primary} strokeWidth={2.4} />
-                    )}
+                        <Text
+                          style={[
+                            styles.currencySymbol,
+                            { color: colors.onSurface },
+                          ]}
+                        >
+                          {curr.symbol}
+                        </Text>
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={[
+                              styles.currencyCode,
+                              {
+                                color: selected
+                                  ? colors.primary
+                                  : colors.onSurface,
+                              },
+                            ]}
+                          >
+                            {curr.code}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.currencyLabel,
+                              { color: colors.onSurfaceVariant },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {curr.label}
+                          </Text>
+                        </View>
+                        {selected && (
+                          <Check
+                            size={20}
+                            color={colors.primary}
+                            strokeWidth={2.4}
+                          />
+                        )}
                       </View>
                     )}
                   </Pressable>
@@ -489,63 +582,18 @@ export default function MoreScreen() {
         </Pressable>
       </Modal>
 
-      {/* Logout Confirm */}
-      <Modal
+      <ConfirmDialog
         visible={logoutConfirm}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setLogoutConfirm(false)}
-      >
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => setLogoutConfirm(false)}
-        >
-          <Pressable
-            style={[
-              styles.confirmCard,
-              { backgroundColor: colors.surface },
-              shadow.lg,
-            ]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View
-              style={[
-                styles.confirmIcon,
-                { backgroundColor: colors.errorContainer },
-              ]}
-            >
-              <LogOut size={28} color={colors.error} strokeWidth={2.2} />
-            </View>
-            <Text style={[styles.confirmTitle, { color: colors.onSurface }]}>
-              Logout?
-            </Text>
-            <Text
-              style={[styles.confirmText, { color: colors.onSurfaceVariant }]}
-            >
-              You'll need to sign in again to access your account.
-            </Text>
-            <View style={styles.confirmButtons}>
-              <Button
-                label="Cancel"
-                variant="secondary"
-                fullWidth
-                onPress={() => setLogoutConfirm(false)}
-                style={{ flex: 1 }}
-              />
-              <Button
-                label="Logout"
-                variant="destructive"
-                fullWidth
-                onPress={() => {
-                  setLogoutConfirm(false);
-                  handleLogout();
-                }}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        title="Logout?"
+        message="You'll need to sign in again to access your account."
+        icon={LogOut}
+        confirmLabel="Logout"
+        onCancel={() => setLogoutConfirm(false)}
+        onConfirm={() => {
+          setLogoutConfirm(false);
+          handleLogout();
+        }}
+      />
     </SafeAreaView>
   );
 }
