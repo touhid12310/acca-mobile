@@ -1009,11 +1009,15 @@ function TransactionRow({
       renderRightActions={renderRightActions}
       rightThreshold={ACTION_WIDTH * 0.35}
       overshootRight={false}
-      friction={1.15}
+      friction={1}
       overshootFriction={8}
       dragOffsetFromRightEdge={5}
       onSwipeableWillOpen={onOpen}
       onSwipeableClose={onClose}
+      childrenContainerStyle={[
+        styles.txnSwipeContent,
+        { backgroundColor: colors.surface },
+      ]}
       containerStyle={[
         styles.txnRowOuter,
         {
@@ -1022,9 +1026,21 @@ function TransactionRow({
         },
       ]}
     >
-      <Pressable onPress={handleRowPress} onLongPress={onLongPress}>
+      <Pressable
+        onPress={handleRowPress}
+        onLongPress={onLongPress}
+        style={{ backgroundColor: colors.surface }}
+      >
         {({ pressed }) => (
-          <View style={[styles.txnRow, { opacity: pressed ? 0.6 : 1 }]}>
+          <View
+            style={[
+              styles.txnRow,
+              {
+                backgroundColor: colors.surface,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
             <IconBadge icon={icon} tone={tone} size="md" />
             <View style={styles.txnTextBlock}>
               <Text
@@ -1226,6 +1242,9 @@ const styles = StyleSheet.create({
   txnRowOuter: {
     position: "relative",
     overflow: "hidden",
+    minHeight: TRANSACTION_ROW_HEIGHT,
+  },
+  txnSwipeContent: {
     minHeight: TRANSACTION_ROW_HEIGHT,
   },
   paginationLoader: {
