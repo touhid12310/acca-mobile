@@ -39,6 +39,7 @@ import {
   EmptyState,
   Badge,
   ThemedDatePicker,
+  HeroCard,
 } from "../../src/components/ui";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
@@ -336,9 +337,7 @@ export default function ReportsScreen() {
           ? TrendingUp
           : TrendingDown;
     return (
-      <View style={[styles.hero, shadow.lg]}>
-        <View style={styles.heroGlowA} pointerEvents="none" />
-        <View style={styles.heroGlowB} pointerEvents="none" />
+      <HeroCard style={styles.hero}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroIcon}>
             <Icon size={22} color="#ffffff" strokeWidth={2.2} />
@@ -356,7 +355,7 @@ export default function ReportsScreen() {
             )}
           </View>
         </View>
-      </View>
+      </HeroCard>
     );
   };
 
@@ -1348,30 +1347,7 @@ const styles = StyleSheet.create({
 
   // Hero
   hero: {
-    backgroundColor: "#0f213d",
     padding: spacing.lg,
-    borderRadius: radius.xxl,
-    overflow: "hidden",
-  },
-  heroGlowA: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
-    top: -80,
-    right: -60,
-  },
-  heroGlowB: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   heroTopRow: {
     flexDirection: "row",

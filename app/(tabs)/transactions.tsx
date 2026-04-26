@@ -81,8 +81,15 @@ const FILTERS: { key: FilterType; label: string }[] = [
 ];
 
 export default function TransactionsScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
+  const summaryCardBg = isDark ? "#0f213d" : colors.surfaceVariant;
+  const summaryLabelColor = isDark
+    ? "rgba(255,255,255,0.75)"
+    : colors.onSurfaceVariant;
+  const summaryIconBg = isDark
+    ? "rgba(255,255,255,0.1)"
+    : "rgba(15,33,61,0.08)";
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
 
@@ -472,22 +479,34 @@ export default function TransactionsScreen() {
 
       {/* Totals summary */}
       <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryGlowA} pointerEvents="none" />
+        <View style={[styles.summaryCard, { backgroundColor: summaryCardBg }]}>
+          {isDark && (
+            <View style={styles.summaryGlowA} pointerEvents="none" />
+          )}
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View style={styles.summaryIconWrap}>
+              <View
+                style={[
+                  styles.summaryIconWrap,
+                  { backgroundColor: summaryIconBg },
+                ]}
+              >
                 <ArrowDownLeft
                   size={16}
-                  color="#34d399"
+                  color={isDark ? "#34d399" : colors.tertiary}
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={styles.summaryLabel}>Total Income</Text>
+              <Text style={[styles.summaryLabel, { color: summaryLabelColor }]}>
+                Total Income
+              </Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: "#34d399" }]}
+            style={[
+              styles.summaryValue,
+              { color: isDark ? "#34d399" : colors.tertiary },
+            ]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -495,22 +514,34 @@ export default function TransactionsScreen() {
             {formatAmount(totalIncome)}
           </Text>
         </View>
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryGlowB} pointerEvents="none" />
+        <View style={[styles.summaryCard, { backgroundColor: summaryCardBg }]}>
+          {isDark && (
+            <View style={styles.summaryGlowB} pointerEvents="none" />
+          )}
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View style={styles.summaryIconWrap}>
+              <View
+                style={[
+                  styles.summaryIconWrap,
+                  { backgroundColor: summaryIconBg },
+                ]}
+              >
                 <ArrowUpRight
                   size={16}
-                  color="#fb923c"
+                  color={isDark ? "#fb923c" : colors.error}
                   strokeWidth={2.4}
                 />
               </View>
-              <Text style={styles.summaryLabel}>Total Expenses</Text>
+              <Text style={[styles.summaryLabel, { color: summaryLabelColor }]}>
+                Total Expenses
+              </Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: "#fb923c" }]}
+            style={[
+              styles.summaryValue,
+              { color: isDark ? "#fb923c" : colors.error },
+            ]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -1093,7 +1124,6 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flex: 1,
-    backgroundColor: "#0f213d",
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
     borderRadius: radius.lg,
@@ -1137,7 +1167,6 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1146,7 +1175,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 14,
     flexShrink: 1,
-    color: "rgba(255,255,255,0.75)",
   },
   summaryValue: {
     fontSize: 17,

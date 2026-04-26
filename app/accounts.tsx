@@ -48,6 +48,7 @@ import {
   Badge,
   Input,
   AlertBar,
+  HeroCard,
 } from "../src/components/ui";
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
@@ -229,9 +230,7 @@ export default function AccountsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Total Balance Hero */}
-        <View style={[styles.hero, shadow.lg]}>
-          <View style={styles.heroGlowA} pointerEvents="none" />
-          <View style={styles.heroGlowB} pointerEvents="none" />
+        <HeroCard style={styles.hero}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroIcon}>
               <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
@@ -264,7 +263,7 @@ export default function AccountsScreen() {
               <Text style={styles.heroMetaLabel}>Top account</Text>
             </View>
           </View>
-        </View>
+        </HeroCard>
 
         {viewAccounts.length > 0 ? (
           <View style={{ gap: spacing.md }}>
@@ -561,30 +560,7 @@ const styles = StyleSheet.create({
   },
   hero: {
     padding: spacing.lg,
-    borderRadius: radius.xxl,
     gap: spacing.xs,
-    overflow: "hidden",
-    backgroundColor: "#0f213d",
-  },
-  heroGlowA: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
-    top: -80,
-    right: -60,
-  },
-  heroGlowB: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   heroTopRow: {
     flexDirection: "row",

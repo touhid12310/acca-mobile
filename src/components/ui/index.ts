@@ -20,4 +20,5 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export { PeriodModal, computePeriodRange } from "./PeriodModal";
 export type { PeriodPreset, PeriodRange } from "./PeriodModal";
 export { ThemedDatePicker } from "./ThemedDatePicker";
+export { HeroCard } from "./HeroCard";
 export { AppDarkBackground } from "./AppDarkBackground";

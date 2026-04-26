@@ -46,6 +46,7 @@ import {
   IconBadge,
   Button,
   ConfirmDialog,
+  HeroCard,
 } from "../../src/components/ui";
 import { getInitials } from "../../src/utils/format";
 import { radius, shadow, spacing } from "../../src/constants/theme";
@@ -238,9 +239,7 @@ export default function MoreScreen() {
       >
         {/* Profile Card */}
         <Pressable onPress={() => router.push("/profile")}>
-          <View style={[styles.profileCard, shadow.lg]}>
-            <View style={styles.profileGlowA} pointerEvents="none" />
-            <View style={styles.profileGlowB} pointerEvents="none" />
+          <HeroCard style={styles.profileCard}>
             {(user as any)?.profile_picture_url ? (
               <Image
                 source={{ uri: (user as any).profile_picture_url }}
@@ -262,7 +261,7 @@ export default function MoreScreen() {
               </Text>
             </View>
             <ChevronRight size={22} color="#ffffff" strokeWidth={2.2} />
-          </View>
+          </HeroCard>
         </Pressable>
 
         {/* Menu Sections */}
@@ -607,30 +606,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: spacing.lg,
-    borderRadius: radius.xxl,
     gap: spacing.md,
-    backgroundColor: "#0f213d",
-    overflow: "hidden",
-  },
-  profileGlowA: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
-    top: -80,
-    right: -60,
-  },
-  profileGlowB: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   profileAvatar: {
     width: 56,

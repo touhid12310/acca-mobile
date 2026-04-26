@@ -47,6 +47,7 @@ import {
   PeriodModal,
   computePeriodRange,
   PeriodRange,
+  HeroCard,
 } from "../../src/components/ui";
 import dashboardService, {
   DashboardData,
@@ -537,11 +538,7 @@ export default function DashboardScreen() {
         </View>
 
         {/* Hero Balance Card — Premium card design */}
-        <View style={[styles.hero, shadow.lg]}>
-          {/* Decorative soft glow blobs */}
-          <View style={styles.heroGlowA} pointerEvents="none" />
-          <View style={styles.heroGlowB} pointerEvents="none" />
-
+        <HeroCard style={styles.hero}>
           {/* Top row */}
           <View style={styles.heroTop}>
             <View style={styles.heroLabelCluster}>
@@ -640,7 +637,7 @@ export default function DashboardScreen() {
               />
             </Pressable>
           </View>
-        </View>
+        </HeroCard>
 
         <PeriodModal
           visible={periodModalVisible}
@@ -1461,31 +1458,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   hero: {
-    backgroundColor: "#0f213d",
-    borderRadius: radius.xxl,
     padding: spacing.xl,
-    overflow: "hidden",
     gap: 4,
-  },
-  heroGlowA: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
-    top: -80,
-    right: -60,
-  },
-  heroGlowB: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   heroTop: {
     flexDirection: "row",

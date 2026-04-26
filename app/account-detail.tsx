@@ -29,6 +29,7 @@ import * as DocumentPicker from "expo-document-picker";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { radius, shadow, spacing } from "../src/constants/theme";
+import { HeroCard } from "../src/components/ui";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { BrandedHeader } from "../src/components";
 import accountService from "../src/services/accountService";
@@ -601,9 +602,7 @@ export default function AccountDetailScreen() {
       />
 
       {/* Balance Card */}
-      <View style={[styles.balanceCard, shadow.lg]}>
-        <View style={styles.balanceGlowA} pointerEvents="none" />
-        <View style={styles.balanceGlowB} pointerEvents="none" />
+      <HeroCard style={styles.balanceCard}>
         <View style={styles.balanceTopRow}>
           <View style={styles.balanceIcon}>
             <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
@@ -615,7 +614,7 @@ export default function AccountDetailScreen() {
             </Text>
           </View>
         </View>
-      </View>
+      </HeroCard>
 
       {/* Tabs */}
       <View style={[styles.tabs, { borderBottomColor: colors.surfaceVariant }]}>
@@ -1629,30 +1628,7 @@ const styles = StyleSheet.create({
   balanceCard: {
     marginHorizontal: spacing.lg,
     padding: spacing.lg,
-    borderRadius: radius.xxl,
     marginBottom: spacing.md,
-    overflow: "hidden",
-    backgroundColor: "#0f213d",
-  },
-  balanceGlowA: {
-    position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "#6366f1",
-    opacity: 0.22,
-    top: -80,
-    right: -60,
-  },
-  balanceGlowB: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "#a855f7",
-    opacity: 0.18,
-    bottom: -40,
-    left: -30,
   },
   balanceTopRow: {
     flexDirection: "row",
