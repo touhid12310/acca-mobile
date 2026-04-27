@@ -25,10 +25,16 @@ export function BrandStrip({ borderless = false, style }: BrandStripProps) {
     <View
       style={[
         styles.container,
+        {
+          // Slightly tinted strip so the wordmark has a backdrop instead of
+          // floating against the page background. Goes a little darker in
+          // dark mode and a little dimmer in light mode for visible contrast.
+          backgroundColor: isDark ? "#0f172a" : "#e2e8f0",
+        },
         !borderless && {
           borderBottomColor: isDark
-            ? "rgba(255,255,255,0.06)"
-            : "rgba(15,23,42,0.06)",
+            ? "rgba(255,255,255,0.08)"
+            : "rgba(15,23,42,0.08)",
           borderBottomWidth: StyleSheet.hairlineWidth,
         },
         style,

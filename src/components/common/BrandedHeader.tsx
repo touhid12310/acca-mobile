@@ -45,20 +45,20 @@ export function BrandedHeader({
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        showBrand && {
-          borderBottomColor: isDark
-            ? "rgba(255,255,255,0.06)"
-            : "rgba(15,23,42,0.06)",
-          borderBottomWidth: StyleSheet.hairlineWidth,
-        },
-        style,
-      ]}
-    >
+    <View style={[styles.container, style]}>
       {showBrand && (
-        <View style={styles.brandStrip}>
+        <View
+          style={[
+            styles.brandStrip,
+            {
+              backgroundColor: isDark ? "#0f172a" : "#e2e8f0",
+              borderBottomColor: isDark
+                ? "rgba(255,255,255,0.08)"
+                : "rgba(15,23,42,0.08)",
+              borderBottomWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
           <Image
             source={isDark ? LOGO_DARK : LOGO_LIGHT}
             style={styles.brandLogo}
@@ -106,17 +106,19 @@ export function BrandedHeader({
 }
 
 const styles = StyleSheet.create({
+  /* Outer container has no horizontal padding so the brand strip can span
+     edge-to-edge. The title row applies its own horizontal padding. */
   container: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: 0,
     paddingBottom: spacing.md,
-    gap: 6,
+    gap: spacing.sm,
   },
   brandStrip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 4,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   /* Wordmark sits at a modest height; the asset's intrinsic aspect ratio
      keeps the chevron + "Accounte" text legible without dominating. */
@@ -130,6 +132,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
     minHeight: 44,
+    paddingHorizontal: spacing.lg,
   },
   leftCluster: {
     flex: 1,
