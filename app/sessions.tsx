@@ -25,6 +25,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   IconBadge,
   ScreenHeader,
@@ -37,6 +38,8 @@ export default function SessionsScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [confirmAllOpen, setConfirmAllOpen] = useState(false);
+  const [pendingSession, setPendingSession] = useState<Session | null>(null);
 
   const {
     data: sessionsData,
@@ -81,41 +84,18 @@ export default function SessionsScreen() {
   });
 
   const handleRevokeSession = (sessionId: number) => {
-    Alert.alert(
-      "Revoke session",
-      "Are you sure you want to revoke this session? The device will be logged out.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Revoke",
-          style: "destructive",
-          onPress: () => {
-            setRevokingId(sessionId);
-            revokeSessionMutation.mutate(sessionId);
-          },
-        },
-      ],
-    );
+    const target = sessions.find((s) => s.id === sessionId) || null;
+    setPendingSession(target);
   };
 
+  const otherSessionCount = sessions.filter((s) => !s.is_current).length;
+
   const handleRevokeAll = () => {
-    const otherSessions = sessions.filter((s) => !s.is_current);
-    if (otherSessions.length === 0) {
+    if (otherSessionCount === 0) {
       Alert.alert("Info", "No other sessions to revoke");
       return;
     }
-    Alert.alert(
-      "Revoke all sessions",
-      `Are you sure you want to revoke ${otherSessions.length} other session(s)? All other devices will be logged out.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Revoke all",
-          style: "destructive",
-          onPress: () => revokeAllMutation.mutate(),
-        },
-      ],
-    );
+    setConfirmAllOpen(true);
   };
 
   const getDeviceIcon = (browser: string): LucideIcon =>
@@ -288,6 +268,43 @@ export default function SessionsScreen() {
           </View>
         )}
       </ScrollView>
+
+      <ConfirmDialog
+        visible={confirmAllOpen}
+        icon={LogOut}
+        title="Revoke all other sessions?"
+        message={`This will sign you out of ${otherSessionCount} other device${otherSessionCount === 1 ? "" : "s"}. You'll stay signed in here.`}
+        confirmLabel="Revoke all"
+        cancelLabel="Cancel"
+        loading={revokeAllMutation.isPending}
+        onCancel={() => setConfirmAllOpen(false)}
+        onConfirm={() => {
+          setConfirmAllOpen(false);
+          revokeAllMutation.mutate();
+        }}
+      />
+
+      <ConfirmDialog
+        visible={pendingSession !== null}
+        icon={LogOut}
+        title="Revoke this session?"
+        message={(() => {
+          if (!pendingSession) return "";
+          const device = pendingSession.device_name || pendingSession.browser || "this device";
+          return `${device} will be signed out immediately. They'll need to log in again to continue.`;
+        })()}
+        confirmLabel="Revoke"
+        cancelLabel="Cancel"
+        loading={revokeSessionMutation.isPending && revokingId === pendingSession?.id}
+        onCancel={() => setPendingSession(null)}
+        onConfirm={() => {
+          if (!pendingSession) return;
+          const id = pendingSession.id;
+          setPendingSession(null);
+          setRevokingId(id);
+          revokeSessionMutation.mutate(id);
+        }}
+      />
     </View>
   );
 }

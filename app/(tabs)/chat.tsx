@@ -1216,9 +1216,11 @@ export default function ChatScreen() {
             </View>
           )}
 
-          {/* Message text */}
+          {/* Message text — selectable so users can copy assistant replies. */}
           {message.message && (
             <Text
+              selectable
+              selectionColor={isUser ? "rgba(255,255,255,0.35)" : undefined}
               style={[
                 styles.messageText,
                 { color: isUser ? "#ffffff" : colors.onSurface },
@@ -1342,6 +1344,7 @@ export default function ChatScreen() {
                   >
                     {table.title ? (
                       <Text
+                        selectable
                         variant="titleSmall"
                         style={{ color: colors.onSurface, marginBottom: 10 }}
                         numberOfLines={2}
@@ -1368,6 +1371,7 @@ export default function ChatScreen() {
                               ]}
                             >
                               <Text
+                                selectable
                                 style={[
                                   styles.stackedTitle,
                                   { color: colors.onSurface },
@@ -1392,6 +1396,7 @@ export default function ChatScreen() {
                                       {String(h)}
                                     </Text>
                                     <Text
+                                      selectable
                                       style={[
                                         styles.stackedKvValue,
                                         { color: colors.onSurface },
@@ -1449,6 +1454,7 @@ export default function ChatScreen() {
                             {headers.map((h, hIdx) => (
                               <Text
                                 key={`c-${rIdx}-${hIdx}`}
+                                selectable
                                 style={[
                                   styles.tableCell,
                                   { color: colors.onSurface },
