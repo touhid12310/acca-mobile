@@ -1150,6 +1150,7 @@ export default function ChatScreen() {
           style={[
             styles.messageBubble,
             hasImageAttachment && styles.imageMessageBubble,
+            !isUser && (tables.length > 0 || candidates.length > 0) && styles.assistantWideBubble,
             isUser
               ? [styles.userBubble, { backgroundColor: colors.primary }]
               : [
@@ -2054,6 +2055,11 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
   },
+  /* Wider bubble for assistant replies that carry tables / candidates so
+     the structured cards have room to breathe on mobile screens. */
+  assistantWideBubble: {
+    maxWidth: "88%",
+  },
   imageMessageBubble: {
     minWidth: 220,
     padding: 8,
@@ -2142,26 +2148,26 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   stackedKvList: {
-    gap: 4,
+    gap: 5,
   },
   stackedKvRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 12,
   },
   stackedKvLabel: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: "600",
     textTransform: "uppercase",
     letterSpacing: 0.3,
     flexShrink: 1,
   },
   stackedKvValue: {
-    fontSize: 12.5,
+    fontSize: 13.5,
     textAlign: "right",
     flexShrink: 1,
-    maxWidth: "65%",
+    maxWidth: "70%",
   },
   viewTransactionsButton: {
     alignSelf: "flex-start",
