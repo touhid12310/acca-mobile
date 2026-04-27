@@ -35,7 +35,7 @@ const ROUTABLE_TYPES: Record<string, string> = {
   budget_overage: '/budgets',
   budget_warning: '/budgets',
   goal_completed: '/goals',
-  bill_due_soon: '/schedules',
+  schedule_due_soon: '/schedules',
   low_balance: '/accounts',
   recurring_posted: '/(tabs)/transactions',
 };

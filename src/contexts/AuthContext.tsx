@@ -146,11 +146,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const result = await authService.login(email, password, twoFactorCode);
 
-      // Check if 2FA is required
+      // 2FA required: backend returns 401 with requires_two_factor flag.
+      // The user is NOT authenticated yet — the client must prompt for the code.
+      const responsePayload = result.data as
+        | {
+            requires_two_factor?: boolean;
+            data?: { requires_two_factor?: boolean };
+          }
+        | undefined;
       if (
-        result.success &&
-        (result.data as { data?: { requires_two_factor?: boolean } })?.data
-          ?.requires_two_factor
+        responsePayload?.requires_two_factor ||
+        responsePayload?.data?.requires_two_factor
       ) {
         return {
           success: false,

@@ -94,9 +94,8 @@ const API_CONFIG = {
     CHAT_SAVE_EXPENSE: '/chat/messages',
     CHAT_TRANSCRIBE: '/chat/transcribe',
 
-    // Bills
-    BILLS: '/bills',
-    BILL_CONVERT: '/bills/convert',
+    // Schedules (repeating transactions)
+    SCHEDULES: '/schedules',
 
     // Settings
     SETTINGS: '/settings',

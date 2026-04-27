@@ -8,5 +8,5 @@ export { default as reportService } from './reportService';
 export { default as budgetService } from './budgetService';
 export { default as goalService } from './goalService';
 export { default as loanService } from './loanService';
-export { default as billService } from './billService';
+export { default as scheduleService } from './scheduleService';
 export { default as settingsService } from './settingsService';

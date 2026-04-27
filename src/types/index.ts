@@ -196,8 +196,8 @@ export interface LoanPayment {
   interest_paid: number;
 }
 
-// Bill Types
-export interface Bill {
+// Schedule Types (repeating transactions)
+export interface Schedule {
   id: number;
   name?: string;
   vendor?: string;
@@ -328,7 +328,7 @@ export interface DashboardStats {
     total_spent: number;
     remaining: number;
   };
-  upcoming_bills: Bill[];
+  upcoming_schedules: Schedule[];
 }
 
 // API Response Types

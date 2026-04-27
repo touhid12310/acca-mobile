@@ -34,10 +34,10 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
-import billService from "../src/services/billService";
+import scheduleService from "../src/services/scheduleService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
-import { Bill } from "../src/types";
+import { Schedule } from "../src/types";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
@@ -82,7 +82,7 @@ export default function SchedulesScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState({
@@ -96,39 +96,31 @@ export default function SchedulesScreen() {
   });
 
   const {
-    data: bills,
+    data: schedules,
     isLoading,
     refetch,
     isRefetching,
     error,
   } = useQuery({
-    queryKey: ["bills"],
+    queryKey: ["schedules"],
     queryFn: async () => {
       try {
-        const result = await billService.getAll();
+        const result = await scheduleService.getAll();
 
         if (result.success && result.data) {
           const responseData = result.data as any;
 
-          // Laravel returns paginated data: { data: { current_page, data: [...], ... } }
-          // The actual bills array is at responseData.data.data (pagination)
-          // Or responseData.data if not paginated
+          let schedulesArray: any[] = [];
 
-          let billsArray: any[] = [];
-
-          // Check if it's paginated (has current_page)
           if (responseData?.data?.current_page !== undefined) {
-            // Paginated response: bills are at responseData.data.data
-            billsArray = responseData.data.data || [];
+            schedulesArray = responseData.data.data || [];
           } else if (Array.isArray(responseData?.data)) {
-            // Non-paginated: bills are at responseData.data
-            billsArray = responseData.data;
+            schedulesArray = responseData.data;
           } else if (Array.isArray(responseData)) {
-            // Direct array
-            billsArray = responseData;
+            schedulesArray = responseData;
           }
 
-          return billsArray;
+          return schedulesArray;
         }
 
         return [];
@@ -158,7 +150,7 @@ export default function SchedulesScreen() {
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const result = await billService.create({
+      const result = await scheduleService.create({
         vendor: data.vendor,
         contact_name: data.vendor,
         amount: parseFloat(data.amount) || 0,
@@ -174,7 +166,7 @@ export default function SchedulesScreen() {
       return result;
     },
     onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       closeModal();
       const date = variables.next_due_date
         ? new Date(variables.next_due_date).toLocaleDateString(undefined, {
@@ -190,12 +182,12 @@ export default function SchedulesScreen() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const result = await billService.delete(id);
+      const result = await scheduleService.delete(id);
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["bills"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       toast.success("Schedule deleted");
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete schedule"),
@@ -232,8 +224,8 @@ export default function SchedulesScreen() {
     createMutation.mutate(formData);
   };
 
-  const showBillActions = (bill: Bill) => {
-    setSelectedBill(bill);
+  const showScheduleActions = (schedule: Schedule) => {
+    setSelectedSchedule(schedule);
     setShowActionSheet(true);
   };
 
@@ -243,16 +235,16 @@ export default function SchedulesScreen() {
   };
 
   const handleConfirmDelete = () => {
-    if (selectedBill) {
-      deleteMutation.mutate(selectedBill.id);
+    if (selectedSchedule) {
+      deleteMutation.mutate(selectedSchedule.id);
     }
     setShowDeleteConfirm(false);
-    setSelectedBill(null);
+    setSelectedSchedule(null);
   };
 
   const closeActionSheet = () => {
     setShowActionSheet(false);
-    setSelectedBill(null);
+    setSelectedSchedule(null);
   };
 
   const getDaysUntilDue = (dueDate?: string) => {
@@ -312,19 +304,18 @@ export default function SchedulesScreen() {
   };
 
   // Calculate stats
-  const viewBills = Array.isArray(bills) ? bills : [];
+  const viewSchedules = Array.isArray(schedules) ? schedules : [];
 
-  // Total of all repeating bills (same as web version)
-  const totalRepeatingBills = viewBills.reduce(
-    (sum: number, b: Bill) => sum + (parseFloat(String(b.amount)) || 0),
+  const totalRepeatingSchedules = viewSchedules.reduce(
+    (sum: number, s: Schedule) => sum + (parseFloat(String(s.amount)) || 0),
     0,
   );
 
   const statsFrequencyLabel = useMemo(() => {
     const normalizedFrequencies = new Set(
-      viewBills
-        .map((bill: Bill) =>
-          String(bill.frequency || "")
+      viewSchedules
+        .map((schedule: Schedule) =>
+          String(schedule.frequency || "")
             .trim()
             .toLowerCase(),
         )
@@ -337,7 +328,7 @@ export default function SchedulesScreen() {
     }
 
     return "All Frequency Repeats";
-  }, [viewBills]);
+  }, [viewSchedules]);
 
   if (isLoading) {
     return (
@@ -401,40 +392,40 @@ export default function SchedulesScreen() {
                 variant="headlineSmall"
                 style={{ color: colors.primary, fontWeight: "bold" }}
               >
-                {formatAmount(totalRepeatingBills)}
+                {formatAmount(totalRepeatingSchedules)}
               </Text>
               <Text variant="bodySmall" style={{ color: colors.primary }}>
-                {viewBills.length} schedules
+                {viewSchedules.length} schedules
               </Text>
             </View>
           </View>
         </Surface>
 
-        {/* Bills List */}
-        {viewBills.length > 0 ? (
-          viewBills.map((bill: Bill) => {
-            const dueDate = bill.next_due_date;
+        {/* Schedules List */}
+        {viewSchedules.length > 0 ? (
+          viewSchedules.map((schedule: Schedule) => {
+            const dueDate = schedule.next_due_date;
             const daysUntil = getDaysUntilDue(dueDate);
             const statusColor = getDueStatusColor(daysUntil);
-            const billName = bill.contact_name || bill.vendor || "Unnamed Bill";
-            const categoryName = getCategoryName(bill.category_id);
-            const status = bill.status || "scheduled";
-            const billType = String(bill.type || "expense").toLowerCase();
-            const billTypeColor =
-              billType === "income" ? colors.tertiary : colors.error;
-            const billAmount = parseFloat(String(bill.amount)) || 0;
+            const scheduleName = schedule.contact_name || schedule.vendor || "Unnamed Schedule";
+            const categoryName = getCategoryName(schedule.category_id);
+            const status = schedule.status || "scheduled";
+            const scheduleType = String(schedule.type || "expense").toLowerCase();
+            const scheduleTypeColor =
+              scheduleType === "income" ? colors.tertiary : colors.error;
+            const scheduleAmount = parseFloat(String(schedule.amount)) || 0;
 
             return (
               <Surface
-                key={bill.id}
-                style={[styles.billCard, { backgroundColor: colors.surface }]}
+                key={schedule.id}
+                style={[styles.scheduleCard, { backgroundColor: colors.surface }]}
                 elevation={1}
               >
-                <TouchableOpacity onLongPress={() => showBillActions(bill)}>
-                  <View style={styles.billHeader}>
+                <TouchableOpacity onLongPress={() => showScheduleActions(schedule)}>
+                  <View style={styles.scheduleHeader}>
                     <View
                       style={[
-                        styles.billIcon,
+                        styles.scheduleIcon,
                         { backgroundColor: `${statusColor}15` },
                       ]}
                     >
@@ -444,23 +435,23 @@ export default function SchedulesScreen() {
                         color={statusColor}
                       />
                     </View>
-                    <View style={styles.billInfo}>
-                      <View style={styles.billTitleRow}>
+                    <View style={styles.scheduleInfo}>
+                      <View style={styles.scheduleTitleRow}>
                         <Text
                           variant="titleMedium"
                           style={{ color: colors.onSurface, flex: 1 }}
                           numberOfLines={1}
                         >
-                          {billName}
+                          {scheduleName}
                         </Text>
                         <Text
                           variant="titleMedium"
                           style={{ color: colors.onSurface, fontWeight: "600" }}
                         >
-                          {formatAmount(billAmount)}
+                          {formatAmount(scheduleAmount)}
                         </Text>
                         <TouchableOpacity
-                          onPress={() => showBillActions(bill)}
+                          onPress={() => showScheduleActions(schedule)}
                           style={styles.menuButton}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
@@ -483,12 +474,12 @@ export default function SchedulesScreen() {
                         <View
                           style={[
                             styles.badge,
-                            { backgroundColor: `${billTypeColor}20` },
+                            { backgroundColor: `${scheduleTypeColor}20` },
                           ]}
                         >
-                          <Text style={{ color: billTypeColor, fontSize: 11 }}>
-                            {billType.charAt(0).toUpperCase() +
-                              billType.slice(1)}
+                          <Text style={{ color: scheduleTypeColor, fontSize: 11 }}>
+                            {scheduleType.charAt(0).toUpperCase() +
+                              scheduleType.slice(1)}
                           </Text>
                         </View>
                         <View
@@ -503,7 +494,7 @@ export default function SchedulesScreen() {
                               fontSize: 11,
                             }}
                           >
-                            {bill.frequency || "Monthly"}
+                            {schedule.frequency || "Monthly"}
                           </Text>
                         </View>
                         {categoryName && (
@@ -539,12 +530,12 @@ export default function SchedulesScreen() {
                     </View>
                   </View>
 
-                  {bill.notes && (
+                  {schedule.notes && (
                     <Text
                       variant="bodySmall"
                       style={{ color: colors.onSurfaceVariant, marginTop: 8 }}
                     >
-                      {bill.notes}
+                      {schedule.notes}
                     </Text>
                   )}
 
@@ -908,7 +899,7 @@ export default function SchedulesScreen() {
             { backgroundColor: colors.surface },
           ]}
         >
-          {selectedBill && (
+          {selectedSchedule && (
             <>
               <View style={styles.actionSheetHeader}>
                 <View
@@ -929,21 +920,21 @@ export default function SchedulesScreen() {
                     style={{ color: colors.onSurface }}
                     numberOfLines={1}
                   >
-                    {selectedBill.contact_name ||
-                      selectedBill.vendor ||
-                      "Unnamed Bill"}
+                    {selectedSchedule.contact_name ||
+                      selectedSchedule.vendor ||
+                      "Unnamed Schedule"}
                   </Text>
                   <Text
                     variant="titleLarge"
                     style={{ color: colors.error, fontWeight: "bold" }}
                   >
-                    {formatAmount(parseFloat(String(selectedBill.amount)) || 0)}
+                    {formatAmount(parseFloat(String(selectedSchedule.amount)) || 0)}
                   </Text>
                   <Text
                     variant="bodySmall"
                     style={{ color: colors.onSurfaceVariant }}
                   >
-                    {selectedBill.frequency || "Monthly"}
+                    {selectedSchedule.frequency || "Monthly"}
                   </Text>
                 </View>
               </View>
@@ -1048,16 +1039,16 @@ const styles = StyleSheet.create({
   statsText: {
     flex: 1,
   },
-  billCard: {
+  scheduleCard: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
   },
-  billHeader: {
+  scheduleHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
   },
-  billIcon: {
+  scheduleIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -1065,10 +1056,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  billInfo: {
+  scheduleInfo: {
     flex: 1,
   },
-  billTitleRow: {
+  scheduleTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
