@@ -24,6 +24,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Sparkles } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
@@ -315,9 +316,19 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
 };
 
 export default function ChatScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const profilePictureUri = (() => {
+    if (!user) return null;
+    const direct =
+      (user as any)?.profile_picture_url || (user as any)?.profile_picture;
+    if (!direct || typeof direct !== "string") return null;
+    if (direct.startsWith("http://") || direct.startsWith("https://")) {
+      return direct;
+    }
+    return buildFileUrl(direct);
+  })();
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<RNTextInput>(null);
@@ -1138,11 +1149,7 @@ export default function ChatScreen() {
               { backgroundColor: colors.primaryContainer },
             ]}
           >
-            <MaterialCommunityIcons
-              name="robot"
-              size={20}
-              color={colors.primary}
-            />
+            <Sparkles size={20} color={colors.primary} strokeWidth={2.2} />
           </View>
         )}
 
@@ -1155,7 +1162,15 @@ export default function ChatScreen() {
               ? [styles.userBubble, { backgroundColor: colors.primary }]
               : [
                   styles.assistantBubble,
-                  { backgroundColor: colors.surfaceVariant },
+                  {
+                    // Medium-dark tint in light mode so the white inner table
+                    // / candidate cards stand out clearly against the bubble.
+                    // Dark mode keeps its native surface variant.
+                    backgroundColor:
+                      !isDark && (tables.length > 0 || candidates.length > 0)
+                        ? "#eaeef3"
+                        : colors.surfaceVariant,
+                  },
                 ],
           ]}
         >
@@ -1495,19 +1510,28 @@ export default function ChatScreen() {
           )}
         </View>
 
-        {/* User avatar */}
+        {/* User avatar — prefer the saved profile picture, fall back to the
+            generic account glyph if not set or fails to load. */}
         {isUser && (
           <View
             style={[
               styles.avatar,
-              { backgroundColor: colors.secondaryContainer },
+              { backgroundColor: colors.secondaryContainer, overflow: "hidden" },
             ]}
           >
-            <MaterialCommunityIcons
-              name="account"
-              size={20}
-              color={colors.secondary}
-            />
+            {profilePictureUri ? (
+              <Image
+                source={{ uri: profilePictureUri }}
+                style={styles.userAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <MaterialCommunityIcons
+                name="account"
+                size={20}
+                color={colors.secondary}
+              />
+            )}
           </View>
         )}
       </View>
@@ -1600,11 +1624,7 @@ export default function ChatScreen() {
                 { backgroundColor: colors.primaryContainer },
               ]}
             >
-              <MaterialCommunityIcons
-                name="robot"
-                size={16}
-                color={colors.primary}
-              />
+              <Sparkles size={16} color={colors.primary} strokeWidth={2.2} />
             </View>
             <View
               style={[
@@ -2168,6 +2188,10 @@ const styles = StyleSheet.create({
     textAlign: "right",
     flexShrink: 1,
     maxWidth: "70%",
+  },
+  userAvatarImage: {
+    width: "100%",
+    height: "100%",
   },
   viewTransactionsButton: {
     alignSelf: "flex-start",
