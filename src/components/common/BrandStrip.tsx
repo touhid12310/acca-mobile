@@ -29,7 +29,7 @@ export function BrandStrip({ borderless = false, style }: BrandStripProps) {
           // Slightly tinted strip so the wordmark has a backdrop instead of
           // floating against the page background. Goes a little darker in
           // dark mode and a little dimmer in light mode for visible contrast.
-          backgroundColor: isDark ? "#0f172a" : "#e2e8f0",
+          backgroundColor: isDark ? "#1e293b" : "#edf1f6",
         },
         !borderless && {
           borderBottomColor: isDark

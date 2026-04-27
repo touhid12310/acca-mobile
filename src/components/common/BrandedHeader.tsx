@@ -51,7 +51,7 @@ export function BrandedHeader({
           style={[
             styles.brandStrip,
             {
-              backgroundColor: isDark ? "#0f172a" : "#e2e8f0",
+              backgroundColor: isDark ? "#1e293b" : "#edf1f6",
               borderBottomColor: isDark
                 ? "rgba(255,255,255,0.08)"
                 : "rgba(15,23,42,0.08)",
