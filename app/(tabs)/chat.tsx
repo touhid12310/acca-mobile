@@ -1307,6 +1307,16 @@ export default function ChatScreen() {
                 const totalRows =
                   typeof table.total_rows === "number" ? table.total_rows : rows.length;
                 const visibleRows = rows.slice(0, 8);
+                // Mobile widths squeeze 5+ columns into unreadable strips, so
+                // stack each row as a card when the table is wide. Narrow
+                // tables (≤3 columns) keep the compact grid layout.
+                const useStacked = headers.length > 3;
+
+                const formatCellValue = (value: any): string => {
+                  if (value === null || value === undefined || value === "") return "—";
+                  if (typeof value === "number") return formatAmount(value);
+                  return String(value);
+                };
 
                 return (
                   <Surface
@@ -1317,80 +1327,130 @@ export default function ChatScreen() {
                     {table.title ? (
                       <Text
                         variant="titleSmall"
-                        style={{ color: colors.onSurface, marginBottom: 8 }}
+                        style={{ color: colors.onSurface, marginBottom: 10 }}
                         numberOfLines={2}
                       >
                         {String(table.title)}
                       </Text>
                     ) : null}
 
-                    {/* Header row */}
-                    {headers.length > 0 ? (
-                      <View
-                        style={[
-                          styles.tableRow,
-                          styles.tableHeaderRow,
-                          { borderBottomColor: colors.surfaceVariant },
-                        ]}
-                      >
-                        {headers.map((h, hIdx) => (
-                          <Text
-                            key={`h-${hIdx}`}
-                            style={[
-                              styles.tableCell,
-                              styles.tableHeaderCell,
-                              { color: colors.onSurfaceVariant },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {String(h)}
-                          </Text>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {/* Body rows */}
-                    {visibleRows.map((row: any, rIdx: number) => (
-                      <View
-                        key={`r-${rIdx}`}
-                        style={[
-                          styles.tableRow,
-                          rIdx < visibleRows.length - 1 && {
-                            borderBottomColor: colors.surfaceVariant,
-                            borderBottomWidth: StyleSheet.hairlineWidth,
-                          },
-                        ]}
-                      >
-                        {headers.map((h, hIdx) => {
-                          const value = row?.[h];
-                          let label: string;
-                          if (value === null || value === undefined) {
-                            label = "—";
-                          } else if (typeof value === "number") {
-                            label = formatAmount(value);
-                          } else {
-                            label = String(value);
-                          }
+                    {useStacked ? (
+                      // Stacked: each row becomes a card; first column is the
+                      // primary label, remaining columns render as label:value
+                      // pairs underneath.
+                      <View style={{ gap: 10 }}>
+                        {visibleRows.map((row: any, rIdx: number) => {
+                          const primaryHeader = headers[0];
+                          const primaryValue = formatCellValue(row?.[primaryHeader]);
+                          const restHeaders = headers.slice(1);
                           return (
-                            <Text
-                              key={`c-${rIdx}-${hIdx}`}
+                            <View
+                              key={`stk-${rIdx}`}
                               style={[
-                                styles.tableCell,
-                                { color: colors.onSurface },
+                                styles.stackedRow,
+                                { borderColor: colors.surfaceVariant },
                               ]}
-                              numberOfLines={2}
                             >
-                              {label}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.stackedTitle,
+                                  { color: colors.onSurface },
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {primaryValue}
+                              </Text>
+                              <View style={styles.stackedKvList}>
+                                {restHeaders.map((h, hIdx) => (
+                                  <View
+                                    key={`stk-${rIdx}-${hIdx}`}
+                                    style={styles.stackedKvRow}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.stackedKvLabel,
+                                        { color: colors.onSurfaceVariant },
+                                      ]}
+                                      numberOfLines={1}
+                                    >
+                                      {String(h)}
+                                    </Text>
+                                    <Text
+                                      style={[
+                                        styles.stackedKvValue,
+                                        { color: colors.onSurface },
+                                      ]}
+                                      numberOfLines={2}
+                                    >
+                                      {formatCellValue(row?.[h])}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            </View>
                           );
                         })}
                       </View>
-                    ))}
+                    ) : (
+                      <>
+                        {/* Header row */}
+                        {headers.length > 0 ? (
+                          <View
+                            style={[
+                              styles.tableRow,
+                              styles.tableHeaderRow,
+                              { borderBottomColor: colors.surfaceVariant },
+                            ]}
+                          >
+                            {headers.map((h, hIdx) => (
+                              <Text
+                                key={`h-${hIdx}`}
+                                style={[
+                                  styles.tableCell,
+                                  styles.tableHeaderCell,
+                                  { color: colors.onSurfaceVariant },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {String(h)}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        {/* Body rows */}
+                        {visibleRows.map((row: any, rIdx: number) => (
+                          <View
+                            key={`r-${rIdx}`}
+                            style={[
+                              styles.tableRow,
+                              rIdx < visibleRows.length - 1 && {
+                                borderBottomColor: colors.surfaceVariant,
+                                borderBottomWidth: StyleSheet.hairlineWidth,
+                              },
+                            ]}
+                          >
+                            {headers.map((h, hIdx) => (
+                              <Text
+                                key={`c-${rIdx}-${hIdx}`}
+                                style={[
+                                  styles.tableCell,
+                                  { color: colors.onSurface },
+                                ]}
+                                numberOfLines={2}
+                              >
+                                {formatCellValue(row?.[h])}
+                              </Text>
+                            ))}
+                          </View>
+                        ))}
+                      </>
+                    )}
 
                     {totalRows > visibleRows.length ? (
                       <Text
                         variant="bodySmall"
-                        style={{ color: colors.onSurfaceVariant, marginTop: 8 }}
+                        style={{ color: colors.onSurfaceVariant, marginTop: 10 }}
                       >
                         Showing {visibleRows.length} of {totalRows} rows
                       </Text>
@@ -2070,6 +2130,38 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.4,
+  },
+  stackedRow: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10,
+  },
+  stackedTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  stackedKvList: {
+    gap: 4,
+  },
+  stackedKvRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  stackedKvLabel: {
+    fontSize: 11.5,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+    flexShrink: 1,
+  },
+  stackedKvValue: {
+    fontSize: 12.5,
+    textAlign: "right",
+    flexShrink: 1,
+    maxWidth: "65%",
   },
   viewTransactionsButton: {
     alignSelf: "flex-start",
