@@ -993,6 +993,57 @@ export default function ChatScreen() {
     setPreviewVisible(true);
   };
 
+  /**
+   * Pull structured tables out of an assistant message. Backend tools
+   * (report/lookup/top categories/etc.) populate metadata.structured_data
+   * with one or more table descriptors that we render inline below the prose.
+   */
+  const getStructuredTables = (message: ChatMessage): any[] => {
+    const tables = (message?.metadata as any)?.structured_data;
+    return Array.isArray(tables) ? tables.filter((t) => t && Array.isArray(t.rows)) : [];
+  };
+
+  /**
+   * Returns the report/lookup summary if this assistant message came from a
+   * tool result (period_summary, transactions_lookup, top_categories, etc.).
+   * That summary carries the date range + filters the AI used; we use it to
+   * deep-link the user to the Transactions screen pre-filtered.
+   */
+  const getToolSummary = (message: ChatMessage): any | null => {
+    const meta = (message?.metadata as any) || {};
+    return meta.report ?? meta.transaction_summary ?? null;
+  };
+
+  const handleViewTransactions = (summary: any) => {
+    if (!summary) return;
+    const dateFrom = summary?.start || summary?.range?.start || null;
+    const dateTo = summary?.end || summary?.range?.end || null;
+    const txnType = summary?.transaction_type || null;
+    const categoryName = summary?.category?.name || summary?.category_name || null;
+    const searchTerm = summary?.search || null;
+    const amountMin =
+      summary?.amount_min !== undefined && summary?.amount_min !== null
+        ? String(summary.amount_min)
+        : null;
+    const amountMax =
+      summary?.amount_max !== undefined && summary?.amount_max !== null
+        ? String(summary.amount_max)
+        : null;
+    const accountName = summary?.account?.name || null;
+
+    const params: Record<string, string> = {};
+    if (dateFrom) params.dateFrom = dateFrom;
+    if (dateTo) params.dateTo = dateTo;
+    if (txnType) params.type = txnType;
+    if (categoryName) params.category = categoryName;
+    if (searchTerm) params.search = searchTerm;
+    if (amountMin) params.amountMin = amountMin;
+    if (amountMax) params.amountMax = amountMax;
+    if (accountName) params.account = accountName;
+
+    router.push({ pathname: "/(tabs)/transactions", params });
+  };
+
   // Parse expense candidates from message metadata
   const getExpenseCandidates = (message: ChatMessage): ExpenseCandidate[] => {
     if (!message.metadata?.expense_candidates) return [];
@@ -1058,6 +1109,8 @@ export default function ChatScreen() {
   const renderMessage = ({ item: message }: { item: ChatMessage }) => {
     const isUser = message.is_user;
     const candidates = getExpenseCandidates(message);
+    const tables = !isUser ? getStructuredTables(message) : [];
+    const toolSummary = !isUser ? getToolSummary(message) : null;
     const suggestedActions = message.metadata?.suggested_actions || [];
     const attachment = getMessageAttachment(message);
     // For assistant messages with candidates, find the related user attachment
@@ -1242,6 +1295,121 @@ export default function ChatScreen() {
                   </Button>
                 </Surface>
               ))}
+            </View>
+          )}
+
+          {/* Inline structured tables (report / lookup / top-N) */}
+          {!isUser && tables.length > 0 && (
+            <View style={styles.tableContainer}>
+              {tables.map((table, tIdx) => {
+                const headers: string[] = Array.isArray(table.headers) ? table.headers : [];
+                const rows: any[] = Array.isArray(table.rows) ? table.rows : [];
+                const totalRows =
+                  typeof table.total_rows === "number" ? table.total_rows : rows.length;
+                const visibleRows = rows.slice(0, 8);
+
+                return (
+                  <Surface
+                    key={`tbl-${tIdx}`}
+                    style={[styles.tableCard, { backgroundColor: colors.surface }]}
+                    elevation={1}
+                  >
+                    {table.title ? (
+                      <Text
+                        variant="titleSmall"
+                        style={{ color: colors.onSurface, marginBottom: 8 }}
+                        numberOfLines={2}
+                      >
+                        {String(table.title)}
+                      </Text>
+                    ) : null}
+
+                    {/* Header row */}
+                    {headers.length > 0 ? (
+                      <View
+                        style={[
+                          styles.tableRow,
+                          styles.tableHeaderRow,
+                          { borderBottomColor: colors.surfaceVariant },
+                        ]}
+                      >
+                        {headers.map((h, hIdx) => (
+                          <Text
+                            key={`h-${hIdx}`}
+                            style={[
+                              styles.tableCell,
+                              styles.tableHeaderCell,
+                              { color: colors.onSurfaceVariant },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {String(h)}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {/* Body rows */}
+                    {visibleRows.map((row: any, rIdx: number) => (
+                      <View
+                        key={`r-${rIdx}`}
+                        style={[
+                          styles.tableRow,
+                          rIdx < visibleRows.length - 1 && {
+                            borderBottomColor: colors.surfaceVariant,
+                            borderBottomWidth: StyleSheet.hairlineWidth,
+                          },
+                        ]}
+                      >
+                        {headers.map((h, hIdx) => {
+                          const value = row?.[h];
+                          let label: string;
+                          if (value === null || value === undefined) {
+                            label = "—";
+                          } else if (typeof value === "number") {
+                            label = formatAmount(value);
+                          } else {
+                            label = String(value);
+                          }
+                          return (
+                            <Text
+                              key={`c-${rIdx}-${hIdx}`}
+                              style={[
+                                styles.tableCell,
+                                { color: colors.onSurface },
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {label}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    ))}
+
+                    {totalRows > visibleRows.length ? (
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: colors.onSurfaceVariant, marginTop: 8 }}
+                      >
+                        Showing {visibleRows.length} of {totalRows} rows
+                      </Text>
+                    ) : null}
+                  </Surface>
+                );
+              })}
+
+              {toolSummary ? (
+                <Button
+                  mode="outlined"
+                  compact
+                  icon="format-list-bulleted"
+                  onPress={() => handleViewTransactions(toolSummary)}
+                  style={styles.viewTransactionsButton}
+                >
+                  View Transactions
+                </Button>
+              ) : null}
             </View>
           )}
 
@@ -1873,6 +2041,38 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   previewButton: {
+    marginTop: 4,
+  },
+  tableContainer: {
+    marginTop: 12,
+    gap: 10,
+  },
+  tableCard: {
+    borderRadius: 12,
+    padding: 12,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: 6,
+    gap: 6,
+  },
+  tableHeaderRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 8,
+    marginBottom: 4,
+  },
+  tableCell: {
+    flex: 1,
+    fontSize: 12.5,
+  },
+  tableHeaderCell: {
+    fontSize: 11.5,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  viewTransactionsButton: {
+    alignSelf: "flex-start",
     marginTop: 4,
   },
   suggestedActions: {

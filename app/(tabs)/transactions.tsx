@@ -21,7 +21,7 @@ import {
   useMutation,
   useInfiniteQuery,
 } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   ArrowDownLeft,
@@ -86,8 +86,36 @@ export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast();
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState<FilterType>("all");
+  const routeParams = useLocalSearchParams<{
+    dateFrom?: string;
+    dateTo?: string;
+    type?: string;
+    category?: string;
+    search?: string;
+    amountMin?: string;
+    amountMax?: string;
+    account?: string;
+  }>();
+
+  // Pick up the deep-link's initial values so the first render is already
+  // filtered. Subsequent route param changes are handled in a useEffect below.
+  const initialSearch = (() => {
+    const search = routeParams?.search?.toString().trim();
+    if (search) return search;
+    const category = routeParams?.category?.toString().trim();
+    if (category) return category;
+    return "";
+  })();
+  const initialFilterType: FilterType = (() => {
+    const t = routeParams?.type?.toString().trim();
+    if (t === "income" || t === "expense" || t === "transfer" || t === "asset" || t === "liability") {
+      return t;
+    }
+    return "all";
+  })();
+
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [filterType, setFilterType] = useState<FilterType>(initialFilterType);
   const [filterChanging, setFilterChanging] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
@@ -97,11 +125,54 @@ export default function TransactionsScreen() {
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [periodModalVisible, setPeriodModalVisible] = useState(false);
-  const [period, setPeriod] = useState<PeriodRange>(() =>
-    computePeriodRange("this_month"),
+  const [period, setPeriod] = useState<PeriodRange>(() => {
+    const from = routeParams?.dateFrom?.toString();
+    const to = routeParams?.dateTo?.toString();
+    if (from || to) {
+      const start = from ? new Date(from) : new Date(2000, 0, 1);
+      const end = to ? new Date(to + "T23:59:59") : new Date();
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        return computePeriodRange("custom_range", { start, end });
+      }
+    }
+    return computePeriodRange("this_month");
+  });
+  const [periodFilterActive, setPeriodFilterActive] = useState(
+    Boolean(routeParams?.dateFrom || routeParams?.dateTo)
   );
-  const [periodFilterActive, setPeriodFilterActive] = useState(false);
   const [pendingPeriod, setPendingPeriod] = useState<PeriodRange | null>(null);
+
+  // Re-apply route params when they change (deep-link arriving while the
+  // screen is already mounted, e.g. tapping View Transactions on chat).
+  useEffect(() => {
+    const search = routeParams?.search?.toString().trim();
+    const category = routeParams?.category?.toString().trim();
+    const t = routeParams?.type?.toString().trim();
+    const from = routeParams?.dateFrom?.toString();
+    const to = routeParams?.dateTo?.toString();
+
+    if (search || category) {
+      setSearchQuery(search || category || "");
+    }
+    if (t === "income" || t === "expense" || t === "transfer" || t === "asset" || t === "liability") {
+      setFilterType(t);
+    }
+    if (from || to) {
+      const start = from ? new Date(from) : new Date(2000, 0, 1);
+      const end = to ? new Date(to + "T23:59:59") : new Date();
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        setPeriod(computePeriodRange("custom_range", { start, end }));
+        setPeriodFilterActive(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    routeParams?.dateFrom,
+    routeParams?.dateTo,
+    routeParams?.type,
+    routeParams?.category,
+    routeParams?.search,
+  ]);
 
   const handleOpenPeriodModal = useCallback(() => {
     setPendingPeriod(period);
