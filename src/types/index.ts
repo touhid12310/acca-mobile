@@ -13,10 +13,19 @@ export interface User {
   settings?: UserSettings;
 }
 
+export interface NotificationPreferences {
+  budget_alerts?: boolean;
+  payment_reminders?: boolean;
+  goal_reached?: boolean;
+  email_notifications?: boolean;
+  weekly_summary?: boolean;
+}
+
 export interface UserSettings {
   currency?: string;
   theme?: 'light' | 'dark' | 'system';
   notifications?: boolean;
+  notification_preferences?: NotificationPreferences;
 }
 
 // Auth Types
