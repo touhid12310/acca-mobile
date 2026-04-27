@@ -41,6 +41,7 @@ import {
   ThemedDatePicker,
   HeroCard,
 } from "../../src/components/ui";
+import { BrandStrip } from "../../src/components";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
 import { radius, shadow, spacing } from "../../src/constants/theme";
@@ -1191,6 +1192,7 @@ export default function ReportsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
+      <BrandStrip />
       <View style={styles.headerWrap}>
         <ScreenHeader title="Reports" subtitle="Trends and statements" />
       </View>

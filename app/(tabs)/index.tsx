@@ -50,6 +50,7 @@ import {
   HeroCard,
   AlertBar,
 } from "../../src/components/ui";
+import { BrandStrip } from "../../src/components";
 import dashboardService, {
   DashboardData,
 } from "../../src/services/dashboardService";
@@ -581,6 +582,7 @@ export default function DashboardScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
+      <BrandStrip />
       <ScrollView
         style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}

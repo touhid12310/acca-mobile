@@ -47,6 +47,7 @@ import {
   ConfirmDialog,
   HeroCard,
 } from "../../src/components/ui";
+import { BrandStrip } from "../../src/components";
 import { getInitials } from "../../src/utils/format";
 import { radius, shadow, spacing } from "../../src/constants/theme";
 
@@ -220,6 +221,7 @@ export default function MoreScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
+      <BrandStrip />
       <View style={{ paddingHorizontal: spacing.lg }}>
         <ScreenHeader title="More" subtitle="Settings & tools" />
       </View>

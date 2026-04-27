@@ -57,6 +57,7 @@ import {
   computePeriodRange,
   PeriodRange,
 } from "../../src/components/ui";
+import { BrandStrip } from "../../src/components";
 import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
 import { formatDate } from "../../src/utils/date";
@@ -560,6 +561,7 @@ export default function TransactionsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
+      <BrandStrip />
       <View style={styles.headerWrap}>
         <ScreenHeader
           title="Activity"

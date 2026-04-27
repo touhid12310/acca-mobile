@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Image,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -13,6 +14,9 @@ import { router } from "expo-router";
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
 
+const LOGO_LIGHT = require("../../../assets/logo-light.png");
+const LOGO_DARK = require("../../../assets/logo-dark.png");
+
 type BrandedHeaderProps = {
   title: string;
   subtitle?: string;
@@ -20,6 +24,8 @@ type BrandedHeaderProps = {
   onBack?: () => void;
   right?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  /** Render the wordmark brand strip above the title row. Default true. */
+  showBrand?: boolean;
 };
 
 export function BrandedHeader({
@@ -29,8 +35,9 @@ export function BrandedHeader({
   onBack,
   right,
   style,
+  showBrand = true,
 }: BrandedHeaderProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const handleBack = () => {
     if (onBack) return onBack();
@@ -38,51 +45,91 @@ export function BrandedHeader({
   };
 
   return (
-    <View style={[styles.container, style]}>
-      <View style={styles.leftCluster}>
-        {showBack && (
-          <Pressable
-            onPress={handleBack}
-            style={[
-              styles.backBtn,
-              { backgroundColor: colors.surfaceVariant },
-            ]}
-            hitSlop={8}
-          >
-            <ChevronLeft size={22} color={colors.onSurface} strokeWidth={2.2} />
-          </Pressable>
-        )}
-        <View style={{ flex: 1, minWidth: 0 }}>
-          {subtitle && (
+    <View
+      style={[
+        styles.container,
+        showBrand && {
+          borderBottomColor: isDark
+            ? "rgba(255,255,255,0.06)"
+            : "rgba(15,23,42,0.06)",
+          borderBottomWidth: StyleSheet.hairlineWidth,
+        },
+        style,
+      ]}
+    >
+      {showBrand && (
+        <View style={styles.brandStrip}>
+          <Image
+            source={isDark ? LOGO_DARK : LOGO_LIGHT}
+            style={styles.brandLogo}
+            resizeMode="contain"
+          />
+        </View>
+      )}
+
+      <View style={styles.row}>
+        <View style={styles.leftCluster}>
+          {showBack && (
+            <Pressable
+              onPress={handleBack}
+              style={[
+                styles.backBtn,
+                { backgroundColor: colors.surfaceVariant },
+              ]}
+              hitSlop={8}
+            >
+              <ChevronLeft size={22} color={colors.onSurface} strokeWidth={2.2} />
+            </Pressable>
+          )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            {subtitle && (
+              <Text
+                style={[styles.subtitle, { color: colors.onSurfaceVariant }]}
+                numberOfLines={1}
+              >
+                {subtitle}
+              </Text>
+            )}
             <Text
-              style={[styles.subtitle, { color: colors.onSurfaceVariant }]}
+              style={[styles.title, { color: colors.onSurface }]}
               numberOfLines={1}
             >
-              {subtitle}
+              {title}
             </Text>
-          )}
-          <Text
-            style={[styles.title, { color: colors.onSurface }]}
-            numberOfLines={1}
-          >
-            {title}
-          </Text>
+          </View>
         </View>
-      </View>
 
-      {right && <View style={styles.rightSlot}>{right}</View>}
+        {right && <View style={styles.rightSlot}>{right}</View>}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: 6,
+  },
+  brandStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 4,
+  },
+  /* Wordmark sits at a modest height; the asset's intrinsic aspect ratio
+     keeps the chevron + "Accounte" text legible without dominating. */
+  brandLogo: {
+    height: 24,
+    width: 132,
+  },
+  row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
     gap: spacing.md,
+    minHeight: 44,
   },
   leftCluster: {
     flex: 1,
