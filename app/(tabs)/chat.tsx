@@ -305,7 +305,7 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   is_user: false,
   message:
-    "Hello! I'm your finance assistant. You can upload receipts, CSVs, or ask me for quick reports.",
+    "Hello! I'm your Accounte assistant. You can upload receipts, CSVs, or ask me for quick reports.",
   metadata: {
     suggested_actions: [
       "Show me a report for the last 3 days",
@@ -1291,7 +1291,7 @@ export default function ChatScreen() {
       edges={["top"]}
     >
       <BrandedHeader
-        title="Finance Assistant"
+        title="Accounte Assistant"
         subtitle="Ask about expenses, reports, or scan receipts"
         right={
           <View style={[styles.statusDot, { backgroundColor: "#34a853" }]} />
