@@ -221,7 +221,9 @@ export interface Schedule {
   is_paid?: boolean;
   auto_pay?: boolean;
   category_id?: number;
+  subcategory_id?: number;
   category?: Category;
+  subcategory?: Subcategory;
   reminder_days?: number;
 }
 

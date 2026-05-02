@@ -94,6 +94,7 @@ export default function BudgetsScreen() {
   >([]);
   const [availableCategories, setAvailableCategories] = useState<any[]>([]);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState("");
 
   // Fetch expense categories for budget
   useEffect(() => {
@@ -266,7 +267,78 @@ export default function BudgetsScreen() {
     setEditingBudget(null);
     setSelectedCategories([]);
     setShowCategoryPicker(false);
+    setCategorySearchQuery("");
   };
+
+  const filteredAvailableCategories = (() => {
+    const query = categorySearchQuery.trim().toLowerCase();
+    if (!query) return availableCategories;
+    return availableCategories
+      .map((category: any) => {
+        const nameMatches = String(category?.name || "")
+          .toLowerCase()
+          .includes(query);
+        const subs = Array.isArray(category?.subcategories)
+          ? category.subcategories
+          : [];
+        const matchingSubs = subs.filter((sub: any) =>
+          String(sub?.name || "")
+            .toLowerCase()
+            .includes(query),
+        );
+        if (nameMatches) return category;
+        if (matchingSubs.length > 0) {
+          return { ...category, subcategories: matchingSubs };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  })();
+
+  const createInlineCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = String(name || "").trim();
+      if (!trimmed) throw new Error("Please type a category name");
+      const result = await categoryService.create({
+        name: trimmed,
+        type: "expense",
+        is_active: 1,
+      } as any);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: async (result) => {
+      const created: any = (result as any)?.data?.data || (result as any)?.data || {};
+      if (created?.id) {
+        const newCat = { ...created, subcategories: [] };
+        setAvailableCategories((prev) => {
+          const exists = prev.some((c) => c.id === created.id);
+          return exists ? prev : [...prev, newCat];
+        });
+        const exists = selectedCategories.some(
+          (cat) =>
+            cat.categoryId === Number(created.id) && cat.subcategoryId === null,
+        );
+        if (!exists) {
+          setSelectedCategories((prev) => [
+            ...prev,
+            {
+              categoryId: Number(created.id),
+              categoryName: created.name,
+              subcategoryId: null,
+              subcategoryName: "",
+              displayName: created.name,
+            },
+          ]);
+        }
+      }
+      setCategorySearchQuery("");
+      setShowCategoryPicker(false);
+      toast.success(`Category "${created?.name || "new"}" created`);
+    },
+    onError: (err: Error) =>
+      toast.error(err?.message || "Could not create category"),
+  });
 
   const handleAddCategory = (category: any, subcategory?: any) => {
     const newCategory: SelectedCategory = {
@@ -849,42 +921,160 @@ export default function BudgetsScreen() {
                 ]}
                 elevation={2}
               >
-                <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-                  {availableCategories.map((category) => (
-                    <View key={category.id}>
+                <View
+                  style={[
+                    styles.categorySearchWrap,
+                    { borderBottomColor: colors.outline },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="magnify"
+                    size={18}
+                    color={colors.onSurfaceVariant}
+                  />
+                  <TextInput
+                    value={categorySearchQuery}
+                    onChangeText={setCategorySearchQuery}
+                    placeholder="Search category or subcategory..."
+                    placeholderTextColor={colors.onSurfaceVariant}
+                    style={[
+                      styles.categorySearchInput,
+                      { color: colors.onSurface },
+                    ]}
+                    autoCorrect={false}
+                    mode="flat"
+                    underlineColor="transparent"
+                    activeUnderlineColor="transparent"
+                    dense
+                  />
+                </View>
+                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                  {filteredAvailableCategories.length === 0 ? (
+                    <View style={styles.categoryEmptyState}>
+                      <Text
+                        style={{
+                          color: colors.onSurfaceVariant,
+                          textAlign: "center",
+                          fontSize: 13,
+                        }}
+                      >
+                        {categorySearchQuery.trim()
+                          ? `No category matches "${categorySearchQuery.trim()}"`
+                          : "No expense categories yet"}
+                      </Text>
+                      {categorySearchQuery.trim() ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryCreateButton,
+                            { borderColor: colors.primary },
+                          ]}
+                          disabled={createInlineCategoryMutation.isPending}
+                          onPress={() =>
+                            createInlineCategoryMutation.mutate(
+                              categorySearchQuery,
+                            )
+                          }
+                        >
+                          <MaterialCommunityIcons
+                            name="plus"
+                            size={16}
+                            color={colors.primary}
+                          />
+                          <Text
+                            style={{
+                              color: colors.primary,
+                              fontWeight: "600",
+                              marginLeft: 4,
+                              fontSize: 13,
+                            }}
+                          >
+                            {createInlineCategoryMutation.isPending
+                              ? "Creating…"
+                              : `Create "${categorySearchQuery.trim()}"`}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryCreateButton,
+                            { borderColor: colors.primary },
+                          ]}
+                          onPress={() => {
+                            setShowCategoryPicker(false);
+                            router.push("/categories");
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="plus"
+                            size={16}
+                            color={colors.primary}
+                          />
+                          <Text
+                            style={{
+                              color: colors.primary,
+                              fontWeight: "600",
+                              marginLeft: 4,
+                              fontSize: 13,
+                            }}
+                          >
+                            Create your first category
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
-                        style={styles.categoryOption}
-                        onPress={() => handleAddCategory(category)}
+                        onPress={() => {
+                          setShowCategoryPicker(false);
+                          router.push("/categories");
+                        }}
                       >
                         <Text
-                          style={{ color: colors.onSurface, fontWeight: "500" }}
+                          style={{
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
+                            textDecorationLine: "underline",
+                          }}
                         >
-                          {category.name}
+                          Manage categories →
                         </Text>
                       </TouchableOpacity>
-                      {category.subcategories &&
-                        category.subcategories.length > 0 && (
-                          <View style={styles.subcategoriesList}>
-                            {category.subcategories.map((sub: any) => (
-                              <TouchableOpacity
-                                key={sub.id}
-                                style={styles.subcategoryOption}
-                                onPress={() => handleAddCategory(category, sub)}
-                              >
-                                <Text
-                                  style={{
-                                    color: colors.onSurfaceVariant,
-                                    fontSize: 13,
-                                  }}
-                                >
-                                  › {sub.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        )}
                     </View>
-                  ))}
+                  ) : (
+                    filteredAvailableCategories.map((category: any) => (
+                      <View key={category.id}>
+                        <TouchableOpacity
+                          style={styles.categoryOption}
+                          onPress={() => handleAddCategory(category)}
+                        >
+                          <Text
+                            style={{ color: colors.onSurface, fontWeight: "500" }}
+                          >
+                            {category.name}
+                          </Text>
+                        </TouchableOpacity>
+                        {category.subcategories &&
+                          category.subcategories.length > 0 && (
+                            <View style={styles.subcategoriesList}>
+                              {category.subcategories.map((sub: any) => (
+                                <TouchableOpacity
+                                  key={sub.id}
+                                  style={styles.subcategoryOption}
+                                  onPress={() => handleAddCategory(category, sub)}
+                                >
+                                  <Text
+                                    style={{
+                                      color: colors.onSurfaceVariant,
+                                      fontSize: 13,
+                                    }}
+                                  >
+                                    › {sub.name}
+                                  </Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                      </View>
+                    ))
+                  )}
                 </ScrollView>
               </Surface>
             )}
@@ -1275,7 +1465,37 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 4,
     padding: 8,
-    maxHeight: 220,
+    maxHeight: 280,
+  },
+  categorySearchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+    marginBottom: 4,
+  },
+  categorySearchInput: {
+    flex: 1,
+    backgroundColor: "transparent",
+    fontSize: 14,
+    height: 38,
+    paddingHorizontal: 0,
+  },
+  categoryEmptyState: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 10,
+    alignItems: "center",
+  },
+  categoryCreateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   categoryOption: {
     padding: 10,

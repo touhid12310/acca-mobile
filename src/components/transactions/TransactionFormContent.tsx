@@ -29,7 +29,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
+import { useToast } from '../../contexts/NotificationContext';
 import { WebView } from 'react-native-webview';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -161,7 +163,11 @@ export default function TransactionFormContent({
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [showAccountPicker, setShowAccountPicker] = useState(false);
+  const [merchantSuggestions, setMerchantSuggestions] = useState<string[]>([]);
+  const [isLoadingMerchants, setIsLoadingMerchants] = useState(false);
+  const [showMerchantSuggestions, setShowMerchantSuggestions] = useState(false);
   const [showToAccountPicker, setShowToAccountPicker] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isProcessingReceipt, setIsProcessingReceipt] = useState(false);
@@ -172,6 +178,9 @@ export default function TransactionFormContent({
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<CameraType>('back');
+
+  const queryClient = useQueryClient();
+  const toast = useToast();
 
   // Fetch categories based on transaction type
   // Pass the actual type to the API (asset, liability, income, expense)
@@ -188,6 +197,39 @@ export default function TransactionFormContent({
       }
       return [];
     },
+  });
+
+  // Inline-create a category from the picker search
+  const createInlineCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = String(name || '').trim();
+      if (!trimmed) throw new Error('Please type a category name');
+      const result = await categoryService.create({
+        name: trimmed,
+        type: formData.type as any,
+        is_active: 1,
+      } as any);
+      if (!result.success) {
+        throw new Error((result as any)?.error || 'Could not create category');
+      }
+      return result;
+    },
+    onSuccess: async (result) => {
+      const created: any =
+        (result as any)?.data?.data || (result as any)?.data || {};
+      await queryClient.invalidateQueries({
+        queryKey: ['categories', formData.type],
+      });
+      if (created?.id) {
+        updateField('category_id', created.id);
+        updateField('subcategory_id', null);
+      }
+      setCategorySearchQuery('');
+      setShowCategoryPicker(false);
+      toast.success(`Category "${created?.name || 'new'}" created`);
+    },
+    onError: (err: Error) =>
+      toast.error(err?.message || 'Could not create category'),
   });
 
   // Fetch accounts
@@ -207,6 +249,30 @@ export default function TransactionFormContent({
   });
 
   const categories: Category[] = categoriesData || [];
+  const filteredCategories: Category[] = (() => {
+    const query = categorySearchQuery.trim().toLowerCase();
+    if (!query) return categories;
+    return categories
+      .map((category: any) => {
+        const nameMatches = String(category?.name || '')
+          .toLowerCase()
+          .includes(query);
+        const subs = Array.isArray(category?.subcategories)
+          ? category.subcategories
+          : [];
+        const matchingSubs = subs.filter((sub: any) =>
+          String(sub?.name || '')
+            .toLowerCase()
+            .includes(query),
+        );
+        if (nameMatches) return category;
+        if (matchingSubs.length > 0) {
+          return { ...category, subcategories: matchingSubs };
+        }
+        return null;
+      })
+      .filter(Boolean) as Category[];
+  })();
   const accounts: Account[] = accountsData || [];
 
   // Initialize form with initial data - only once when data first becomes available
@@ -442,6 +508,42 @@ export default function TransactionFormContent({
       Alert.alert('Error', 'Failed to capture photo. Please try again.');
     }
   };
+
+  // Fetch merchant suggestions while user types
+  useEffect(() => {
+    if (formData.type === 'transfer') return;
+    if (!showMerchantSuggestions) return;
+
+    const query = String(formData.merchant_name || '').trim();
+    if (!query) {
+      setMerchantSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setIsLoadingMerchants(true);
+        const response = await transactionService.searchMerchants(query);
+        const data: any = response?.data || {};
+        const list: string[] =
+          (Array.isArray(data?.merchants) && data.merchants) ||
+          (Array.isArray(data?.data?.merchants) && data.data.merchants) ||
+          (Array.isArray(data) && data) ||
+          [];
+        if (!cancelled) setMerchantSuggestions(list);
+      } catch {
+        if (!cancelled) setMerchantSuggestions([]);
+      } finally {
+        if (!cancelled) setIsLoadingMerchants(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [formData.merchant_name, showMerchantSuggestions, formData.type]);
 
   useEffect(() => {
     if (autoScanTriggeredRef.current) return;
@@ -924,12 +1026,68 @@ export default function TransactionFormContent({
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
               {formData.type === 'transfer' ? 'Description' : 'Merchant / Payee'}
             </Text>
-            <TextInput
-              mode="outlined"
-              value={formData.merchant_name}
-              onChangeText={(text) => updateField('merchant_name', text)}
-              placeholder={formData.type === 'transfer' ? 'Transfer description' : 'e.g., Grocery Store'}
-            />
+            <View style={{ position: 'relative' }}>
+              <TextInput
+                mode="outlined"
+                value={formData.merchant_name}
+                onChangeText={(text) => {
+                  updateField('merchant_name', text);
+                  if (formData.type !== 'transfer') {
+                    setShowMerchantSuggestions(true);
+                  }
+                }}
+                onFocus={() => {
+                  if (formData.type !== 'transfer') {
+                    setShowMerchantSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  setTimeout(() => setShowMerchantSuggestions(false), 150);
+                }}
+                placeholder={formData.type === 'transfer' ? 'Transfer description' : 'e.g., Grocery Store'}
+                autoComplete="off"
+              />
+              {showMerchantSuggestions &&
+                formData.type !== 'transfer' &&
+                String(formData.merchant_name || '').trim().length > 0 && (
+                  <Surface
+                    style={[
+                      styles.merchantSuggestions,
+                      { backgroundColor: colors.surface, borderColor: colors.outline },
+                    ]}
+                    elevation={3}
+                  >
+                    {isLoadingMerchants ? (
+                      <View style={styles.merchantSuggestion}>
+                        <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
+                          Searching…
+                        </Text>
+                      </View>
+                    ) : merchantSuggestions.length > 0 ? (
+                      merchantSuggestions.map((name) => (
+                        <TouchableOpacity
+                          key={name}
+                          style={styles.merchantSuggestion}
+                          onPress={() => {
+                            updateField('merchant_name', name);
+                            setShowMerchantSuggestions(false);
+                          }}
+                        >
+                          <Text style={{ color: colors.onSurface, fontSize: 14 }}>
+                            {name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))
+                    ) : (
+                      <View style={styles.merchantSuggestion}>
+                        <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
+                          No matches found
+                        </Text>
+                      </View>
+                    )}
+                  </Surface>
+                )}
+            </View>
           </View>
 
           {/* Category (not for transfers) */}
@@ -1137,66 +1295,171 @@ export default function TransactionFormContent({
       <Portal>
         <Modal
           visible={showCategoryPicker}
-          onDismiss={() => setShowCategoryPicker(false)}
+          onDismiss={() => {
+            setShowCategoryPicker(false);
+            setCategorySearchQuery('');
+          }}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
         >
-          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 16 }}>
+          <Text variant="titleLarge" style={{ color: colors.onSurface, marginBottom: 12 }}>
             Select Category
           </Text>
+          <TextInput
+            value={categorySearchQuery}
+            onChangeText={setCategorySearchQuery}
+            placeholder="Search category or subcategory..."
+            mode="outlined"
+            dense
+            left={<TextInput.Icon icon="magnify" />}
+            style={{ marginBottom: 8 }}
+          />
           <ScrollView style={styles.pickerList}>
-            {categories.map((category) => (
-              <React.Fragment key={category.id}>
-                <List.Item
-                  title={category.name}
-                  left={() => (
-                    <View
-                      style={[
-                        styles.categoryIcon,
-                        { backgroundColor: `${category.color || colors.primary}20` },
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name={(category.icon as any) || 'tag'}
-                        size={20}
-                        color={category.color || colors.primary}
-                      />
-                    </View>
-                  )}
-                  right={() =>
-                    formData.category_id === category.id && !formData.subcategory_id ? (
-                      <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
-                    ) : null
-                  }
-                  onPress={() => {
-                    updateField('category_id', category.id);
-                    updateField('subcategory_id', null);
-                    if (!category.subcategories?.length) {
-                      setShowCategoryPicker(false);
+            {filteredCategories.length === 0 ? (
+              <View style={{ padding: 16, gap: 10, alignItems: 'center' }}>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13, textAlign: 'center' }}>
+                  {categorySearchQuery.trim()
+                    ? `No category matches "${categorySearchQuery.trim()}"`
+                    : `No ${formData.type} categories yet`}
+                </Text>
+                {categorySearchQuery.trim() ? (
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                    }}
+                    disabled={createInlineCategoryMutation.isPending}
+                    onPress={() =>
+                      createInlineCategoryMutation.mutate(categorySearchQuery)
                     }
+                  >
+                    <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontWeight: '600',
+                        marginLeft: 4,
+                        fontSize: 13,
+                      }}
+                    >
+                      {createInlineCategoryMutation.isPending
+                        ? 'Creating…'
+                        : `Create "${categorySearchQuery.trim()}"`}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingVertical: 8,
+                      paddingHorizontal: 14,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.primary,
+                    }}
+                    onPress={() => {
+                      setShowCategoryPicker(false);
+                      router.push('/categories');
+                    }}
+                  >
+                    <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontWeight: '600',
+                        marginLeft: 4,
+                        fontSize: 13,
+                      }}
+                    >
+                      Create your first category
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowCategoryPicker(false);
+                    router.push('/categories');
                   }}
-                />
-                {category.subcategories?.map((sub) => (
+                >
+                  <Text
+                    style={{
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                      textDecorationLine: 'underline',
+                    }}
+                  >
+                    Manage categories →
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              filteredCategories.map((category) => (
+                <React.Fragment key={category.id}>
                   <List.Item
-                    key={sub.id}
-                    title={sub.name}
-                    style={{ paddingLeft: 32 }}
+                    title={category.name}
+                    left={() => (
+                      <View
+                        style={[
+                          styles.categoryIcon,
+                          { backgroundColor: `${category.color || colors.primary}20` },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name={(category.icon as any) || 'tag'}
+                          size={20}
+                          color={category.color || colors.primary}
+                        />
+                      </View>
+                    )}
                     right={() =>
-                      formData.subcategory_id === sub.id ? (
+                      formData.category_id === category.id && !formData.subcategory_id ? (
                         <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                       ) : null
                     }
                     onPress={() => {
                       updateField('category_id', category.id);
-                      updateField('subcategory_id', sub.id);
-                      setShowCategoryPicker(false);
+                      updateField('subcategory_id', null);
+                      if (!category.subcategories?.length) {
+                        setShowCategoryPicker(false);
+                      }
                     }}
                   />
-                ))}
-                <Divider />
-              </React.Fragment>
-            ))}
+                  {category.subcategories?.map((sub) => (
+                    <List.Item
+                      key={sub.id}
+                      title={sub.name}
+                      style={{ paddingLeft: 32 }}
+                      right={() =>
+                        formData.subcategory_id === sub.id ? (
+                          <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
+                        ) : null
+                      }
+                      onPress={() => {
+                        updateField('category_id', category.id);
+                        updateField('subcategory_id', sub.id);
+                        setShowCategoryPicker(false);
+                      }}
+                    />
+                  ))}
+                  <Divider />
+                </React.Fragment>
+              ))
+            )}
           </ScrollView>
-          <Button mode="text" onPress={() => setShowCategoryPicker(false)}>
+          <Button
+            mode="text"
+            onPress={() => {
+              setShowCategoryPicker(false);
+              setCategorySearchQuery('');
+            }}
+          >
             Cancel
           </Button>
         </Modal>
@@ -1293,6 +1556,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     borderRadius: 16,
+  },
+  merchantSuggestions: {
+    position: 'absolute',
+    top: 'auto' as any,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    transform: [{ translateY: 0 }],
+    marginTop: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 4,
+    maxHeight: 220,
+    zIndex: 10,
+  },
+  merchantSuggestion: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
   keyboardView: {
     flex: 1,

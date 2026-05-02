@@ -85,6 +85,8 @@ export default function SchedulesScreen() {
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [categorySearchQuery, setCategorySearchQuery] = useState("");
   const [formData, setFormData] = useState({
     vendor: "",
     amount: "",
@@ -93,7 +95,9 @@ export default function SchedulesScreen() {
     next_due_date: new Date().toISOString().split("T")[0],
     notes: "",
     category_id: "",
+    subcategory_id: "",
   });
+  const isEditing = editingId !== null;
 
   const {
     data: schedules,
@@ -143,10 +147,34 @@ export default function SchedulesScreen() {
   });
 
   const viewCategories = Array.isArray(categories) ? categories : [];
-  const filteredCategories = useMemo(
+  const typedCategories = useMemo(
     () => viewCategories.filter((c: any) => c?.type === formData.type),
     [viewCategories, formData.type],
   );
+  const filteredCategories = useMemo(() => {
+    const query = categorySearchQuery.trim().toLowerCase();
+    if (!query) return typedCategories;
+    return typedCategories
+      .map((category: any) => {
+        const nameMatches = String(category?.name || "")
+          .toLowerCase()
+          .includes(query);
+        const subs = Array.isArray(category?.subcategories)
+          ? category.subcategories
+          : [];
+        const matchingSubs = subs.filter((sub: any) =>
+          String(sub?.name || "")
+            .toLowerCase()
+            .includes(query),
+        );
+        if (nameMatches) return category;
+        if (matchingSubs.length > 0) {
+          return { ...category, subcategories: matchingSubs };
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }, [typedCategories, categorySearchQuery]);
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -160,8 +188,11 @@ export default function SchedulesScreen() {
           data.next_due_date || new Date().toISOString().split("T")[0],
         notes: data.notes,
         category_id: data.category_id ? parseInt(data.category_id) : undefined,
+        subcategory_id: data.subcategory_id
+          ? parseInt(data.subcategory_id)
+          : undefined,
         status: "scheduled",
-      });
+      } as any);
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
@@ -180,6 +211,40 @@ export default function SchedulesScreen() {
     onError: (error: Error) => toast.error(error.message || "Could not save schedule"),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: typeof formData;
+    }) => {
+      const result = await scheduleService.update(id, {
+        vendor: data.vendor,
+        contact_name: data.vendor,
+        amount: parseFloat(data.amount) || 0,
+        type: data.type,
+        frequency: data.frequency,
+        next_due_date:
+          data.next_due_date || new Date().toISOString().split("T")[0],
+        notes: data.notes,
+        category_id: data.category_id ? parseInt(data.category_id) : null,
+        subcategory_id: data.subcategory_id
+          ? parseInt(data.subcategory_id)
+          : null,
+      } as any);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      closeModal();
+      toast.success("Schedule updated");
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not update schedule"),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const result = await scheduleService.delete(id);
@@ -193,7 +258,39 @@ export default function SchedulesScreen() {
     onError: (error: Error) => toast.error(error.message || "Could not delete schedule"),
   });
 
+  // Inline-create a category from the picker search
+  const createInlineCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = String(name || "").trim();
+      if (!trimmed) throw new Error("Please type a category name");
+      const result = await categoryService.create({
+        name: trimmed,
+        type: formData.type,
+        is_active: 1,
+      } as any);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: async (result) => {
+      const created: any = (result as any)?.data?.data || (result as any)?.data || {};
+      await queryClient.invalidateQueries({ queryKey: ["categories", "all"] });
+      if (created?.id) {
+        setFormData((prev) => ({
+          ...prev,
+          category_id: String(created.id),
+          subcategory_id: "",
+        }));
+      }
+      setCategorySearchQuery("");
+      setShowCategoryPicker(false);
+      toast.success(`Category "${created?.name || "new"}" created`);
+    },
+    onError: (err: Error) =>
+      toast.error(err?.message || "Could not create category"),
+  });
+
   const openModal = () => {
+    setEditingId(null);
     setFormData({
       vendor: "",
       amount: "",
@@ -202,6 +299,7 @@ export default function SchedulesScreen() {
       next_due_date: new Date().toISOString().split("T")[0],
       notes: "",
       category_id: "",
+      subcategory_id: "",
     });
     setShowCategoryPicker(false);
     setModalVisible(true);
@@ -210,6 +308,8 @@ export default function SchedulesScreen() {
   const closeModal = () => {
     setModalVisible(false);
     setShowCategoryPicker(false);
+    setEditingId(null);
+    setCategorySearchQuery("");
   };
 
   const handleSave = () => {
@@ -221,12 +321,52 @@ export default function SchedulesScreen() {
       toast.error("Please enter a valid amount");
       return;
     }
-    createMutation.mutate(formData);
+    if (isEditing && editingId !== null) {
+      updateMutation.mutate({ id: editingId, data: formData });
+    } else {
+      createMutation.mutate(formData);
+    }
   };
 
   const showScheduleActions = (schedule: Schedule) => {
     setSelectedSchedule(schedule);
     setShowActionSheet(true);
+  };
+
+  const toDateInputValue = (value?: string) => {
+    if (!value) return new Date().toISOString().split("T")[0];
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return new Date().toISOString().split("T")[0];
+    return date.toISOString().split("T")[0];
+  };
+
+  const handleEditPress = () => {
+    if (!selectedSchedule) return;
+    const schedule = selectedSchedule;
+    setShowActionSheet(false);
+    setEditingId(schedule.id);
+    setFormData({
+      vendor: schedule.contact_name || schedule.vendor || "",
+      amount:
+        schedule.amount !== undefined && schedule.amount !== null
+          ? String(schedule.amount)
+          : "",
+      type: (String(schedule.type || "expense").toLowerCase() === "income"
+        ? "income"
+        : "expense") as "income" | "expense",
+      frequency: schedule.frequency || "Monthly",
+      next_due_date: toDateInputValue(schedule.next_due_date),
+      notes: schedule.notes || "",
+      category_id: schedule.category_id ? String(schedule.category_id) : "",
+      subcategory_id: schedule.subcategory_id
+        ? String(schedule.subcategory_id)
+        : "",
+    });
+    setShowCategoryPicker(false);
+    setTimeout(() => setModalVisible(true), 200);
   };
 
   const handleDeletePress = () => {
@@ -276,12 +416,21 @@ export default function SchedulesScreen() {
     }
   };
 
-  const getCategoryName = (categoryId?: number | string) => {
+  const getCategoryName = (
+    categoryId?: number | string,
+    subcategoryId?: number | string,
+  ) => {
     if (!categoryId) return null;
-    const category = viewCategories.find(
+    const category: any = viewCategories.find(
       (c: any) => c.id === Number(categoryId),
     );
-    return category?.name || null;
+    if (!category) return null;
+    if (!subcategoryId) return category.name;
+    const sub = (Array.isArray(category.subcategories)
+      ? category.subcategories
+      : []
+    ).find((s: any) => Number(s.id) === Number(subcategoryId));
+    return sub ? `${category.name} › ${sub.name}` : category.name;
   };
 
   const getSelectedCategoryName = () => {
@@ -289,7 +438,12 @@ export default function SchedulesScreen() {
     const cat = filteredCategories.find(
       (c: any) => String(c.id) === String(formData.category_id),
     );
-    return cat?.name || "";
+    if (!cat) return "";
+    if (!formData.subcategory_id) return cat.name;
+    const sub = (Array.isArray(cat.subcategories) ? cat.subcategories : []).find(
+      (s: any) => String(s.id) === String(formData.subcategory_id),
+    );
+    return sub ? `${cat.name} › ${sub.name}` : cat.name;
   };
 
   const formatDisplayDate = (value?: string) => {
@@ -408,7 +562,10 @@ export default function SchedulesScreen() {
             const daysUntil = getDaysUntilDue(dueDate);
             const statusColor = getDueStatusColor(daysUntil);
             const scheduleName = schedule.contact_name || schedule.vendor || "Unnamed Schedule";
-            const categoryName = getCategoryName(schedule.category_id);
+            const categoryName = getCategoryName(
+              schedule.category_id,
+              schedule.subcategory_id,
+            );
             const status = schedule.status || "scheduled";
             const scheduleType = String(schedule.type || "expense").toLowerCase();
             const scheduleTypeColor =
@@ -640,7 +797,7 @@ export default function SchedulesScreen() {
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 16 }}
             >
-              Repeating transaction
+              {isEditing ? "Edit schedule" : "Repeating transaction"}
             </Text>
 
             <TextInput
@@ -687,7 +844,12 @@ export default function SchedulesScreen() {
                     },
                   ]}
                   onPress={() =>
-                    setFormData({ ...formData, type, category_id: "" })
+                    setFormData({
+                      ...formData,
+                      type,
+                      category_id: "",
+                      subcategory_id: "",
+                    })
                   }
                 >
                   <Text
@@ -747,7 +909,7 @@ export default function SchedulesScreen() {
               ))}
             </View>
 
-            {/* Category Selection */}
+            {/* Category & Subcategory Selection */}
             <Text
               variant="bodyMedium"
               style={{
@@ -756,7 +918,7 @@ export default function SchedulesScreen() {
                 marginBottom: 8,
               }}
             >
-              Category
+              Category &amp; Subcategory
             </Text>
             <TouchableOpacity
               style={[
@@ -773,7 +935,9 @@ export default function SchedulesScreen() {
                   color: formData.category_id
                     ? colors.onSurface
                     : colors.onSurfaceVariant,
+                  flex: 1,
                 }}
+                numberOfLines={1}
               >
                 {formData.category_id
                   ? getSelectedCategoryName()
@@ -793,7 +957,34 @@ export default function SchedulesScreen() {
                 ]}
                 elevation={2}
               >
-                <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                <View
+                  style={[
+                    styles.categorySearchWrap,
+                    { borderBottomColor: colors.outline },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="magnify"
+                    size={18}
+                    color={colors.onSurfaceVariant}
+                  />
+                  <TextInput
+                    value={categorySearchQuery}
+                    onChangeText={setCategorySearchQuery}
+                    placeholder="Search category or subcategory..."
+                    placeholderTextColor={colors.onSurfaceVariant}
+                    style={[
+                      styles.categorySearchInput,
+                      { color: colors.onSurface },
+                    ]}
+                    autoCorrect={false}
+                    mode="flat"
+                    underlineColor="transparent"
+                    activeUnderlineColor="transparent"
+                    dense
+                  />
+                </View>
+                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
                   <TouchableOpacity
                     style={[
                       styles.dropdownItem,
@@ -802,52 +993,193 @@ export default function SchedulesScreen() {
                       },
                     ]}
                     onPress={() => {
-                      setFormData({ ...formData, category_id: "" });
+                      setFormData({
+                        ...formData,
+                        category_id: "",
+                        subcategory_id: "",
+                      });
                       setShowCategoryPicker(false);
                     }}
                   >
                     <Text style={{ color: colors.onSurfaceVariant }}>None</Text>
                   </TouchableOpacity>
                   {filteredCategories.length === 0 ? (
-                    <Text
-                      style={{
-                        padding: 12,
-                        color: colors.onSurfaceVariant,
-                        textAlign: "center",
-                      }}
-                    >
-                      No {formData.type} categories available
-                    </Text>
-                  ) : (
-                    filteredCategories.map((cat: any) => (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.dropdownItem,
-                          String(formData.category_id) === String(cat.id) && {
-                            backgroundColor: `${colors.primary}15`,
-                          },
-                        ]}
-                        onPress={() => {
-                          setFormData({
-                            ...formData,
-                            category_id: String(cat.id),
-                          });
-                          setShowCategoryPicker(false);
+                    <View style={styles.categoryEmptyState}>
+                      <Text
+                        style={{
+                          color: colors.onSurfaceVariant,
+                          textAlign: "center",
+                          fontSize: 13,
                         }}
                       >
-                        <Text style={{ color: colors.onSurface }}>
-                          {cat.name}
-                        </Text>
-                        {String(formData.category_id) === String(cat.id) && (
+                        {categorySearchQuery.trim()
+                          ? `No category matches "${categorySearchQuery.trim()}"`
+                          : `No ${formData.type} categories yet`}
+                      </Text>
+                      {categorySearchQuery.trim() ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryCreateButton,
+                            { borderColor: colors.primary },
+                          ]}
+                          disabled={createInlineCategoryMutation.isPending}
+                          onPress={() =>
+                            createInlineCategoryMutation.mutate(
+                              categorySearchQuery,
+                            )
+                          }
+                        >
                           <MaterialCommunityIcons
-                            name="check"
-                            size={18}
+                            name="plus"
+                            size={16}
                             color={colors.primary}
                           />
-                        )}
+                          <Text
+                            style={{
+                              color: colors.primary,
+                              fontWeight: "600",
+                              marginLeft: 4,
+                              fontSize: 13,
+                            }}
+                          >
+                            {createInlineCategoryMutation.isPending
+                              ? "Creating…"
+                              : `Create "${categorySearchQuery.trim()}"`}
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryCreateButton,
+                            { borderColor: colors.primary },
+                          ]}
+                          onPress={() => {
+                            setShowCategoryPicker(false);
+                            router.push("/categories");
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="plus"
+                            size={16}
+                            color={colors.primary}
+                          />
+                          <Text
+                            style={{
+                              color: colors.primary,
+                              fontWeight: "600",
+                              marginLeft: 4,
+                              fontSize: 13,
+                            }}
+                          >
+                            Create your first category
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowCategoryPicker(false);
+                          router.push("/categories");
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.onSurfaceVariant,
+                            fontSize: 12,
+                            textDecorationLine: "underline",
+                          }}
+                        >
+                          Manage categories →
+                        </Text>
                       </TouchableOpacity>
-                    ))
+                    </View>
+                  ) : (
+                    filteredCategories.map((cat: any) => {
+                      const subs: any[] = Array.isArray(cat.subcategories)
+                        ? cat.subcategories
+                        : [];
+                      const catSelected =
+                        String(formData.category_id) === String(cat.id) &&
+                        !formData.subcategory_id;
+                      return (
+                        <View key={cat.id}>
+                          <TouchableOpacity
+                            style={[
+                              styles.dropdownItem,
+                              catSelected && {
+                                backgroundColor: `${colors.primary}15`,
+                              },
+                            ]}
+                            onPress={() => {
+                              setFormData({
+                                ...formData,
+                                category_id: String(cat.id),
+                                subcategory_id: "",
+                              });
+                              setShowCategoryPicker(false);
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.onSurface,
+                                fontWeight: "600",
+                              }}
+                            >
+                              {cat.name}
+                            </Text>
+                            {catSelected && (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={18}
+                                color={colors.primary}
+                              />
+                            )}
+                          </TouchableOpacity>
+                          {subs.map((sub: any) => {
+                            const subSelected =
+                              String(formData.category_id) ===
+                                String(cat.id) &&
+                              String(formData.subcategory_id) ===
+                                String(sub.id);
+                            return (
+                              <TouchableOpacity
+                                key={sub.id}
+                                style={[
+                                  styles.dropdownItem,
+                                  styles.subcategoryDropdownItem,
+                                  subSelected && {
+                                    backgroundColor: `${colors.primary}15`,
+                                  },
+                                ]}
+                                onPress={() => {
+                                  setFormData({
+                                    ...formData,
+                                    category_id: String(cat.id),
+                                    subcategory_id: String(sub.id),
+                                  });
+                                  setShowCategoryPicker(false);
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.onSurfaceVariant,
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  ›  {sub.name}
+                                </Text>
+                                {subSelected && (
+                                  <MaterialCommunityIcons
+                                    name="check"
+                                    size={16}
+                                    color={colors.primary}
+                                  />
+                                )}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      );
+                    })
                   )}
                 </ScrollView>
               </Surface>
@@ -880,9 +1212,10 @@ export default function SchedulesScreen() {
               <Button
                 mode="contained"
                 onPress={handleSave}
-                loading={createMutation.isPending}
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                Save Repeating
+                {isEditing ? "Save changes" : "Save Repeating"}
               </Button>
             </View>
           </ScrollView>
@@ -940,6 +1273,31 @@ export default function SchedulesScreen() {
               </View>
 
               <Divider style={{ marginVertical: 16 }} />
+
+              <TouchableOpacity
+                style={styles.actionSheetButton}
+                onPress={handleEditPress}
+              >
+                <MaterialCommunityIcons
+                  name="pencil"
+                  size={24}
+                  color={colors.primary}
+                />
+                <Text
+                  variant="bodyLarge"
+                  style={[
+                    styles.actionSheetButtonText,
+                    { color: colors.onSurface },
+                  ]}
+                >
+                  Edit Repeating transaction
+                </Text>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={24}
+                  color={colors.onSurfaceVariant}
+                />
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.actionSheetButton}
@@ -1159,6 +1517,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 12,
     borderRadius: 6,
+  },
+  subcategoryDropdownItem: {
+    paddingLeft: 28,
+    paddingVertical: 9,
+  },
+  categorySearchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  categorySearchInput: {
+    flex: 1,
+    backgroundColor: "transparent",
+    fontSize: 14,
+    height: 38,
+    paddingHorizontal: 0,
+  },
+  categoryEmptyState: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 10,
+    alignItems: "center",
+  },
+  categoryCreateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
   },
   modalButtons: {
     flexDirection: "row",
