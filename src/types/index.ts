@@ -4,10 +4,15 @@ export interface User {
   name: string;
   email: string;
   mobile?: string;
+  timezone?: string;
   avatar?: string;
   profile_picture?: string;
   profile_picture_url?: string;
   two_factor_enabled?: boolean;
+  currency?: string;
+  onboarding_completed_at?: string | null;
+  profile_type?: string | null;
+  financial_month_start_day?: number | null;
   created_at?: string;
   updated_at?: string;
   settings?: UserSettings;
@@ -23,6 +28,7 @@ export interface NotificationPreferences {
 
 export interface UserSettings {
   currency?: string;
+  timezone?: string;
   theme?: 'light' | 'dark' | 'system';
   notifications?: boolean;
   notification_preferences?: NotificationPreferences;
@@ -145,6 +151,8 @@ export interface Account {
   account_name: string;
   account_type: AccountType;
   balance: number;
+  current_balance?: number | string;
+  type?: string;
   currency?: string;
   is_default?: boolean;
   icon?: string;

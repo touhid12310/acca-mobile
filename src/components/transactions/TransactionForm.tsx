@@ -144,6 +144,15 @@ export default function TransactionForm({
   const categories: Category[] = categoriesData || [];
   const accounts: Account[] = accountsData || [];
 
+  useEffect(() => {
+    if (initialData || formData.account_id || accounts.length === 0) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      account_id: accounts[0].id,
+    }));
+  }, [accounts, formData.account_id, initialData]);
+
   // Initialize form with initial data
   useEffect(() => {
     if (initialData) {

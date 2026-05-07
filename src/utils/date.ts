@@ -1,6 +1,7 @@
 /**
  * Date utilities for the Accounte app
  */
+import { getActiveTimeZone } from './timezone';
 
 /**
  * Converts a Date object to local date input value (YYYY-MM-DD)
@@ -28,7 +29,8 @@ export const formatDate = (
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  }
+  },
+  timeZone?: string
 ): string => {
   try {
     const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateString);
@@ -39,7 +41,10 @@ export const formatDate = (
           Number(dateOnlyMatch[3])
         )
       : new Date(dateString);
-    return date.toLocaleDateString(undefined, options);
+    return date.toLocaleDateString(undefined, {
+      ...options,
+      ...(!dateOnlyMatch ? { timeZone: timeZone || getActiveTimeZone() } : {}),
+    });
   } catch {
     return dateString;
   }

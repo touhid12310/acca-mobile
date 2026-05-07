@@ -31,6 +31,9 @@ import {
   CreditCard,
   Edit3,
   Plus,
+  Check,
+  Clock,
+  Mail,
   Receipt,
   Search,
   SlidersHorizontal,
@@ -60,6 +63,7 @@ import {
 import { BrandStrip } from "../../src/components";
 import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
+import settingsService from "../../src/services/settingsService";
 import { formatDate } from "../../src/utils/date";
 import {
   Transaction,
@@ -122,6 +126,11 @@ export default function TransactionsScreen() {
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(new Set());
+  // Status view: 'approved' = ledger (default), 'pending_review' = drafts
+  // (email + schedule), 'rejected' = previously dismissed drafts.
+  const [statusView, setStatusView] = useState<"approved" | "pending_review" | "rejected">("approved");
+  const [sourceView, setSourceView] = useState<"all" | "email" | "schedule">("all");
+  const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
   const pendingDeleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -333,10 +342,12 @@ export default function TransactionsScreen() {
       activeSearch,
       periodQueryRange.startDate,
       periodQueryRange.endDate,
+      statusView,
+      sourceView,
     ],
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
-      const result = await transactionService.getAll({
+      const filters: Record<string, unknown> = {
         page: pageParam as number,
         per_page: PAGE_SIZE,
         type: filterType !== "all" ? filterType : undefined,
@@ -345,7 +356,12 @@ export default function TransactionsScreen() {
         search: activeSearch || undefined,
         sort_by: "id",
         sort_order: "desc",
-      });
+        status: statusView,
+      };
+      if (statusView === "pending_review" && sourceView !== "all") {
+        filters.source = sourceView;
+      }
+      const result = await transactionService.getAll(filters as any);
       if (!result.success || !result.data) {
         throw new Error(result.error || "Failed to load transactions");
       }
@@ -407,6 +423,45 @@ export default function TransactionsScreen() {
       end: apiDate(period.end),
     };
   }, [period]);
+
+  // Pending-review count for the status pill badge
+  const { data: pendingCount = 0 } = useQuery({
+    queryKey: ["transactions", "pending_review", "count"],
+    queryFn: async () => {
+      const res = await transactionService.getAll({ status: "pending_review", per_page: 1 } as any);
+      const payload = res?.data as any;
+      return Number(payload?.data?.total ?? payload?.total ?? 0);
+    },
+    refetchInterval: 15000,
+  });
+
+  // User's inbound email alias — surfaced when viewing pending drafts
+  const { data: settingsData } = useQuery({
+    queryKey: ["settings", "me"],
+    queryFn: async () => {
+      const res = await settingsService.get();
+      if (!res?.success) return null;
+      return (res.data as any)?.data || (res.data as any);
+    },
+  });
+  const inboundAddress = (settingsData as any)?.inbound_email_address as string | undefined;
+
+  // Reject draft mutation
+  const rejectDraftMutation = useMutation({
+    mutationFn: (id: number) => transactionService.reject(id),
+    onSuccess: async (res) => {
+      if (!res?.success) {
+        toast.error("Could not reject draft");
+        return;
+      }
+      toast.success("Draft rejected");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+    onError: () => toast.error("Reject failed"),
+  });
 
   const { data: summaryStats } = useQuery({
     queryKey: [
@@ -684,6 +739,152 @@ export default function TransactionsScreen() {
         </View>
       </View>
 
+      {/* Status pills — Ledger / Pending review / Rejected */}
+      <View style={styles.statusPillsRow}>
+        <Pressable
+          onPress={() => setStatusView("approved")}
+          style={[
+            styles.statusPill,
+            statusView === "approved" && { backgroundColor: colors.primary },
+            { borderColor: colors.outlineVariant },
+          ]}
+          hitSlop={6}
+        >
+          <Check
+            size={13}
+            color={statusView === "approved" ? colors.onPrimary : colors.onSurfaceVariant}
+            strokeWidth={2.4}
+          />
+          <Text
+            style={[
+              styles.statusPillLabel,
+              { color: statusView === "approved" ? colors.onPrimary : colors.onSurfaceVariant },
+            ]}
+          >
+            Ledger
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setStatusView("pending_review")}
+          style={[
+            styles.statusPill,
+            statusView === "pending_review" && { backgroundColor: colors.primary },
+            { borderColor: colors.outlineVariant },
+          ]}
+          hitSlop={6}
+        >
+          <View style={[styles.pendingDot, { backgroundColor: "#f59e0b" }]} />
+          <Text
+            style={[
+              styles.statusPillLabel,
+              { color: statusView === "pending_review" ? colors.onPrimary : colors.onSurfaceVariant },
+            ]}
+          >
+            Pending
+          </Text>
+          {pendingCount > 0 && (
+            <View
+              style={[
+                styles.statusPillBadge,
+                {
+                  backgroundColor:
+                    statusView === "pending_review" ? "rgba(255,255,255,0.25)" : "#ef4444",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusPillBadgeText,
+                  { color: statusView === "pending_review" ? colors.onPrimary : "#fff" },
+                ]}
+              >
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => setStatusView("rejected")}
+          style={[
+            styles.statusPill,
+            statusView === "rejected" && { backgroundColor: colors.primary },
+            { borderColor: colors.outlineVariant },
+          ]}
+          hitSlop={6}
+        >
+          <X
+            size={13}
+            color={statusView === "rejected" ? colors.onPrimary : colors.onSurfaceVariant}
+            strokeWidth={2.4}
+          />
+          <Text
+            style={[
+              styles.statusPillLabel,
+              { color: statusView === "rejected" ? colors.onPrimary : colors.onSurfaceVariant },
+            ]}
+          >
+            Rejected
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Drafts mode: alias card + source pills */}
+      {statusView === "pending_review" && inboundAddress && (
+        <View
+          style={[
+            styles.aliasCard,
+            { backgroundColor: isDark ? "rgba(37, 99, 235, 0.18)" : "rgba(59, 130, 246, 0.08)", borderColor: isDark ? "rgba(96, 165, 250, 0.35)" : "rgba(59, 130, 246, 0.25)" },
+          ]}
+        >
+          <View style={styles.aliasIconBox}>
+            <Mail size={16} color="#fff" strokeWidth={2.4} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.aliasLabel, { color: colors.onSurfaceVariant }]}>
+              Your AccountE email
+            </Text>
+            <Text
+              selectable
+              style={[styles.aliasValue, { color: colors.onSurface }]}
+              numberOfLines={1}
+            >
+              {inboundAddress}
+            </Text>
+            <Text style={[styles.aliasHelp, { color: colors.onSurfaceVariant }]}>
+              Forward receipts here — long-press to copy
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {statusView === "pending_review" && (
+        <View style={styles.sourceTabsRow}>
+          {(["all", "email", "schedule"] as const).map((src) => {
+            const active = sourceView === src;
+            return (
+              <Pressable
+                key={src}
+                onPress={() => setSourceView(src)}
+                style={[
+                  styles.sourceTab,
+                  active && { backgroundColor: colors.primary },
+                ]}
+                hitSlop={6}
+              >
+                <Text
+                  style={[
+                    styles.sourceTabLabel,
+                    { color: active ? colors.onPrimary : colors.onSurfaceVariant },
+                  ]}
+                >
+                  {src === "all" ? "All" : src === "email" ? "Email" : "Schedule"}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       {/* Filter Chips */}
       <View style={styles.filterShell}>
         <ScrollView
@@ -814,7 +1015,13 @@ export default function TransactionsScreen() {
                     }}
                     onDelete={() => {
                       setExpandedRowId(null);
-                      handleDeleteWithUndo(t);
+                      // In pending-review mode, swipe-delete becomes "reject"
+                      // instead of permanent deletion. Confirms via modal.
+                      if (statusView === "pending_review") {
+                        setRejectTarget(t);
+                      } else {
+                        handleDeleteWithUndo(t);
+                      }
                     }}
                     icon={getIcon(t.type)}
                     tone={getTone(t.type)}
@@ -1010,6 +1217,67 @@ export default function TransactionsScreen() {
                 />
               </>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Reject draft confirmation modal */}
+      <Modal
+        visible={!!rejectTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRejectTarget(null)}
+      >
+        <Pressable
+          style={[styles.modalBackdrop, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+          onPress={() => setRejectTarget(null)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.rejectModal,
+              { backgroundColor: colors.surface, borderColor: colors.outlineVariant },
+            ]}
+          >
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>⚠️</Text>
+            <Text style={[styles.rejectModalTitle, { color: colors.onSurface }]}>
+              Reject draft
+            </Text>
+            <Text style={[styles.rejectModalText, { color: colors.onSurfaceVariant }]}>
+              {rejectTarget?.merchant_name
+                ? `Reject the draft for "${rejectTarget.merchant_name}"?`
+                : "Reject this draft?"}
+            </Text>
+            <Text style={[styles.rejectModalNote, { color: colors.onSurfaceVariant }]}>
+              It won't be added to your ledger. You can still see rejected drafts under the Rejected tab.
+            </Text>
+            <View style={styles.rejectModalActions}>
+              <Pressable
+                onPress={() => setRejectTarget(null)}
+                style={[
+                  styles.rejectModalBtn,
+                  {
+                    backgroundColor: colors.surfaceVariant,
+                    borderColor: colors.outlineVariant,
+                  },
+                ]}
+              >
+                <Text style={{ color: colors.onSurface, fontWeight: "600" }}>
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (rejectTarget) {
+                    rejectDraftMutation.mutate(rejectTarget.id);
+                  }
+                  setRejectTarget(null);
+                }}
+                style={[styles.rejectModalBtn, { backgroundColor: "#dc2626" }]}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Reject</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1317,6 +1585,138 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: "500",
+  },
+  statusPillsRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  statusPillLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  pendingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusPillBadge: {
+    minWidth: 18,
+    paddingHorizontal: 6,
+    height: 18,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 4,
+  },
+  statusPillBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  aliasCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+  },
+  aliasIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "#3b82f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  aliasLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 1,
+  },
+  aliasValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    fontFamily: "monospace",
+  },
+  aliasHelp: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  sourceTabsRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sourceTab: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(148, 163, 184, 0.18)",
+  },
+  sourceTabLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  rejectModal: {
+    width: "100%",
+    maxWidth: 360,
+    padding: 24,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+  },
+  rejectModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  rejectModalText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  rejectModalNote: {
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: "center",
+    marginBottom: 18,
+  },
+  rejectModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%",
+  },
+  rejectModalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 1,
   },
   filterShell: {
     height: 54,

@@ -1,5 +1,5 @@
 import React from "react";
-import { Tabs } from "expo-router";
+import { Tabs, Redirect } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,6 +13,7 @@ import {
 } from "lucide-react-native";
 
 import { useTheme } from "../../src/contexts/ThemeContext";
+import { useAuth } from "../../src/contexts/AuthContext";
 import { radius, shadow, gradients } from "../../src/constants/theme";
 
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -25,7 +26,13 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 
 export default function TabsLayout() {
   const { colors, isDark } = useTheme();
+  const { isAuthenticated, user } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // First-time login users must finish onboarding before they can use the app.
+  if (isAuthenticated && user && !user.onboarding_completed_at) {
+    return <Redirect href="/onboarding" />;
+  }
 
   const renderIcon = (
     tabName: string,

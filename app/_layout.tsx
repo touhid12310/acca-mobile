@@ -108,6 +108,13 @@ function RootLayoutNav() {
             animation: 'slide_from_bottom',
           }}
         />
+        <Stack.Screen
+          name="onboarding"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
         </Stack>
         <OfflineBanner />
       </View>

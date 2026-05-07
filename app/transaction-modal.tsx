@@ -32,6 +32,7 @@ export default function TransactionModalScreen() {
     receipt_type?: string;
     receipt_name?: string;
     scan_mode?: string;
+    chat_message_id?: string;
   }>();
 
   // Fetch full transaction data when editing (to get transaction_categories and payment_method)
@@ -163,6 +164,15 @@ export default function TransactionModalScreen() {
         payload.receipt_path = data.receipt_path;
       }
 
+      // Pass through chat_message_id when this form was opened from a chat
+      // candidate, so the backend can mark that message as saved.
+      if (params.chat_message_id) {
+        const parsed = parseInt(params.chat_message_id, 10);
+        if (!Number.isNaN(parsed)) {
+          payload.chat_message_id = parsed;
+        }
+      }
+
       const result = await transactionService.create(payload);
       if (!result.success) {
         throw new Error(result.error || 'Failed to create transaction');
@@ -173,6 +183,9 @@ export default function TransactionModalScreen() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      if (params.chat_message_id) {
+        queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
+      }
       toast.success('Transaction saved');
       router.back();
     },

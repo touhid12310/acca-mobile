@@ -275,6 +275,15 @@ export default function TransactionFormContent({
   })();
   const accounts: Account[] = accountsData || [];
 
+  useEffect(() => {
+    if (initialData || formData.account_id || accounts.length === 0) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      account_id: accounts[0].id,
+    }));
+  }, [accounts, formData.account_id, initialData]);
+
   // Initialize form with initial data - only once when data first becomes available
   useEffect(() => {
     // Skip if already initialized to prevent overwriting user edits

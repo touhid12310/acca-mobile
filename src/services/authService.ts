@@ -1,5 +1,6 @@
 import API_CONFIG, { apiRequest, saveAuthToken, removeAuthToken, getAuthToken } from '../config/api';
 import { User, LoginResponse, RegisterResponse, ApiResponse } from '../types';
+import { detectTimeZone } from '../utils/timezone';
 
 export const authService = {
   login: async (
@@ -7,7 +8,7 @@ export const authService = {
     password: string,
     twoFactorCode?: string
   ): Promise<ApiResponse<LoginResponse>> => {
-    const body: Record<string, string> = { email, password };
+    const body: Record<string, string> = { email, password, timezone: detectTimeZone() };
     if (twoFactorCode) {
       body.two_factor_code = twoFactorCode;
     }
@@ -41,6 +42,7 @@ export const authService = {
         email,
         password,
         confirm_password: confirmPassword,
+        timezone: detectTimeZone(),
       }),
     });
 

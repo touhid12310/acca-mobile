@@ -498,6 +498,7 @@ export default function ChatScreen() {
   const prepareTransactionParams = (
     candidate: ExpenseCandidate,
     receiptUri?: string,
+    chatMessageId?: string | number | null,
   ) => {
     const merchantName = candidate.merchant_name || "Unknown";
     const amount = candidate.amount || 0;
@@ -611,6 +612,7 @@ export default function ChatScreen() {
       receipt_uri: receiptUri || "",
       receipt_type: receiptType,
       receipt_name: receiptName,
+      chat_message_id: chatMessageId ? String(chatMessageId) : "",
     };
   };
 
@@ -997,10 +999,19 @@ export default function ChatScreen() {
     string | undefined
   >();
 
+  const [previewSourceMessageId, setPreviewSourceMessageId] = useState<
+    string | number | null
+  >(null);
+
   // Handle preview candidate
-  const openPreview = (candidate: ExpenseCandidate, receiptUrl?: string) => {
+  const openPreview = (
+    candidate: ExpenseCandidate,
+    receiptUrl?: string,
+    sourceMessageId?: string | number | null,
+  ) => {
     setPreviewCandidate(candidate);
     setPreviewReceiptUrl(receiptUrl);
+    setPreviewSourceMessageId(sourceMessageId ?? null);
     setPreviewVisible(true);
   };
 
@@ -1233,6 +1244,18 @@ export default function ChatScreen() {
           {/* Expense candidates */}
           {candidates.length > 0 && (
             <View style={styles.candidatesContainer}>
+              {(message as any)?.metadata?.transactions_saved_at && (
+                <Text
+                  style={{
+                    color: colors.tertiary,
+                    fontSize: 12,
+                    marginBottom: 6,
+                    fontWeight: "600",
+                  }}
+                >
+                  ✓ Saved to transactions
+                </Text>
+              )}
               {candidates.map((candidate, index) => (
                 <Surface
                   key={candidate.id || index}
@@ -1284,33 +1307,36 @@ export default function ChatScreen() {
                       {formatAmount(candidate.amount || 0)}
                     </Text>
                   </View>
-                  <Button
-                    mode="contained"
-                    compact
-                    onPress={() => {
-                      if (isOpeningTransactionModal) {
-                        return;
-                      }
-                      lockPreviewTap();
+                  {!(message as any)?.metadata?.transactions_saved_at && (
+                    <Button
+                      mode="contained"
+                      compact
+                      onPress={() => {
+                        if (isOpeningTransactionModal) {
+                          return;
+                        }
+                        lockPreviewTap();
 
-                      const receiptUri = getCandidateReceiptUri(message.id);
-                      const params = prepareTransactionParams(
-                        candidate,
-                        receiptUri,
-                      );
+                        const receiptUri = getCandidateReceiptUri(message.id);
+                        const params = prepareTransactionParams(
+                          candidate,
+                          receiptUri,
+                          message.id,
+                        );
 
-                      router.push({
-                        pathname: "/transaction-modal",
-                        params,
-                      });
-                    }}
-                    style={styles.previewButton}
-                    disabled={isOpeningTransactionModal}
-                  >
-                    {isOpeningTransactionModal
-                      ? "Opening..."
-                      : "Preview & Save"}
-                  </Button>
+                        router.push({
+                          pathname: "/transaction-modal",
+                          params,
+                        });
+                      }}
+                      style={styles.previewButton}
+                      disabled={isOpeningTransactionModal}
+                    >
+                      {isOpeningTransactionModal
+                        ? "Opening..."
+                        : "Preview & Save"}
+                    </Button>
+                  )}
                 </Surface>
               ))}
             </View>
@@ -1751,77 +1777,88 @@ export default function ChatScreen() {
           </View>
 
           <View style={styles.inputRow}>
-            {/* Attachment buttons */}
-            <View style={styles.attachButtons}>
+            {/* WhatsApp-style pill: emoji + input + paperclip + camera */}
+            <View
+              style={[
+                styles.inputPill,
+                { backgroundColor: colors.surfaceVariant },
+              ]}
+            >
               <IconButton
-                icon="camera"
+                icon="emoticon-outline"
                 size={22}
-                onPress={handleTakePhoto}
+                onPress={() => {}}
                 iconColor={colors.onSurfaceVariant}
+                style={styles.pillIconButton}
               />
+
+              <RNTextInput
+                ref={inputRef}
+                style={[styles.pillTextInput, { color: colors.onSurface }]}
+                placeholder="Message"
+                placeholderTextColor={colors.onSurfaceVariant}
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                maxLength={2000}
+              />
+
               <IconButton
                 icon="paperclip"
                 size={22}
                 onPress={handlePickImage}
                 iconColor={colors.onSurfaceVariant}
+                style={styles.pillIconButton}
+              />
+              <IconButton
+                icon="camera"
+                size={22}
+                onPress={handleTakePhoto}
+                iconColor={colors.onSurfaceVariant}
+                style={styles.pillIconButton}
               />
             </View>
 
-            {/* Text input */}
-            <RNTextInput
-              ref={inputRef}
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.surfaceVariant,
-                  color: colors.onSurface,
-                },
-              ]}
-              placeholder="Type or speak a message..."
-              placeholderTextColor={colors.onSurfaceVariant}
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-              maxLength={2000}
-            />
-
-            {/* Voice/Send button */}
-            {isRecording ||
-            isTranscribing ||
-            (!inputText.trim() && !selectedFile) ? (
-              <IconButton
-                icon={
-                  isRecording
-                    ? "stop"
-                    : isTranscribing
-                      ? "loading"
-                      : "microphone"
-                }
-                size={24}
-                onPress={toggleRecording}
-                iconColor={
-                  isRecording || isTranscribing
-                    ? colors.error
-                    : colors.onSurfaceVariant
-                }
-                style={{
-                  backgroundColor:
-                    isRecording || isTranscribing
-                      ? `${colors.error}20`
-                      : "transparent",
-                }}
-                disabled={isTranscribing}
-              />
-            ) : (
-              <IconButton
-                icon="send"
-                size={24}
-                onPress={handleSend}
-                iconColor="#ffffff"
-                style={{ backgroundColor: colors.primary }}
-                disabled={isSending}
-              />
-            )}
+            {/* Round green send/mic button (outside pill) */}
+            <View style={styles.sendButtonWrapper}>
+              {isRecording ||
+              isTranscribing ||
+              (!inputText.trim() && !selectedFile) ? (
+                <IconButton
+                  icon={
+                    isRecording
+                      ? "stop"
+                      : isTranscribing
+                        ? "loading"
+                        : "microphone"
+                  }
+                  size={24}
+                  onPress={toggleRecording}
+                  iconColor="#ffffff"
+                  style={[
+                    styles.sendButton,
+                    {
+                      backgroundColor: isRecording
+                        ? colors.error
+                        : "#22c55e",
+                    },
+                  ]}
+                  disabled={isTranscribing}
+                />
+              ) : (
+                <IconButton
+                  icon="send"
+                  size={24}
+                  onPress={handleSend}
+                  iconColor="#ffffff"
+                  style={[
+                    styles.sendButton,
+                    { backgroundColor: "#22c55e" },
+                  ]}
+                  disabled={isSending}
+                />
+              )}
+            </View>
           </View>
 
           {/* Recording indicator */}
@@ -1970,6 +2007,7 @@ export default function ChatScreen() {
                       const params = prepareTransactionParams(
                         previewCandidate,
                         receiptUri,
+                        previewSourceMessageId,
                       );
                       router.push({
                         pathname: "/transaction-modal",
@@ -2261,6 +2299,37 @@ const styles = StyleSheet.create({
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
+    gap: 8,
+  },
+  inputPill: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 26,
+    paddingHorizontal: 4,
+    minHeight: 48,
+  },
+  pillIconButton: {
+    margin: 0,
+    width: 36,
+    height: 36,
+  },
+  pillTextInput: {
+    flex: 1,
+    maxHeight: 100,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    fontSize: 15,
+    backgroundColor: "transparent",
+  },
+  sendButtonWrapper: {
+    justifyContent: "center",
+  },
+  sendButton: {
+    margin: 0,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   attachButtons: {
     flexDirection: "row",

@@ -12,7 +12,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getAuthToken, saveAuthToken, removeAuthToken } from '../config/api';
 import authService from '../services/authService';
 import pushService from '../services/pushService';
+import settingsService from '../services/settingsService';
 import { User } from '../types';
+import { detectTimeZone, setActiveTimeZone } from '../utils/timezone';
 import { notifyToast } from './NotificationContext';
 
 // Session validation interval (30 seconds)
@@ -101,6 +103,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           (result.data as { data?: { user?: User }; user?: User })?.data?.user ||
           (result.data as { user?: User })?.user;
         if (userData) {
+          setActiveTimeZone(userData.timezone || detectTimeZone());
           setUser(userData);
         }
       } else if (result.status === 401 || result.status === 403) {
@@ -175,6 +178,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (data.success && data.data?.access_token) {
           const authToken = data.data.access_token;
           const userData = data.data.user;
+          setActiveTimeZone(userData?.timezone || detectTimeZone());
 
           queryClient.clear();
           await saveAuthToken(authToken);
@@ -224,6 +228,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (data.success) {
           const authToken = data.data?.access_token || data.data?.token;
           const userData = data.data?.user;
+          setActiveTimeZone(userData?.timezone || detectTimeZone());
 
           if (authToken) {
             queryClient.clear();
@@ -316,6 +321,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (data?.data?.valid) {
           // Session is valid, update user if needed
           if (data.data.user) {
+            setActiveTimeZone(data.data.user.timezone || detectTimeZone());
             setUser(data.data.user);
           }
           return true;
@@ -396,6 +402,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setSessionExpired(false);
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !token || !user || user.timezone) return;
+
+    const timezone = detectTimeZone();
+    settingsService.update({ timezone }).then((response) => {
+      if (response?.success) {
+        setActiveTimeZone(timezone);
+        setUser((prev) => (prev ? { ...prev, timezone } : prev));
+      }
+    });
+  }, [isAuthenticated, token, user]);
 
   const updateUser = (userData: Partial<User>) => {
     setUser((prev) => (prev ? { ...prev, ...userData } : null));

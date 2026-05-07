@@ -144,6 +144,21 @@ export default function AccountsScreen() {
     onError: (error: Error) => toast.error(error.message || "Could not save account"),
   });
 
+  const setDefaultMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const result = await accountService.setDefault(id);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["paymentMethods"] });
+      toast.success("Default account updated");
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not set default account"),
+  });
+
   const openAddModal = () => {
     setFormData({ account_name: "", account_type: "Bank Account", balance: "" });
     setModalVisible(true);
@@ -161,6 +176,11 @@ export default function AccountsScreen() {
 
   const handleAccountPress = (account: Account) =>
     router.push(`/account-detail?id=${account.id}`);
+
+  const handleSetDefault = (account: Account) => {
+    if (account.is_default || setDefaultMutation.isPending) return;
+    setDefaultMutation.mutate(account.id);
+  };
 
   const viewAccounts = accounts || [];
   const totalBalance = viewAccounts.reduce((sum: number, acc: Account) => {
@@ -291,8 +311,29 @@ export default function AccountsScreen() {
                       >
                         {account.account_name || "Unnamed Account"}
                       </Text>
-                      <Badge label={type} tone="neutral" size="sm" />
+                      <View style={styles.accountBadges}>
+                        <Badge label={type} tone="neutral" size="sm" />
+                        {account.is_default && (
+                          <Badge label="Default" tone="success" size="sm" />
+                        )}
+                      </View>
                     </View>
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        handleSetDefault(account);
+                      }}
+                      hitSlop={8}
+                      disabled={account.is_default || setDefaultMutation.isPending}
+                      style={styles.defaultButton}
+                    >
+                      <Star
+                        size={18}
+                        color={account.is_default ? colors.primary : colors.onSurfaceVariant}
+                        fill={account.is_default ? colors.primary : "transparent"}
+                        strokeWidth={2.2}
+                      />
+                    </Pressable>
                     <View style={styles.balanceBlock}>
                       <Text
                         style={[
@@ -579,9 +620,22 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 4,
   },
+  accountBadges: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+  },
   accountName: {
     fontSize: 15,
     fontWeight: "700",
+  },
+  defaultButton: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
   },
   balanceBlock: {
     alignItems: "flex-end",

@@ -92,6 +92,22 @@ export const transactionService = {
     );
   },
 
+  approve: async (id: number): Promise<ApiResponse<unknown>> => {
+    const token = await getAuthToken();
+    return apiRequest<unknown>(`/transactions/${id}/approve`, {
+      method: "POST",
+      token,
+    });
+  },
+
+  reject: async (id: number): Promise<ApiResponse<unknown>> => {
+    const token = await getAuthToken();
+    return apiRequest<unknown>(`/transactions/${id}/reject`, {
+      method: "POST",
+      token,
+    });
+  },
+
   bulkCreate: async (
     transactions: TransactionFormData[],
   ): Promise<ApiResponse<Transaction[]>> => {

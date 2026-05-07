@@ -66,6 +66,7 @@ const API_CONFIG = {
     ACCOUNT_DELETE: '/accounts',
     ACCOUNT_BALANCE: '/accounts/balance',
     ACCOUNT_PAYMENT_METHODS: '/accounts/payment-methods',
+    ACCOUNT_SET_DEFAULT: '/accounts',
     ACCOUNT_TRANSACTIONS: '/accounts',
 
     // Budgets
@@ -100,6 +101,11 @@ const API_CONFIG = {
     // Settings
     SETTINGS: '/settings',
     SETTINGS_UPDATE: '/settings',
+
+    // Onboarding (first-time login wizard)
+    ONBOARDING_STATUS: '/onboarding/status',
+    ONBOARDING_COMPLETE: '/onboarding/complete',
+    ONBOARDING_SKIP: '/onboarding/skip',
 
     // Devices (push notifications)
     DEVICES_REGISTER: '/devices/register',

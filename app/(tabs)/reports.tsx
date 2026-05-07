@@ -60,7 +60,7 @@ const REPORT_TYPES: ReportTypeOption[] = [
   { value: "summary", label: "Summary", icon: ChartLine },
   { value: "category", label: "Category", icon: ChartPie },
   { value: "networth", label: "Net Worth", icon: TrendingUp },
-  { value: "income", label: "P&L", icon: FileText },
+  { value: "income", label: "Income Statement", icon: FileText },
   { value: "balance", label: "Balance", icon: Scale },
 ];
 
@@ -930,7 +930,7 @@ export default function ReportsScreen() {
             )}
 
             {renderStatementSection(
-              "Revenue / Income",
+              "Income",
               ArrowDownLeft,
               colors.tertiary,
               data.income?.items || [],
@@ -939,7 +939,7 @@ export default function ReportsScreen() {
             )}
 
             {renderStatementSection(
-              "Expenses",
+              "Expense",
               ArrowUpRight,
               colors.error,
               data.expenses?.items || [],

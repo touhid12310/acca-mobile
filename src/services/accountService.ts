@@ -48,6 +48,14 @@ export const accountService = {
     });
   },
 
+  setDefault: async (id: number): Promise<ApiResponse<Account>> => {
+    const token = await getAuthToken();
+    return apiRequest<Account>(`${API_CONFIG.ENDPOINTS.ACCOUNT_SET_DEFAULT}/${id}/default`, {
+      method: 'POST',
+      token,
+    });
+  },
+
   getBalance: async (id: number): Promise<ApiResponse<{ balance: number }>> => {
     const token = await getAuthToken();
     return apiRequest<{ balance: number }>(`${API_CONFIG.ENDPOINTS.ACCOUNT_BALANCE}/${id}`, {

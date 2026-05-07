@@ -235,6 +235,8 @@ export default function LoansScreen() {
   });
 
   const openModal = () => {
+    const defaultAccountId = accounts?.[0]?.id ? String(accounts[0].id) : "";
+
     setFormData({
       loan_name: "",
       original_amount: "",
@@ -245,7 +247,7 @@ export default function LoansScreen() {
       start_date: new Date().toISOString().split("T")[0],
       next_payment_date: "",
       loan_type: "Borrowed",
-      account_id: "",
+      account_id: defaultAccountId,
       category_id: "",
       notes: "",
     });
@@ -261,10 +263,12 @@ export default function LoansScreen() {
   };
 
   const openPaymentModal = (loan: Loan) => {
+    const defaultAccountId = accounts?.[0]?.id ? String(accounts[0].id) : "";
+
     setSelectedLoan(loan);
     setPaymentData({
       payment_amount: String(loan.next_payment || ""),
-      account_id: "",
+      account_id: defaultAccountId,
       payment_date: new Date().toISOString().split("T")[0],
       next_payment: "",
       next_payment_date: "",

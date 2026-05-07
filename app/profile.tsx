@@ -27,6 +27,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { BrandedHeader } from "../src/components";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
+import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
@@ -37,6 +38,7 @@ export default function ProfileScreen() {
     name: "",
     email: "",
     mobile: "",
+    timezone: detectTimeZone(),
   });
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
@@ -72,6 +74,7 @@ export default function ProfileScreen() {
         name: user.name || "",
         email: user.email || "",
         mobile: (user as any).mobile || "",
+        timezone: (user as any).timezone || detectTimeZone(),
       });
       setProfilePictureUrl((user as any).profile_picture_url || null);
     }
@@ -99,11 +102,16 @@ export default function ProfileScreen() {
       Alert.alert("Error", "Name is required");
       return;
     }
+    if (!isValidTimeZone(profileForm.timezone)) {
+      Alert.alert("Error", "Please enter a valid timezone, like Asia/Dhaka");
+      return;
+    }
 
     setIsProfileSaving(true);
     try {
       const result = await authService.updateProfile(profileForm);
       if (result.success) {
+        setActiveTimeZone(profileForm.timezone);
         Alert.alert("Success", "Profile updated successfully");
         await checkAuthStatus();
       } else {
@@ -476,6 +484,28 @@ export default function ProfileScreen() {
             keyboardType="phone-pad"
             style={styles.input}
           />
+
+          <TextInput
+            label="Timezone"
+            value={profileForm.timezone}
+            onChangeText={(text) =>
+              setProfileForm({ ...profileForm, timezone: text })
+            }
+            mode="outlined"
+            autoCapitalize="none"
+            style={styles.input}
+          />
+
+          <Button
+            mode="outlined"
+            onPress={() =>
+              setProfileForm({ ...profileForm, timezone: detectTimeZone() })
+            }
+            disabled={isProfileSaving}
+            style={styles.secondaryButton}
+          >
+            Use Device Timezone
+          </Button>
 
           <Button
             mode="contained"
@@ -929,6 +959,9 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     marginTop: 8,
+  },
+  secondaryButton: {
+    marginBottom: 12,
   },
   securityItem: {
     flexDirection: "row",
