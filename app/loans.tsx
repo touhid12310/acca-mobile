@@ -34,7 +34,7 @@ import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
-import { BrandedHeader } from "../src/components";
+import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import loanService from "../src/services/loanService";
 import accountService from "../src/services/accountService";
@@ -449,12 +449,7 @@ export default function LoansScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Loans"
-        subtitle="Track lending, borrowing, and payments"
-        showBack
-      />
-
+      <BrandStrip />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -465,6 +460,13 @@ export default function LoansScreen() {
           />
         }
       >
+        <BrandedHeader
+          title="Loans"
+          subtitle="Track lending, borrowing, and payments"
+          showBack
+          showBrand={false}
+        />
+
         {/* Stats Section */}
         <View style={styles.statsContainer}>
           <Surface

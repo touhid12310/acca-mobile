@@ -32,7 +32,7 @@ import { TriangleAlert } from "lucide-react-native";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
-import { BrandedHeader } from "../src/components";
+import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import scheduleService from "../src/services/scheduleService";
 import categoryService from "../src/services/categoryService";
@@ -501,12 +501,7 @@ export default function SchedulesScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Repeating Transactions"
-        subtitle="Schedule recurring money movement"
-        showBack
-      />
-
+      <BrandStrip />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -517,6 +512,13 @@ export default function SchedulesScreen() {
           />
         }
       >
+        <BrandedHeader
+          title="Repeating Transactions"
+          subtitle="Schedule recurring money movement"
+          showBack
+          showBrand={false}
+        />
+
         {/* Stats Section */}
         <Surface
           style={[

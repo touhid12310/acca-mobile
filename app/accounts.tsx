@@ -39,6 +39,7 @@ import {
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
+import { BrandStrip } from "../src/components";
 import {
   ScreenHeader,
   Card,
@@ -217,14 +218,7 @@ export default function AccountsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <View style={{ paddingHorizontal: spacing.lg }}>
-        <ScreenHeader
-          title="Accounts"
-          subtitle="Balances & sources"
-          showBack
-        />
-      </View>
-
+      <BrandStrip />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -237,6 +231,14 @@ export default function AccountsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <ScreenHeader
+            title="Accounts"
+            subtitle="Balances & sources"
+            showBack
+          />
+        </View>
+
         {/* Total Balance Hero */}
         <HeroCard style={styles.hero}>
           <View style={styles.heroTopRow}>

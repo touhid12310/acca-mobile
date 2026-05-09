@@ -24,7 +24,7 @@ import { WebView } from "react-native-webview";
 
 import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
-import { BrandedHeader } from "../src/components";
+import { BrandedHeader, BrandStrip } from "../src/components";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
 import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
@@ -354,16 +354,18 @@ export default function ProfileScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Profile Settings"
-        subtitle="Update account details and security"
-        showBack
-      />
-
+      <BrandStrip />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <BrandedHeader
+          title="Profile Settings"
+          subtitle="Update account details and security"
+          showBack
+          showBrand={false}
+        />
+
         {/* Profile Picture Section */}
         <Surface
           style={[styles.section, { backgroundColor: colors.surface }]}

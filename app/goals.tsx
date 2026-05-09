@@ -26,7 +26,7 @@ import { router } from "expo-router";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
-import { BrandedHeader } from "../src/components";
+import { BrandedHeader, BrandStrip } from "../src/components";
 import goalService from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
@@ -282,12 +282,7 @@ export default function GoalsScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="Goals"
-        subtitle="Follow savings targets and progress"
-        showBack
-      />
-
+      <BrandStrip />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -298,6 +293,13 @@ export default function GoalsScreen() {
           />
         }
       >
+        <BrandedHeader
+          title="Goals"
+          subtitle="Follow savings targets and progress"
+          showBack
+          showBrand={false}
+        />
+
         {/* Stats Section */}
         <View style={styles.statsContainer}>
           <Surface

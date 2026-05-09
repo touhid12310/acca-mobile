@@ -222,15 +222,15 @@ export default function MoreScreen() {
       edges={["top"]}
     >
       <BrandStrip />
-      <View style={{ paddingHorizontal: spacing.lg }}>
-        <ScreenHeader title="More" subtitle="Settings & tools" />
-      </View>
-
       <ScrollView
         style={{ backgroundColor: "transparent" }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <ScreenHeader title="More" subtitle="Settings & tools" />
+        </View>
+
         {/* Profile Card */}
         <Pressable onPress={() => router.push("/profile")}>
           <HeroCard style={styles.profileCard}>

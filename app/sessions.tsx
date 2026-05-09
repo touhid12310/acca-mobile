@@ -30,6 +30,7 @@ import {
   IconBadge,
   ScreenHeader,
 } from "../src/components/ui";
+import { BrandStrip } from "../src/components";
 import { authService, Session } from "../src/services/authService";
 import { radius, shadow, spacing } from "../src/constants/theme";
 
@@ -114,10 +115,7 @@ export default function SessionsScreen() {
     >
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={{ paddingHorizontal: spacing.lg }}>
-        <ScreenHeader title="Login activity" subtitle="Active sessions" showBack />
-      </View>
-
+      <BrandStrip />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -130,6 +128,9 @@ export default function SessionsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <ScreenHeader title="Login activity" subtitle="Active sessions" showBack />
+        </View>
         <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.infoCard}>
           <View
             style={[

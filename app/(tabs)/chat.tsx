@@ -2048,7 +2048,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingTop: 0,
+    paddingBottom: 6,
+    marginTop: -10,
     borderBottomWidth: 1,
   },
   chatDateButton: {

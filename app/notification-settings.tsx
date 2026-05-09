@@ -23,6 +23,7 @@ import {
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { Card, IconBadge, ScreenHeader } from "../src/components/ui";
+import { BrandStrip } from "../src/components";
 import settingsService from "../src/services/settingsService";
 import { NotificationPreferences } from "../src/types";
 import { radius, spacing } from "../src/constants/theme";
@@ -164,14 +165,7 @@ export default function NotificationSettingsScreen() {
     >
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={{ paddingHorizontal: spacing.lg }}>
-        <ScreenHeader
-          title="Notifications"
-          subtitle="Choose what you want to hear about"
-          showBack
-        />
-      </View>
-
+      <BrandStrip />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -184,6 +178,13 @@ export default function NotificationSettingsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <ScreenHeader
+            title="Notifications"
+            subtitle="Choose what you want to hear about"
+            showBack
+          />
+        </View>
         <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.intro}>
           <View
             style={[

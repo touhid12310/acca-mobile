@@ -619,6 +619,29 @@ export default function TransactionsScreen() {
       edges={["top"]}
     >
       <BrandStrip />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: "transparent" }}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          const distanceFromBottom =
+            contentSize.height - (contentOffset.y + layoutMeasurement.height);
+          if (distanceFromBottom < 600 && hasNextPage && !isFetchingNextPage) {
+            fetchNextPage();
+          }
+        }}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
       <View style={styles.headerWrap}>
         <ScreenHeader
           title="Activity"
@@ -981,36 +1004,11 @@ export default function TransactionsScreen() {
           />
         </View>
       ) : (
-        <ScrollView
-          style={{ backgroundColor: "transparent" }}
-          contentContainerStyle={{
+        <View
+          style={{
             paddingHorizontal: spacing.lg,
-            paddingBottom: 120,
             gap: spacing.sm,
           }}
-          showsVerticalScrollIndicator={false}
-          onScroll={({ nativeEvent }) => {
-            const { layoutMeasurement, contentOffset, contentSize } =
-              nativeEvent;
-            const distanceFromBottom =
-              contentSize.height - (contentOffset.y + layoutMeasurement.height);
-            if (
-              distanceFromBottom < 600 &&
-              hasNextPage &&
-              !isFetchingNextPage
-            ) {
-              fetchNextPage();
-            }
-          }}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
-            />
-          }
         >
           {groupedTransactions.map((group, groupIndex) => (
             <View
@@ -1071,8 +1069,9 @@ export default function TransactionsScreen() {
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
           )}
-        </ScrollView>
+        </View>
       )}
+      </ScrollView>
 
       {/* FAB */}
       <View
@@ -1806,7 +1805,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
   loadingContainer: {
-    flex: 1,
+    minHeight: 320,
     justifyContent: "center",
     alignItems: "center",
   },

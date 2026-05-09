@@ -1193,6 +1193,18 @@ export default function ReportsScreen() {
       edges={["top"]}
     >
       <BrandStrip />
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.headerWrap}>
         <ScreenHeader title="Reports" subtitle="Trends and statements" />
       </View>
@@ -1246,19 +1258,7 @@ export default function ReportsScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={handleRefresh}
-            colors={[colors.primary]}
-            tintColor={colors.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {renderContent()}
+      {renderContent()}
       </ScrollView>
 
       <ThemedDatePicker

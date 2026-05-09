@@ -25,7 +25,7 @@ import { router } from "expo-router";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
-import { BrandedHeader } from "../src/components";
+import { BrandedHeader, BrandStrip } from "../src/components";
 import categoryService from "../src/services/categoryService";
 
 type CategoryType = "income" | "expense" | "asset" | "liability";
@@ -330,10 +330,22 @@ export default function CategoriesScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
+      <BrandStrip />
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            colors={[colors.primary]}
+          />
+        }
+      >
       <BrandedHeader
         title="Categories"
         subtitle="Organize income, expenses, assets, and liabilities"
         showBack
+        showBrand={false}
       />
 
       {/* Stats Section */}
@@ -449,16 +461,7 @@ export default function CategoriesScreen() {
         })}
       </ScrollView>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            colors={[colors.primary]}
-          />
-        }
-      >
+      <View style={styles.scrollContent}>
         {/* Tab Header */}
         <View style={styles.tabHeader}>
           <View>
@@ -665,6 +668,7 @@ export default function CategoriesScreen() {
             </TouchableOpacity>
           </View>
         )}
+      </View>
       </ScrollView>
 
       <FAB
