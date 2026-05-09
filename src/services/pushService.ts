@@ -16,10 +16,17 @@ const getProjectId = (): string | undefined => {
 
 export const ensureAndroidChannel = async () => {
   if (Platform.OS !== "android") return;
+  // HIGH importance lets finance alerts (low balance, budget overage,
+  // schedule reminders) appear as heads-up — DEFAULT only drops them
+  // silently into the tray, which users routinely miss.
   await Notifications.setNotificationChannelAsync("default", {
     name: "Default",
-    importance: Notifications.AndroidImportance.DEFAULT,
+    importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 80, 200],
+    lightColor: "#3b82f6",
+    sound: "default",
+    enableVibrate: true,
+    enableLights: true,
   });
 };
 

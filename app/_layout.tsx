@@ -21,13 +21,13 @@ import '../global.css';
 SplashScreen.preventAutoHideAsync();
 
 // How notifications appear when the app is in the foreground.
+// shouldShowAlert was deprecated in expo-notifications 0.32 — banner+list cover it.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
   }),
 });
 

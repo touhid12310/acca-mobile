@@ -29,6 +29,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.accounte.finance",
+      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.RECORD_AUDIO",
@@ -46,7 +47,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#3b82f6",
+          "defaultChannel": "default"
+        }
+      ],
       [
         "expo-audio",
         {
