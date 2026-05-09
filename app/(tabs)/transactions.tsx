@@ -331,6 +331,7 @@ export default function TransactionsScreen() {
   const {
     data: transactionPages,
     isLoading,
+    isFetching,
     isRefetching,
     refetch,
     fetchNextPage,
@@ -393,7 +394,21 @@ export default function TransactionsScreen() {
       lastPage.currentPage < lastPage.lastPage
         ? lastPage.currentPage + 1
         : undefined,
+    staleTime: 0,
+    refetchOnMount: "always",
+    // While on the Pending tab, poll the list every 15s so new drafts appear
+    // alongside the badge count update — no manual refresh required.
+    refetchInterval: statusView === "pending_review" ? 15000 : false,
+    refetchIntervalInBackground: false,
   });
+
+  // Whenever the user switches status (Ledger ↔ Pending ↔ Rejected) or source
+  // (All / Email / Schedule), force a fresh fetch so we don't render stale
+  // cached pages (e.g. user comes back to Pending and the badge says 3 but
+  // the cache only has the 2 items from their previous visit).
+  useEffect(() => {
+    refetch();
+  }, [statusView, sourceView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const transactions = useMemo(() => {
     const seen = new Set<number>();
@@ -688,18 +703,18 @@ export default function TransactionsScreen() {
         <SummaryCard isDark={isDark}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View style={styles.summaryIconWrap}>
+              <View style={[styles.summaryIconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
                 <ArrowDownLeft
-                  size={16}
-                  color="#34d399"
-                  strokeWidth={2.4}
+                  size={18}
+                  color="#00e676"
+                  strokeWidth={3}
                 />
               </View>
               <Text style={styles.summaryLabel}>Total Income</Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: "#34d399" }]}
+            style={[styles.summaryValue, { color: "#86efac" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -710,18 +725,18 @@ export default function TransactionsScreen() {
         <SummaryCard isDark={isDark}>
           <View style={styles.summaryTopRow}>
             <View style={styles.summaryLead}>
-              <View style={styles.summaryIconWrap}>
+              <View style={[styles.summaryIconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
                 <ArrowUpRight
-                  size={16}
-                  color="#fb923c"
-                  strokeWidth={2.4}
+                  size={18}
+                  color="#ef4444"
+                  strokeWidth={2.8}
                 />
               </View>
               <Text style={styles.summaryLabel}>Total Expenses</Text>
             </View>
           </View>
           <Text
-            style={[styles.summaryValue, { color: "#fb923c" }]}
+            style={[styles.summaryValue, { color: "#fca5a5" }]}
             numberOfLines={1}
             adjustsFontSizeToFit
             minimumFontScale={0.75}
@@ -986,7 +1001,9 @@ export default function TransactionsScreen() {
       )}
 
       {/* List */}
-      {isLoading || filterChanging ? (
+      {isLoading ||
+      filterChanging ||
+      (isFetching && groupedTransactions.length === 0) ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -1371,6 +1388,7 @@ function TransactionRow({
     onOpen();
   };
 
+  const isPending = t.status === "pending_review";
   const renderRightActions = () => (
     <View style={styles.slideActions}>
       <RectButton
@@ -1395,8 +1413,14 @@ function TransactionRow({
         style={[styles.slideAction, { backgroundColor: colors.error }]}
       >
         <View style={styles.slideActionContent}>
-          <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
-          <Text style={styles.slideActionLabel}>Delete</Text>
+          {isPending ? (
+            <X size={20} color="#ffffff" strokeWidth={2.6} />
+          ) : (
+            <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
+          )}
+          <Text style={styles.slideActionLabel}>
+            {isPending ? "Reject" : "Delete"}
+          </Text>
         </View>
       </RectButton>
     </View>
@@ -1579,27 +1603,31 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   summaryIconWrap: {
-    width: 26,
-    height: 26,
+    width: 30,
+    height: 30,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,255,255,0.22)",
     alignItems: "center",
     justifyContent: "center",
   },
   summaryLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    lineHeight: 14,
+    fontSize: 12.5,
+    fontWeight: "800",
+    lineHeight: 16,
     flexShrink: 1,
-    color: "rgba(255,255,255,0.75)",
+    color: "#ffffff",
+    letterSpacing: 0.2,
   },
   summaryValue: {
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 21,
-    marginTop: 2,
+    fontSize: 19,
+    fontWeight: "900",
+    lineHeight: 24,
+    marginTop: 4,
     width: "100%",
     textAlign: "center",
+    textShadowColor: "rgba(0,0,0,0.25)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   searchWrap: {
     paddingHorizontal: spacing.lg,
