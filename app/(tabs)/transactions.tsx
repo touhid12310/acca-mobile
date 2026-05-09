@@ -23,6 +23,7 @@ import {
 } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Clipboard from "expo-clipboard";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -33,6 +34,7 @@ import {
   Plus,
   Check,
   Clock,
+  Copy,
   Mail,
   Receipt,
   Search,
@@ -828,20 +830,30 @@ export default function TransactionsScreen() {
         </Pressable>
       </View>
 
-      {/* Drafts mode: alias card + source pills */}
+      {/* Drafts mode: compact alias pill matching tanstack design */}
       {statusView === "pending_review" && inboundAddress && (
         <View
           style={[
             styles.aliasCard,
-            { backgroundColor: isDark ? "rgba(37, 99, 235, 0.18)" : "rgba(59, 130, 246, 0.08)", borderColor: isDark ? "rgba(96, 165, 250, 0.35)" : "rgba(59, 130, 246, 0.25)" },
+            {
+              backgroundColor: isDark ? "#0f213d" : colors.surface,
+              borderColor: isDark
+                ? "rgba(125, 145, 180, 0.22)"
+                : colors.outlineVariant,
+            },
           ]}
         >
-          <View style={styles.aliasIconBox}>
-            <Mail size={16} color="#fff" strokeWidth={2.4} />
-          </View>
-          <View style={{ flex: 1 }}>
+          <LinearGradient
+            colors={["#3b82f6", "#6366f1"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.aliasIconBox}
+          >
+            <Mail size={14} color="#fff" strokeWidth={2.4} />
+          </LinearGradient>
+          <View style={styles.aliasTextWrap}>
             <Text style={[styles.aliasLabel, { color: colors.onSurfaceVariant }]}>
-              Your AccountE email
+              FORWARD RECEIPTS TO
             </Text>
             <Text
               selectable
@@ -850,10 +862,28 @@ export default function TransactionsScreen() {
             >
               {inboundAddress}
             </Text>
-            <Text style={[styles.aliasHelp, { color: colors.onSurfaceVariant }]}>
-              Forward receipts here — long-press to copy
-            </Text>
           </View>
+          <Pressable
+            onPress={async () => {
+              try {
+                await Clipboard.setStringAsync(inboundAddress);
+                toast.success("Email address copied");
+              } catch {
+                toast.error("Could not copy — long-press the email above");
+              }
+            }}
+            hitSlop={6}
+          >
+            <LinearGradient
+              colors={["#3b82f6", "#6366f1"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.aliasCopyBtn}
+            >
+              <Copy size={12} color="#fff" strokeWidth={2.4} />
+              <Text style={styles.aliasCopyLabel}>Copy</Text>
+            </LinearGradient>
+          </Pressable>
         </View>
       )}
 
@@ -885,7 +915,9 @@ export default function TransactionsScreen() {
         </View>
       )}
 
-      {/* Filter Chips */}
+      {/* Filter Chips — hidden in pending_review (drafts) view since the
+          relevant filter there is the source pills (All / Email / Schedule). */}
+      {statusView !== "pending_review" && (
       <View style={styles.filterShell}>
         <ScrollView
           horizontal
@@ -928,6 +960,7 @@ export default function TransactionsScreen() {
           })}
         </ScrollView>
       </View>
+      )}
 
       {/* List */}
       {isLoading || filterChanging ? (
@@ -1627,37 +1660,67 @@ const styles = StyleSheet.create({
   aliasCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    gap: 10,
+    paddingLeft: 5,
+    paddingRight: 5,
+    paddingVertical: 5,
     marginHorizontal: spacing.lg,
     marginBottom: spacing.sm,
-    borderRadius: radius.lg,
+    borderRadius: 999,
     borderWidth: 1,
+    shadowColor: "#1e3a8a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 4,
   },
   aliasIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#3b82f6",
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#3b82f6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  aliasTextWrap: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 1,
   },
   aliasLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
+    fontSize: 9,
+    fontWeight: "800",
     letterSpacing: 0.6,
-    marginBottom: 1,
+    lineHeight: 12,
   },
   aliasValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     fontFamily: "monospace",
+    flexShrink: 1,
+    lineHeight: 17,
   },
-  aliasHelp: {
-    fontSize: 11,
-    marginTop: 1,
+  aliasCopyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    shadowColor: "#3b82f6",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  aliasCopyLabel: {
+    color: "#ffffff",
+    fontSize: 11.5,
+    fontWeight: "700",
   },
   sourceTabsRow: {
     flexDirection: "row",
