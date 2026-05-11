@@ -54,6 +54,7 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
 
+  // Temporarily Google-only. Restore Microsoft / Apple here when ready.
   const buttons: Array<{
     key: WorkOSProvider;
     label: string;
@@ -64,27 +65,11 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   }> = [
     {
       key: 'google',
-      label: 'Google',
+      label: 'Continue with Google',
       icon: <GoogleSvg />,
       background: colors.surface,
       border: colors.outline,
       color: colors.onSurface,
-    },
-    {
-      key: 'microsoft',
-      label: 'Microsoft',
-      icon: <MicrosoftSvg />,
-      background: colors.surface,
-      border: colors.outline,
-      color: colors.onSurface,
-    },
-    {
-      key: 'apple',
-      label: 'Apple',
-      icon: <AppleSvg color={isDark ? '#fff' : '#fff'} />,
-      background: '#000',
-      border: '#000',
-      color: '#fff',
     },
   ];
 
