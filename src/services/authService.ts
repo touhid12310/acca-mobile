@@ -199,6 +199,58 @@ export const authService = {
       token,
     });
   },
+
+  requestMagicLink: async (email: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>('/auth/magic/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  verifyMagicLink: async (
+    email: string,
+    code: string,
+  ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
+    return apiRequest<{ access_token: string; user: User }>('/auth/magic/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, timezone: detectTimeZone() }),
+    });
+  },
+
+  // WorkOS account-management features
+  sendVerificationEmail: async (): Promise<ApiResponse<void>> => {
+    const token = await getAuthToken();
+    return apiRequest<void>('/email/send-verification', {
+      method: 'POST',
+      token,
+    });
+  },
+
+  verifyEmail: async (code: string): Promise<ApiResponse<void>> => {
+    const token = await getAuthToken();
+    return apiRequest<void>('/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+      token,
+    });
+  },
+
+  getIdentities: async (): Promise<ApiResponse<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>(
+      '/account/identities',
+      { method: 'GET', token },
+    );
+  },
+
+  deleteAccount: async (password: string): Promise<ApiResponse<void>> => {
+    const token = await getAuthToken();
+    return apiRequest<void>('/account', {
+      method: 'DELETE',
+      body: JSON.stringify({ password, confirm: 'DELETE' }),
+      token,
+    });
+  },
 };
 
 // Session type for session management

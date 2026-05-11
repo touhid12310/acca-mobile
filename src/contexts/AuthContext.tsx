@@ -46,6 +46,10 @@ interface AuthContextType {
     message?: string;
     errors?: Record<string, string[]>;
   }>;
+  loginWithToken: (
+    token: string,
+    user?: User | null
+  ) => Promise<{ success: boolean; message?: string }>;
   logout: (showMessage?: boolean) => Promise<void>;
   checkAuthStatus: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
@@ -203,6 +207,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
     }
   };
+
+  const loginWithToken = useCallback(
+    async (authToken: string, userData?: User | null) => {
+      if (!authToken) {
+        return { success: false, message: 'Missing access token' };
+      }
+
+      setActiveTimeZone(userData?.timezone || detectTimeZone());
+      queryClient.clear();
+      await saveAuthToken(authToken);
+      setToken(authToken);
+      setUser(userData || null);
+      setIsAuthenticated(true);
+      return { success: true };
+    },
+    [queryClient]
+  );
 
   const register = async (
     name: string,
@@ -426,6 +447,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isAuthenticated,
     sessionExpired,
     login,
+    loginWithToken,
     register,
     logout,
     checkAuthStatus,

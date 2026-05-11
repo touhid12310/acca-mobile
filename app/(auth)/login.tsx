@@ -11,15 +11,25 @@ import {
 } from "react-native";
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as WebBrowser from "expo-web-browser";
 import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { spacing } from "../../src/constants/theme";
+import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
+import workosService, {
+  WorkOSProvider,
+} from "../../src/services/workosService";
+import authService from "../../src/services/authService";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const MOBILE_REDIRECT_URI = "accounte://auth/callback";
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, loginWithToken } = useAuth();
   const { colors, isDark } = useTheme();
 
   const [email, setEmail] = useState("");
@@ -28,6 +38,133 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
+    null,
+  );
+  const [magicAuthStep, setMagicAuthStep] = useState<"idle" | "email" | "code">("idle");
+  const [magicAuthEmail, setMagicAuthEmail] = useState("");
+  const [magicAuthCode, setMagicAuthCode] = useState("");
+  const [isMagicAuthLoading, setIsMagicAuthLoading] = useState(false);
+
+  const handleMagicAuthStart = async () => {
+    const trimmed = magicAuthEmail.trim();
+    if (!trimmed) {
+      setErrors({ general: "Enter your email first" });
+      return;
+    }
+    if (isMagicAuthLoading) return;
+    setIsMagicAuthLoading(true);
+    setErrors({});
+    try {
+      const result = await authService.requestMagicLink(trimmed);
+      if (result.success) {
+        setMagicAuthStep("code");
+      } else {
+        setErrors({
+          general: (result.data as any)?.message || "Could not send code",
+        });
+      }
+    } catch {
+      setErrors({ general: "Could not send code" });
+    } finally {
+      setIsMagicAuthLoading(false);
+    }
+  };
+
+  const handleMagicAuthVerify = async () => {
+    const trimmed = magicAuthCode.trim();
+    if (!trimmed) {
+      setErrors({ general: "Enter the code from your email" });
+      return;
+    }
+    if (isMagicAuthLoading) return;
+    setIsMagicAuthLoading(true);
+    setErrors({});
+    try {
+      const result = await authService.verifyMagicLink(magicAuthEmail.trim(), trimmed);
+      const data = result.data as any;
+      const payload = data?.data || data;
+      if (result.success && payload?.access_token) {
+        await loginWithToken(payload.access_token, payload.user);
+        router.replace("/(tabs)");
+      } else {
+        setErrors({
+          general: data?.message || "Invalid or expired code",
+        });
+      }
+    } catch {
+      setErrors({ general: "Could not verify code" });
+    } finally {
+      setIsMagicAuthLoading(false);
+    }
+  };
+
+  const handleSocialLogin = async (provider: WorkOSProvider) => {
+    if (socialProvider) return;
+    setSocialProvider(provider);
+    setErrors({});
+    try {
+      const urlResult = await workosService.getAuthorizationUrl({
+        provider,
+        intent: "login",
+      });
+      if (!urlResult.success || !urlResult.url) {
+        setErrors({
+          general: urlResult.message || "Could not start social sign-in",
+        });
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        urlResult.url,
+        MOBILE_REDIRECT_URI,
+      );
+
+      if (result.type !== "success" || !result.url) {
+        // user dismissed or cancelled — silent
+        return;
+      }
+
+      const parsed = new URL(result.url);
+      const errorParam = parsed.searchParams.get("error");
+      if (errorParam) {
+        setErrors({
+          general:
+            parsed.searchParams.get("error_description") || errorParam,
+        });
+        return;
+      }
+
+      const code = parsed.searchParams.get("code");
+      if (!code) {
+        setErrors({ general: "Missing authorization code from provider" });
+        return;
+      }
+
+      const exchange = await workosService.exchange(code);
+      if (exchange.success && exchange.accessToken) {
+        await loginWithToken(exchange.accessToken, exchange.user);
+        router.replace("/(tabs)");
+        return;
+      }
+
+      if (exchange.requiresPasswordLogin) {
+        setErrors({
+          general:
+            exchange.message ||
+            "An account with this email already exists. Sign in with your password first to link.",
+        });
+        return;
+      }
+
+      setErrors({ general: exchange.message || "Sign-in failed" });
+    } catch (err: any) {
+      console.error("WorkOS login failed:", err);
+      setErrors({ general: err?.message || "Sign-in failed" });
+    } finally {
+      setSocialProvider(null);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -118,6 +255,150 @@ export default function LoginScreen() {
           <View style={styles.form}>
             {errors.general && (
               <AlertBar tone="error" message={errors.general} />
+            )}
+
+            <SocialAuthButtons
+              onSelect={handleSocialLogin}
+              activeProvider={socialProvider}
+              disabled={isLoading}
+            />
+
+            {magicAuthStep === "idle" && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: spacing.lg,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Pressable
+                  onPress={() => setMagicAuthStep("email")}
+                  style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm }}
+                  hitSlop={6}
+                >
+                  <Text
+                    style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}
+                  >
+                    Email code
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleSocialLogin("passkey" as WorkOSProvider)}
+                  style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm }}
+                  hitSlop={6}
+                  disabled={!!socialProvider}
+                >
+                  <Text
+                    style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}
+                  >
+                    Use a passkey
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {magicAuthStep === "email" && (
+              <View
+                style={{
+                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  gap: spacing.sm,
+                }}
+              >
+                <Text
+                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
+                >
+                  Email me a one-time sign-in code
+                </Text>
+                <Input
+                  label="Email"
+                  placeholder="you@example.com"
+                  value={magicAuthEmail}
+                  onChangeText={setMagicAuthEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  icon={Mail}
+                />
+                <Button
+                  label={isMagicAuthLoading ? "Sending..." : "Send code"}
+                  onPress={handleMagicAuthStart}
+                  loading={isMagicAuthLoading}
+                  disabled={isMagicAuthLoading}
+                  fullWidth
+                />
+                <Pressable
+                  onPress={() => setMagicAuthStep("idle")}
+                  style={{ alignSelf: "center", paddingVertical: spacing.xs }}
+                  hitSlop={6}
+                >
+                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                    Cancel
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
+            {magicAuthStep === "code" && (
+              <View
+                style={{
+                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  gap: spacing.sm,
+                }}
+              >
+                <Text
+                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
+                >
+                  Enter the code we emailed to {magicAuthEmail}
+                </Text>
+                <Input
+                  label="Code"
+                  placeholder="123456"
+                  value={magicAuthCode}
+                  onChangeText={(t) => setMagicAuthCode(t.replace(/\s+/g, ""))}
+                  keyboardType="number-pad"
+                  maxLength={10}
+                  icon={ShieldCheck}
+                />
+                <Button
+                  label={isMagicAuthLoading ? "Verifying..." : "Sign in"}
+                  onPress={handleMagicAuthVerify}
+                  loading={isMagicAuthLoading}
+                  disabled={isMagicAuthLoading}
+                  fullWidth
+                />
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Pressable
+                    onPress={handleMagicAuthStart}
+                    disabled={isMagicAuthLoading}
+                    hitSlop={6}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 12 }}>
+                      Resend code
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setMagicAuthStep("idle");
+                      setMagicAuthCode("");
+                    }}
+                    hitSlop={6}
+                  >
+                    <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                      Cancel
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
             )}
 
             <Input

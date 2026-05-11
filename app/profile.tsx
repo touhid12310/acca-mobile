@@ -68,6 +68,20 @@ export default function ProfileScreen() {
   const [showVerifyStep, setShowVerifyStep] = useState(false);
   const [is2FALoading, setIs2FALoading] = useState(false);
 
+  // WorkOS account features
+  const [identities, setIdentities] = useState<
+    Array<{ provider?: string; type?: string; idp_id?: string }>
+  >([]);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [verifyEmailModalVisible, setVerifyEmailModalVisible] = useState(false);
+  const [verifyEmailCode, setVerifyEmailCode] = useState("");
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
+  const [deleteAccountModalVisible, setDeleteAccountModalVisible] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
+  const [deleteAccountConfirm, setDeleteAccountConfirm] = useState("");
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
   useEffect(() => {
     if (user) {
       setProfileForm({
@@ -79,7 +93,127 @@ export default function ProfileScreen() {
       setProfilePictureUrl((user as any).profile_picture_url || null);
     }
     loadTwoFactorStatus();
+    loadIdentities();
   }, [user]);
+
+  const loadIdentities = async () => {
+    try {
+      const result = await authService.getIdentities();
+      if (result.success && result.data) {
+        const data = result.data as any;
+        const payload = data.data || data;
+        setIdentities(Array.isArray(payload.identities) ? payload.identities : []);
+        setIsEmailVerified(
+          Boolean(payload.email_verified ?? (user as any)?.email_verified_at),
+        );
+      }
+    } catch {
+      // ignore — non-blocking
+    }
+  };
+
+  const providerLabel = (provider?: string) => {
+    const key = String(provider || "").toLowerCase();
+    if (key.includes("google")) return "Google";
+    if (key.includes("apple")) return "Apple";
+    if (key.includes("facebook")) return "Facebook";
+    if (key.includes("linkedin")) return "LinkedIn";
+    if (key.includes("microsoft")) return "Microsoft";
+    return provider || "Social account";
+  };
+
+  const handleSendVerificationEmail = async () => {
+    if (isSendingVerification) return;
+    setIsSendingVerification(true);
+    try {
+      const result = await authService.sendVerificationEmail();
+      if (result.success) {
+        const msg =
+          (result.data as any)?.message ||
+          "Verification email sent. Check your inbox.";
+        Alert.alert("Email sent", msg);
+        setVerifyEmailModalVisible(true);
+      } else {
+        Alert.alert(
+          "Error",
+          (result.data as any)?.message || "Could not send verification email",
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not send verification email");
+    } finally {
+      setIsSendingVerification(false);
+    }
+  };
+
+  const handleVerifyEmail = async () => {
+    const trimmed = verifyEmailCode.trim();
+    if (!trimmed) {
+      Alert.alert("Error", "Please enter the verification code");
+      return;
+    }
+    if (isVerifyingEmail) return;
+    setIsVerifyingEmail(true);
+    try {
+      const result = await authService.verifyEmail(trimmed);
+      if (result.success) {
+        Alert.alert("Verified", "Your email has been verified.");
+        setVerifyEmailModalVisible(false);
+        setVerifyEmailCode("");
+        setIsEmailVerified(true);
+        await checkAuthStatus?.();
+        await loadIdentities();
+      } else {
+        Alert.alert(
+          "Error",
+          (result.data as any)?.message || "Invalid or expired code",
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not verify code");
+    } finally {
+      setIsVerifyingEmail(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteAccountConfirm !== "DELETE") {
+      Alert.alert("Error", "Type DELETE in the confirmation field.");
+      return;
+    }
+    if (!deleteAccountPassword) {
+      Alert.alert("Error", "Enter your password to confirm.");
+      return;
+    }
+    if (isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    try {
+      const result = await authService.deleteAccount(deleteAccountPassword);
+      if (result.success) {
+        Alert.alert(
+          "Account deleted",
+          "Your account has been permanently removed.",
+          [
+            {
+              text: "OK",
+              onPress: () => {
+                router.replace("/(auth)/login");
+              },
+            },
+          ],
+        );
+      } else {
+        Alert.alert(
+          "Error",
+          (result.data as any)?.message || "Could not delete account",
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not delete account");
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   const loadTwoFactorStatus = async () => {
     try {
@@ -621,6 +755,146 @@ export default function ProfileScreen() {
               />
             )}
           </TouchableOpacity>
+
+          {/* Email Verification */}
+          <TouchableOpacity
+            style={[styles.securityItem, { borderColor: colors.outline }]}
+            onPress={isEmailVerified ? undefined : handleSendVerificationEmail}
+            disabled={isEmailVerified || isSendingVerification}
+          >
+            <View
+              style={[
+                styles.securityIcon,
+                {
+                  backgroundColor: isEmailVerified
+                    ? `${colors.tertiary}15`
+                    : `${colors.primary}15`,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name={isEmailVerified ? "email-check" : "email-alert"}
+                size={24}
+                color={isEmailVerified ? colors.tertiary : colors.primary}
+              />
+            </View>
+            <View style={styles.securityContent}>
+              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                Email Verification
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{
+                  color: isEmailVerified
+                    ? colors.tertiary
+                    : colors.onSurfaceVariant,
+                }}
+              >
+                {isEmailVerified
+                  ? "Verified"
+                  : isSendingVerification
+                    ? "Sending code…"
+                    : "Tap to send verification code"}
+              </Text>
+            </View>
+            {isSendingVerification ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : !isEmailVerified ? (
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color={colors.onSurfaceVariant}
+              />
+            ) : (
+              <MaterialCommunityIcons
+                name="check-circle"
+                size={20}
+                color={colors.tertiary}
+              />
+            )}
+          </TouchableOpacity>
+
+          {/* Connected Accounts (read-only) */}
+          <View
+            style={[styles.securityItem, { borderColor: colors.outline }]}
+          >
+            <View
+              style={[
+                styles.securityIcon,
+                {
+                  backgroundColor:
+                    identities.length > 0
+                      ? `${colors.tertiary}15`
+                      : `${colors.primary}15`,
+                },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="link-variant"
+                size={24}
+                color={
+                  identities.length > 0 ? colors.tertiary : colors.primary
+                }
+              />
+            </View>
+            <View style={styles.securityContent}>
+              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                Connected Accounts
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                {identities.length === 0
+                  ? "No social logins linked"
+                  : identities
+                      .map((i) => providerLabel(i.provider || i.type))
+                      .join(", ")}
+              </Text>
+            </View>
+          </View>
+
+          {/* Delete Account (danger zone) */}
+          <TouchableOpacity
+            style={[
+              styles.securityItem,
+              {
+                borderColor: "#fecaca",
+                backgroundColor: "rgba(239, 68, 68, 0.05)",
+              },
+            ]}
+            onPress={() => {
+              setDeleteAccountPassword("");
+              setDeleteAccountConfirm("");
+              setDeleteAccountModalVisible(true);
+            }}
+          >
+            <View
+              style={[
+                styles.securityIcon,
+                { backgroundColor: "rgba(239, 68, 68, 0.15)" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="trash-can-outline"
+                size={24}
+                color="#dc2626"
+              />
+            </View>
+            <View style={styles.securityContent}>
+              <Text variant="bodyLarge" style={{ color: "#b91c1c" }}>
+                Delete Account
+              </Text>
+              <Text variant="bodySmall" style={{ color: "#b91c1c" }}>
+                Permanently remove your account and all data
+              </Text>
+            </View>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={24}
+              color="#b91c1c"
+            />
+          </TouchableOpacity>
         </Surface>
       </ScrollView>
 
@@ -879,6 +1153,135 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+        </Modal>
+      </Portal>
+
+      {/* Email Verification Modal */}
+      <Portal>
+        <Modal
+          visible={verifyEmailModalVisible}
+          onDismiss={() => setVerifyEmailModalVisible(false)}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 8 }}
+          >
+            Verify your email
+          </Text>
+          <Text
+            variant="bodyMedium"
+            style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+          >
+            We emailed a verification code to {user?.email}. Enter it below.
+          </Text>
+          <TextInput
+            mode="outlined"
+            label="Verification code"
+            value={verifyEmailCode}
+            onChangeText={(t) => setVerifyEmailCode(t.replace(/\s+/g, ""))}
+            keyboardType="number-pad"
+            style={{ marginBottom: 16 }}
+            maxLength={10}
+            autoFocus
+          />
+          <View style={styles.modalButtons}>
+            <Button
+              mode="text"
+              onPress={() => setVerifyEmailModalVisible(false)}
+              disabled={isVerifyingEmail}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="outlined"
+              onPress={handleSendVerificationEmail}
+              disabled={isSendingVerification || isVerifyingEmail}
+              style={{ marginLeft: 8 }}
+            >
+              {isSendingVerification ? "Resending…" : "Resend"}
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleVerifyEmail}
+              loading={isVerifyingEmail}
+              disabled={isVerifyingEmail}
+              style={{ marginLeft: 8 }}
+            >
+              Verify
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
+
+      {/* Delete Account Modal */}
+      <Portal>
+        <Modal
+          visible={deleteAccountModalVisible}
+          onDismiss={() =>
+            !isDeletingAccount && setDeleteAccountModalVisible(false)
+          }
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <Text
+            variant="titleLarge"
+            style={{ color: "#b91c1c", marginBottom: 8 }}
+          >
+            Delete account
+          </Text>
+          <Text
+            variant="bodyMedium"
+            style={{ color: "#7f1d1d", marginBottom: 16, lineHeight: 20 }}
+          >
+            This permanently deletes your account, every transaction, every
+            report, and all linked devices. This action cannot be undone.
+          </Text>
+          <TextInput
+            mode="outlined"
+            label="Current password"
+            value={deleteAccountPassword}
+            onChangeText={setDeleteAccountPassword}
+            secureTextEntry
+            style={{ marginBottom: 12 }}
+          />
+          <TextInput
+            mode="outlined"
+            label="Type DELETE to confirm"
+            value={deleteAccountConfirm}
+            onChangeText={setDeleteAccountConfirm}
+            autoCapitalize="characters"
+            style={{ marginBottom: 16 }}
+          />
+          <View style={styles.modalButtons}>
+            <Button
+              mode="text"
+              onPress={() => setDeleteAccountModalVisible(false)}
+              disabled={isDeletingAccount}
+            >
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              buttonColor="#dc2626"
+              textColor="#ffffff"
+              onPress={handleDeleteAccount}
+              loading={isDeletingAccount}
+              disabled={
+                isDeletingAccount ||
+                deleteAccountConfirm !== "DELETE" ||
+                !deleteAccountPassword
+              }
+              style={{ marginLeft: 8 }}
+            >
+              Permanently delete
+            </Button>
+          </View>
         </Modal>
       </Portal>
     </SafeAreaView>

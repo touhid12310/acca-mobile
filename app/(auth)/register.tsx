@@ -11,15 +11,24 @@ import {
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import * as WebBrowser from "expo-web-browser";
 import { Lock, Mail, UserPlus, User2 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
+import workosService, {
+  WorkOSProvider,
+} from "../../src/services/workosService";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const MOBILE_REDIRECT_URI = "accounte://auth/callback";
 
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const { register, loginWithToken } = useAuth();
   const { colors } = useTheme();
 
   const [name, setName] = useState("");
@@ -28,6 +37,75 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
+    null,
+  );
+
+  const handleSocialSignup = async (provider: WorkOSProvider) => {
+    if (socialProvider) return;
+    setSocialProvider(provider);
+    setErrors({});
+    try {
+      const urlResult = await workosService.getAuthorizationUrl({
+        provider,
+        intent: "signup",
+      });
+      if (!urlResult.success || !urlResult.url) {
+        setErrors({
+          general: urlResult.message || "Could not start social sign-up",
+        });
+        return;
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        urlResult.url,
+        MOBILE_REDIRECT_URI,
+      );
+
+      if (result.type !== "success" || !result.url) {
+        return;
+      }
+
+      const parsed = new URL(result.url);
+      const errorParam = parsed.searchParams.get("error");
+      if (errorParam) {
+        setErrors({
+          general:
+            parsed.searchParams.get("error_description") || errorParam,
+        });
+        return;
+      }
+
+      const code = parsed.searchParams.get("code");
+      if (!code) {
+        setErrors({ general: "Missing authorization code from provider" });
+        return;
+      }
+
+      const exchange = await workosService.exchange(code);
+      if (exchange.success && exchange.accessToken) {
+        await loginWithToken(exchange.accessToken, exchange.user);
+        router.replace("/(tabs)");
+        return;
+      }
+
+      if (exchange.requiresPasswordLogin) {
+        setErrors({
+          general:
+            exchange.message ||
+            "An account with this email already exists. Sign in with your password first to link.",
+        });
+        return;
+      }
+
+      setErrors({ general: exchange.message || "Sign-up failed" });
+    } catch (err: any) {
+      console.error("WorkOS signup failed:", err);
+      setErrors({ general: err?.message || "Sign-up failed" });
+    } finally {
+      setSocialProvider(null);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -116,6 +194,12 @@ export default function RegisterScreen() {
             {errors.general && (
               <AlertBar tone="error" message={errors.general} />
             )}
+
+            <SocialAuthButtons
+              onSelect={handleSocialSignup}
+              activeProvider={socialProvider}
+              disabled={isLoading}
+            />
 
             <Input
               label="Full name"
