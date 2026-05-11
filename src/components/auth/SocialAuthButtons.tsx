@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   View,
-  Pressable,
+  TouchableOpacity,
   Text,
   StyleSheet,
   ActivityIndicator,
@@ -67,9 +67,11 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
       key: 'google',
       label: 'Continue with Google',
       icon: <GoogleSvg />,
-      background: colors.surface,
-      border: colors.outline,
-      color: colors.onSurface,
+      // Explicit colors so the pill stays defined regardless of theme.
+      // Theme outline can be too faint to show on the surface.
+      background: isDark ? '#1e293b' : '#ffffff',
+      border: isDark ? '#334155' : '#e2e8f0',
+      color: isDark ? '#f1f5f9' : '#0f172a',
     },
   ];
 
@@ -83,38 +85,74 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
         <View style={[styles.dividerLine, { backgroundColor: colors.outline }]} />
       </View>
 
-      <View style={styles.grid}>
+      <View style={socialBtnStyles.container}>
         {buttons.map((btn) => {
           const isBusy = activeProvider === btn.key;
           const isDisabled = !!disabled || !!activeProvider;
           return (
-            <Pressable
+            <TouchableOpacity
               key={btn.key}
               onPress={() => onSelect(btn.key)}
               disabled={isDisabled}
-              style={({ pressed }) => [
-                styles.button,
+              activeOpacity={0.7}
+              style={[
+                socialBtnStyles.button,
                 {
                   backgroundColor: btn.background,
                   borderColor: btn.border,
-                  opacity: isDisabled ? 0.6 : pressed ? 0.85 : 1,
+                  opacity: isDisabled ? 0.6 : 1,
                 },
               ]}
               accessibilityLabel={`Continue with ${btn.label}`}
             >
-              {isBusy ? (
-                <ActivityIndicator size="small" color={btn.color} />
-              ) : (
-                btn.icon
-              )}
-              <Text style={[styles.label, { color: btn.color }]}>{btn.label}</Text>
-            </Pressable>
+              <View style={socialBtnStyles.iconWrap}>
+                {isBusy ? (
+                  <ActivityIndicator size="small" color={btn.color} />
+                ) : (
+                  btn.icon
+                )}
+              </View>
+              <Text style={[socialBtnStyles.label, { color: btn.color }]}>
+                {btn.label}
+              </Text>
+            </TouchableOpacity>
           );
         })}
       </View>
     </View>
   );
 };
+
+const socialBtnStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'column',
+    width: '100%',
+    marginTop: 4,
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 52,
+    marginBottom: 8,
+  },
+  iconWrap: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   wrapper: {
@@ -136,23 +174,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   grid: {
-    flexDirection: 'row',
+    // Single column so the Google button stretches full-width like the
+    // web pill. When multiple providers are restored, switch back to
+    // flexDirection: 'row' (or wrap with flex: 1 children).
+    flexDirection: 'column',
     gap: spacing.sm,
   },
   button: {
-    flex: 1,
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing.lg,
     borderWidth: 1,
     borderRadius: radius.lg,
-    minHeight: 70,
+    minHeight: 52,
   },
   label: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '600',
   },
 });

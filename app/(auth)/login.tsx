@@ -7,6 +7,7 @@ import {
   ScrollView,
   Text,
   Pressable,
+  TouchableOpacity,
   Image,
 } from "react-native";
 import { Link, router } from "expo-router";
@@ -265,34 +266,72 @@ export default function LoginScreen() {
               <View
                 style={{
                   flexDirection: "row",
-                  justifyContent: "center",
-                  gap: spacing.lg,
-                  flexWrap: "wrap",
+                  width: "100%",
+                  marginTop: 6,
                 }}
               >
-                <Pressable
+                <TouchableOpacity
+                  activeOpacity={0.6}
                   onPress={() => setMagicAuthStep("email")}
-                  style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm }}
-                  hitSlop={6}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 10,
+                    paddingHorizontal: 8,
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: "#cbd5e1",
+                    borderRadius: 10,
+                    backgroundColor: "transparent",
+                    marginRight: 6,
+                  }}
                 >
+                  <Mail size={16} color="#2563eb" />
                   <Text
-                    style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}
+                    style={{
+                      color: "#2563eb",
+                      fontWeight: "600",
+                      fontSize: 13,
+                      marginLeft: 6,
+                    }}
                   >
                     Email code
                   </Text>
-                </Pressable>
-                <Pressable
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.6}
                   onPress={() => handleSocialLogin("passkey" as WorkOSProvider)}
-                  style={{ paddingVertical: spacing.xs, paddingHorizontal: spacing.sm }}
-                  hitSlop={6}
                   disabled={!!socialProvider}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingVertical: 10,
+                    paddingHorizontal: 8,
+                    borderWidth: 1,
+                    borderStyle: "dashed",
+                    borderColor: "#cbd5e1",
+                    borderRadius: 10,
+                    backgroundColor: "transparent",
+                    marginLeft: 6,
+                    opacity: socialProvider ? 0.6 : 1,
+                  }}
                 >
+                  <ShieldCheck size={16} color="#2563eb" />
                   <Text
-                    style={{ color: colors.primary, fontWeight: "600", fontSize: 13 }}
+                    style={{
+                      color: "#2563eb",
+                      fontWeight: "600",
+                      fontSize: 13,
+                      marginLeft: 6,
+                    }}
                   >
                     Use a passkey
                   </Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
             )}
 
