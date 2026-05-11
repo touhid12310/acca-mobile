@@ -700,7 +700,9 @@ export default function LoansScreen() {
                             style={{
                               color: statusColor,
                               fontSize: 11,
-                              fontWeight: "500",
+                              fontWeight: "600",
+                              textTransform: "uppercase",
+                              letterSpacing: 0.5,
                             }}
                           >
                             {status}

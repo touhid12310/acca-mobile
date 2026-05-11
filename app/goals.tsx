@@ -552,8 +552,8 @@ export default function GoalsScreen() {
                             }}
                           >
                             {daysRemaining < 0
-                              ? ` (${Math.abs(daysRemaining)} days overdue)`
-                              : ` (${daysRemaining} days left)`}
+                              ? ` (Overdue by ${Math.abs(daysRemaining)} days.)`
+                              : ` (${daysRemaining} days remaining)`}
                           </Text>
                         )}
                       </Text>
@@ -602,7 +602,7 @@ export default function GoalsScreen() {
                         variant="labelMedium"
                         style={{ color: colors.primary, marginLeft: 4 }}
                       >
-                        Add Amount
+                        Add Contribution
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -725,7 +725,7 @@ export default function GoalsScreen() {
         </Modal>
       </Portal>
 
-      {/* Add Amount Modal */}
+      {/* Add Contribution Modal */}
       <Portal>
         <Modal
           visible={addAmountModalVisible}
@@ -739,7 +739,7 @@ export default function GoalsScreen() {
             variant="titleLarge"
             style={{ color: colors.onSurface, marginBottom: 8 }}
           >
-            Add Amount
+            {selectedGoal ? `Add Contribution — ${selectedGoal.name}` : "Add Contribution"}
           </Text>
           {selectedGoal && (
             <Text
@@ -845,7 +845,7 @@ export default function GoalsScreen() {
               onPress={handleAddAmount}
               loading={addAmountMutation.isPending}
             >
-              Add Amount
+              Add Contribution
             </Button>
           </View>
         </Modal>

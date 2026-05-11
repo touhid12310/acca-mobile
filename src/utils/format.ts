@@ -13,7 +13,7 @@ export const formatNumber = (
   } = {}
 ): string => {
   if (value === null || value === undefined || value === '') {
-    return '-';
+    return '—';
   }
 
   const numericValue = Number(value);
@@ -42,7 +42,7 @@ export const formatCurrency = (
   } = {}
 ): string => {
   if (value === null || value === undefined || value === '') {
-    return '-';
+    return '—';
   }
 
   const numericValue = Number(value);
@@ -84,7 +84,7 @@ export const formatPercentage = (
   } = {}
 ): string => {
   if (value === null || value === undefined || value === '') {
-    return '-';
+    return '—';
   }
 
   const numericValue = Number(value);

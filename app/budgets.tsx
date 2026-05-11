@@ -240,10 +240,10 @@ export default function BudgetsScreen() {
       const categories: SelectedCategory[] = budgetCategories.map(
         (bc: any) => ({
           categoryId: bc.category_id,
-          categoryName: bc.category?.name || "N/A",
+          categoryName: bc.category?.name || "—",
           subcategoryId: bc.subcategory_id || null,
           subcategoryName: bc.subcategory?.name || "",
-          displayName: `${bc.category?.name || "N/A"}${bc.subcategory?.name ? ` › ${bc.subcategory.name}` : ""}`,
+          displayName: `${bc.category?.name || "—"}${bc.subcategory?.name ? ` › ${bc.subcategory.name}` : ""}`,
         }),
       );
       setSelectedCategories(categories);
@@ -713,7 +713,7 @@ export default function BudgetsScreen() {
                               variant="labelSmall"
                               style={{ color: colors.secondary }}
                             >
-                              {bc.category?.name || "N/A"}
+                              {bc.category?.name || "—"}
                               {bc.subcategory?.name &&
                                 ` › ${bc.subcategory.name}`}
                             </Text>
