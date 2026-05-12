@@ -38,6 +38,10 @@ const readField = <T = unknown>(obj: unknown, key: string): T | undefined => {
   return undefined;
 };
 
+// Dedup in-flight exchange calls so the inline WebBrowser handler and the
+// auth/callback.tsx deep-link handler don't both POST the same one-time code.
+const inFlightExchanges = new Map<string, Promise<ExchangeResult>>();
+
 const workosService = {
   async getAuthorizationUrl(
     options: AuthorizationUrlOptions = {}
@@ -69,42 +73,50 @@ const workosService = {
   },
 
   async exchange(code: string): Promise<ExchangeResult> {
-    const response = await apiRequest(`/auth/workos/exchange`, {
-      method: 'POST',
-      body: JSON.stringify({
-        code,
-        client: 'mobile',
-        timezone: detectTimeZone(),
-      }),
-    });
+    const existing = inFlightExchanges.get(code);
+    if (existing) return existing;
 
-    const payload = response.data as Record<string, unknown> | undefined;
-    const apiSuccess = readField<boolean>(payload, 'success');
-    const message = readField<string>(payload, 'message');
-    const requiresPasswordLogin = readField<boolean>(
-      payload,
-      'requires_password_login'
-    );
-    const inner = readField<Record<string, unknown>>(payload, 'data');
-    const accessToken = readField<string>(inner, 'access_token');
-    const user = readField<User>(inner, 'user') ?? null;
+    const promise = (async (): Promise<ExchangeResult> => {
+      const response = await apiRequest(`/auth/workos/exchange`, {
+        method: 'POST',
+        body: JSON.stringify({
+          code,
+          client: 'mobile',
+          timezone: detectTimeZone(),
+        }),
+      });
 
-    if (response.success && apiSuccess && accessToken) {
+      const payload = response.data as Record<string, unknown> | undefined;
+      const apiSuccess = readField<boolean>(payload, 'success');
+      const message = readField<string>(payload, 'message');
+      const requiresPasswordLogin = readField<boolean>(
+        payload,
+        'requires_password_login'
+      );
+      const inner = readField<Record<string, unknown>>(payload, 'data');
+      const accessToken = readField<string>(inner, 'access_token');
+      const user = readField<User>(inner, 'user') ?? null;
+
+      if (response.success && apiSuccess && accessToken) {
+        return {
+          success: true,
+          accessToken,
+          user,
+          message,
+          status: response.status,
+        };
+      }
+
       return {
-        success: true,
-        accessToken,
-        user,
-        message,
+        success: false,
         status: response.status,
+        message: message || response.error || 'Sign-in failed',
+        requiresPasswordLogin: !!requiresPasswordLogin,
       };
-    }
+    })();
 
-    return {
-      success: false,
-      status: response.status,
-      message: message || response.error || 'Sign-in failed',
-      requiresPasswordLogin: !!requiresPasswordLogin,
-    };
+    inFlightExchanges.set(code, promise);
+    return promise;
   },
 };
 

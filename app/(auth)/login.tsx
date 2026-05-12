@@ -263,76 +263,36 @@ export default function LoginScreen() {
             />
 
             {magicAuthStep === "idle" && (
-              <View
+              <TouchableOpacity
+                activeOpacity={0.6}
+                onPress={() => setMagicAuthStep("email")}
                 style={{
-                  flexDirection: "row",
                   width: "100%",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 12,
+                  paddingHorizontal: 8,
+                  borderWidth: 1,
+                  borderStyle: "dashed",
+                  borderColor: "#cbd5e1",
+                  borderRadius: 10,
+                  backgroundColor: "transparent",
                   marginTop: 6,
                 }}
               >
-                <TouchableOpacity
-                  activeOpacity={0.6}
-                  onPress={() => setMagicAuthStep("email")}
+                <Mail size={16} color="#2563eb" />
+                <Text
                   style={{
-                    flex: 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: 10,
-                    paddingHorizontal: 8,
-                    borderWidth: 1,
-                    borderStyle: "dashed",
-                    borderColor: "#cbd5e1",
-                    borderRadius: 10,
-                    backgroundColor: "transparent",
-                    marginRight: 6,
-                  }}
-                >
-                  <Mail size={16} color="#2563eb" />
-                  <Text
-                    style={{
-                      color: "#2563eb",
-                      fontWeight: "600",
-                      fontSize: 13,
-                      marginLeft: 6,
-                    }}
-                  >
-                    Email code
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.6}
-                  onPress={() => handleSocialLogin("passkey" as WorkOSProvider)}
-                  disabled={!!socialProvider}
-                  style={{
-                    flex: 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingVertical: 10,
-                    paddingHorizontal: 8,
-                    borderWidth: 1,
-                    borderStyle: "dashed",
-                    borderColor: "#cbd5e1",
-                    borderRadius: 10,
-                    backgroundColor: "transparent",
+                    color: "#2563eb",
+                    fontWeight: "600",
+                    fontSize: 13,
                     marginLeft: 6,
-                    opacity: socialProvider ? 0.6 : 1,
                   }}
                 >
-                  <ShieldCheck size={16} color="#2563eb" />
-                  <Text
-                    style={{
-                      color: "#2563eb",
-                      fontWeight: "600",
-                      fontSize: 13,
-                      marginLeft: 6,
-                    }}
-                  >
-                    Use a passkey
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                  Sign in with an email code
+                </Text>
+              </TouchableOpacity>
             )}
 
             {magicAuthStep === "email" && (
