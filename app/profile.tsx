@@ -69,9 +69,6 @@ export default function ProfileScreen() {
   const [is2FALoading, setIs2FALoading] = useState(false);
 
   // WorkOS account features
-  const [identities, setIdentities] = useState<
-    Array<{ provider?: string; type?: string; idp_id?: string }>
-  >([]);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [verifyEmailModalVisible, setVerifyEmailModalVisible] = useState(false);
   const [verifyEmailCode, setVerifyEmailCode] = useState("");
@@ -102,7 +99,6 @@ export default function ProfileScreen() {
       if (result.success && result.data) {
         const data = result.data as any;
         const payload = data.data || data;
-        setIdentities(Array.isArray(payload.identities) ? payload.identities : []);
         setIsEmailVerified(
           Boolean(payload.email_verified ?? (user as any)?.email_verified_at),
         );
@@ -110,16 +106,6 @@ export default function ProfileScreen() {
     } catch {
       // ignore — non-blocking
     }
-  };
-
-  const providerLabel = (provider?: string) => {
-    const key = String(provider || "").toLowerCase();
-    if (key.includes("google")) return "Google";
-    if (key.includes("apple")) return "Apple";
-    if (key.includes("facebook")) return "Facebook";
-    if (key.includes("linkedin")) return "LinkedIn";
-    if (key.includes("microsoft")) return "Microsoft";
-    return provider || "Social account";
   };
 
   const handleSendVerificationEmail = async () => {
@@ -813,46 +799,6 @@ export default function ProfileScreen() {
               />
             )}
           </TouchableOpacity>
-
-          {/* Connected Accounts (read-only) */}
-          <View
-            style={[styles.securityItem, { borderColor: colors.outline }]}
-          >
-            <View
-              style={[
-                styles.securityIcon,
-                {
-                  backgroundColor:
-                    identities.length > 0
-                      ? `${colors.tertiary}15`
-                      : `${colors.primary}15`,
-                },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="link-variant"
-                size={24}
-                color={
-                  identities.length > 0 ? colors.tertiary : colors.primary
-                }
-              />
-            </View>
-            <View style={styles.securityContent}>
-              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
-                Connected Accounts
-              </Text>
-              <Text
-                variant="bodySmall"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                {identities.length === 0
-                  ? "No social logins linked"
-                  : identities
-                      .map((i) => providerLabel(i.provider || i.type))
-                      .join(", ")}
-              </Text>
-            </View>
-          </View>
 
           {/* Delete Account (danger zone) */}
           <TouchableOpacity
