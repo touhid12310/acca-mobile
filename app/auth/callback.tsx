@@ -110,7 +110,13 @@ export default function AuthCallback() {
         finishWithError(err?.message || 'Sign-in failed');
       }
     })();
-  }, [params.code, params.error, params.error_description, loginWithToken]);
+  }, [
+    params.code,
+    params.error,
+    params.error_description,
+    params.pending_token,
+    loginWithToken,
+  ]);
 
   const handleVerifyTwoFactor = async () => {
     if (!pendingToken) return;
