@@ -34,6 +34,7 @@ interface AuthContextType {
     success: boolean;
     message?: string;
     requiresTwoFactor?: boolean;
+    requiresEmailVerification?: boolean;
     errors?: Record<string, string[]>;
   }>;
   register: (
@@ -44,6 +45,7 @@ interface AuthContextType {
   ) => Promise<{
     success: boolean;
     message?: string;
+    requiresEmailVerification?: boolean;
     errors?: Record<string, string[]>;
   }>;
   loginWithToken: (
@@ -158,7 +160,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const responsePayload = result.data as
         | {
             requires_two_factor?: boolean;
-            data?: { requires_two_factor?: boolean };
+            requires_email_verification?: boolean;
+            message?: string;
+            data?: { requires_two_factor?: boolean; requires_email_verification?: boolean };
           }
         | undefined;
       if (
@@ -169,6 +173,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           success: false,
           requiresTwoFactor: true,
           message: 'Two-factor authentication required',
+        };
+      }
+
+      // Backend has already emailed a verification link — surface the flag
+      // so the login screen can render its "check your inbox" UI.
+      if (
+        responsePayload?.requires_email_verification ||
+        responsePayload?.data?.requires_email_verification
+      ) {
+        return {
+          success: false,
+          requiresEmailVerification: true,
+          message:
+            responsePayload?.message ||
+            'Please verify your email. We sent you a verification link — check your inbox.',
         };
       }
 
@@ -239,38 +258,58 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         confirmPassword
       );
 
-      if (result.success && result.data) {
-        const data = result.data as {
-          success?: boolean;
-          data?: { access_token?: string; token?: string; user?: User };
-          message?: string;
+      const payload = result.data as {
+        success?: boolean;
+        requires_email_verification?: boolean;
+        data?: {
+          access_token?: string;
+          token?: string;
+          user?: User;
+          requires_email_verification?: boolean;
         };
+        message?: string;
+        errors?: Record<string, string[]>;
+      } | undefined;
 
-        if (data.success) {
-          const authToken = data.data?.access_token || data.data?.token;
-          const userData = data.data?.user;
-          setActiveTimeZone(userData?.timezone || detectTimeZone());
+      // New flow: register no longer issues a token. Backend confirms the
+      // user was created and emailed a verification link — surface the flag
+      // so the register screen can render its "check your inbox" UI.
+      if (
+        payload?.requires_email_verification ||
+        payload?.data?.requires_email_verification
+      ) {
+        return {
+          success: false,
+          requiresEmailVerification: true,
+          message:
+            payload?.message ||
+            'Account created. Check your email for a verification link.',
+        };
+      }
 
-          if (authToken) {
-            queryClient.clear();
-            await saveAuthToken(authToken);
-            setToken(authToken);
-            setUser(userData || null);
-            setIsAuthenticated(true);
-          }
+      if (result.success && payload?.success) {
+        const authToken = payload.data?.access_token || payload.data?.token;
+        const userData = payload.data?.user;
+        setActiveTimeZone(userData?.timezone || detectTimeZone());
 
-          return {
-            success: true,
-            message: data.message || 'Registration successful!',
-          };
+        if (authToken) {
+          queryClient.clear();
+          await saveAuthToken(authToken);
+          setToken(authToken);
+          setUser(userData || null);
+          setIsAuthenticated(true);
         }
+
+        return {
+          success: true,
+          message: payload.message || 'Registration successful!',
+        };
       }
 
       return {
         success: false,
-        message:
-          (result.data as { message?: string })?.message || 'Registration failed',
-        errors: (result.data as { errors?: Record<string, string[]> })?.errors,
+        message: payload?.message || 'Registration failed',
+        errors: payload?.errors,
       };
     } catch (error) {
       return {

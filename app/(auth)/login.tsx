@@ -39,9 +39,29 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
+  const [isResendingLink, setIsResendingLink] = useState(false);
   const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
     null,
   );
+
+  const handleResendVerificationLink = async () => {
+    if (isResendingLink) return;
+    setIsResendingLink(true);
+    try {
+      const result = await authService.resendEmailLink(email.trim());
+      if (result.success) {
+        setErrors({ general: "Verification link sent — check your inbox." });
+      } else {
+        const msg = (result.data as any)?.message || "Could not resend the verification link.";
+        setErrors({ general: msg });
+      }
+    } catch {
+      setErrors({ general: "Could not resend the verification link." });
+    } finally {
+      setIsResendingLink(false);
+    }
+  };
   const [magicAuthStep, setMagicAuthStep] = useState<"idle" | "email" | "code">("idle");
   const [magicAuthEmail, setMagicAuthEmail] = useState("");
   const [magicAuthCode, setMagicAuthCode] = useState("");
@@ -193,6 +213,9 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       } else if (result.requiresTwoFactor) {
         setRequiresTwoFactor(true);
+      } else if (result.requiresEmailVerification) {
+        setRequiresEmailVerification(true);
+        setErrors({});
       } else {
         setErrors({
           general: result.message || "Login failed. Please try again.",
@@ -446,28 +469,63 @@ export default function LoginScreen() {
               />
             )}
 
-            <Pressable
-              style={styles.forgotPassword}
-              onPress={() => router.push("/(auth)/forgot-password")}
-              hitSlop={6}
-            >
-              <Text
-                style={[styles.forgotPasswordText, { color: colors.primary }]}
+            {requiresEmailVerification && (
+              <View
+                style={{
+                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  gap: spacing.xs,
+                }}
               >
-                Forgot password?
-              </Text>
-            </Pressable>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Mail size={18} color={colors.primary} />
+                  <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 14 }}>
+                    Check your inbox
+                  </Text>
+                </View>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
+                  We sent a verification link to <Text style={{ fontWeight: "600", color: colors.onSurface }}>{email}</Text>. Click it to finish signing in. The link expires in 60 minutes.
+                </Text>
+                <Pressable
+                  onPress={handleResendVerificationLink}
+                  disabled={isResendingLink}
+                  style={{ alignSelf: "flex-start", paddingVertical: spacing.xs }}
+                  hitSlop={6}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
+                    {isResendingLink ? "Sending…" : "Send a new link"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
 
-            <Button
-              label={isLoading ? "Signing in..." : "Sign in"}
-              onPress={handleLogin}
-              loading={isLoading}
-              disabled={isLoading}
-              fullWidth
-              size="lg"
-              icon={LogIn}
-              style={styles.primaryButton}
-            />
+            {!requiresEmailVerification && (
+              <>
+                <Pressable
+                  style={styles.forgotPassword}
+                  onPress={() => router.push("/(auth)/forgot-password")}
+                  hitSlop={6}
+                >
+                  <Text
+                    style={[styles.forgotPasswordText, { color: colors.primary }]}
+                  >
+                    Forgot password?
+                  </Text>
+                </Pressable>
+
+                <Button
+                  label={isLoading ? "Signing in..." : "Sign in"}
+                  onPress={handleLogin}
+                  loading={isLoading}
+                  disabled={isLoading}
+                  fullWidth
+                  size="lg"
+                  icon={LogIn}
+                  style={styles.primaryButton}
+                />
+              </>
+            )}
           </View>
 
           {/* Footer */}

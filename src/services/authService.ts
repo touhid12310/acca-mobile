@@ -217,31 +217,43 @@ export const authService = {
     });
   },
 
-  // WorkOS account-management features
-  sendVerificationEmail: async (): Promise<ApiResponse<void>> => {
-    const token = await getAuthToken();
-    return apiRequest<void>('/email/send-verification', {
+  // Link-based email verification. Mobile receives the link via deep link
+  // `accounte://verify-email?token=X` → app/verify-email.tsx → verifyEmailLink.
+  verifyEmailLink: async (
+    token: string,
+  ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
+    return apiRequest<{ access_token: string; user: User }>('/auth/email-link/verify', {
       method: 'POST',
-      token,
+      body: JSON.stringify({ token, timezone: detectTimeZone() }),
     });
   },
 
-  verifyEmail: async (code: string): Promise<ApiResponse<void>> => {
-    const token = await getAuthToken();
-    return apiRequest<void>('/email/verify', {
+  resendEmailLink: async (email: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>('/auth/email-link/resend', {
       method: 'POST',
-      body: JSON.stringify({ code }),
-      token,
+      body: JSON.stringify({ email }),
     });
   },
 
-  getIdentities: async (): Promise<ApiResponse<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>> => {
-    const token = await getAuthToken();
-    return apiRequest<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>(
-      '/account/identities',
-      { method: 'GET', token },
-    );
-  },
+  // Stubs — endpoints removed when WorkOS was retired. Profile screen still
+  // calls these from a few legacy UI sections; these return graceful 410s.
+  sendVerificationEmail: async (): Promise<ApiResponse<void>> => ({
+    success: false,
+    status: 410,
+    data: { success: false, message: 'Email verification happens automatically via the link we email you on signup.' } as any,
+  }),
+
+  verifyEmail: async (_code: string): Promise<ApiResponse<void>> => ({
+    success: false,
+    status: 410,
+    data: { success: false, message: 'Email verification happens automatically via the link we email you on signup.' } as any,
+  }),
+
+  getIdentities: async (): Promise<ApiResponse<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>> => ({
+    success: false,
+    status: 410,
+    data: { success: false, message: 'Linked-identity listing is no longer available.', data: { identities: [] } } as any,
+  }),
 
   deleteAccount: async (password: string): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();

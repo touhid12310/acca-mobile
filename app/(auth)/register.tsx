@@ -19,6 +19,7 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
+import authService from "../../src/services/authService";
 import workosService, {
   WorkOSProvider,
 } from "../../src/services/workosService";
@@ -37,9 +38,29 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
+  const [isResendingLink, setIsResendingLink] = useState(false);
   const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
     null,
   );
+
+  const handleResendVerificationLink = async () => {
+    if (isResendingLink) return;
+    setIsResendingLink(true);
+    try {
+      const result = await authService.resendEmailLink(email.trim());
+      if (result.success) {
+        setErrors({ general: "Verification link sent — check your inbox." });
+      } else {
+        const msg = (result.data as any)?.message || "Could not resend the verification link.";
+        setErrors({ general: msg });
+      }
+    } catch {
+      setErrors({ general: "Could not resend the verification link." });
+    } finally {
+      setIsResendingLink(false);
+    }
+  };
 
   const handleSocialSignup = async (provider: WorkOSProvider) => {
     if (socialProvider) return;
@@ -139,6 +160,9 @@ export default function RegisterScreen() {
       );
       if (result.success) {
         router.replace("/(tabs)");
+      } else if (result.requiresEmailVerification) {
+        setRequiresEmailVerification(true);
+        setErrors({});
       } else {
         setErrors({
           general: result.message || "Registration failed. Please try again.",
@@ -260,16 +284,47 @@ export default function RegisterScreen() {
               error={errors.confirmPassword}
             />
 
-            <Button
-              label={isLoading ? "Creating account..." : "Create account"}
-              onPress={handleRegister}
-              loading={isLoading}
-              disabled={isLoading}
-              fullWidth
-              size="lg"
-              icon={UserPlus}
-              style={styles.primaryButton}
-            />
+            {requiresEmailVerification ? (
+              <View
+                style={{
+                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
+                  borderRadius: 12,
+                  padding: spacing.md,
+                  gap: spacing.xs,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Mail size={18} color={colors.primary} />
+                  <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 14 }}>
+                    Check your inbox
+                  </Text>
+                </View>
+                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
+                  We sent a verification link to <Text style={{ fontWeight: "600", color: colors.onSurface }}>{email}</Text>. Click it to activate your account. The link expires in 60 minutes.
+                </Text>
+                <Pressable
+                  onPress={handleResendVerificationLink}
+                  disabled={isResendingLink}
+                  style={{ alignSelf: "flex-start", paddingVertical: spacing.xs }}
+                  hitSlop={6}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
+                    {isResendingLink ? "Sending…" : "Send a new link"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Button
+                label={isLoading ? "Creating account..." : "Create account"}
+                onPress={handleRegister}
+                loading={isLoading}
+                disabled={isLoading}
+                fullWidth
+                size="lg"
+                icon={UserPlus}
+                style={styles.primaryButton}
+              />
+            )}
           </View>
 
           {/* Footer */}
