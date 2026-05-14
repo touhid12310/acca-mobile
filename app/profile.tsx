@@ -90,43 +90,38 @@ export default function ProfileScreen() {
       setProfilePictureUrl((user as any).profile_picture_url || null);
     }
     loadTwoFactorStatus();
-    loadIdentities();
+    // Trust the user object for verified status — login already gates on
+    // email_verified_at being set, so any signed-in user is verified by
+    // definition. We re-derive on every user-change in case profile.update
+    // changed something downstream.
+    setIsEmailVerified(Boolean((user as any)?.email_verified_at));
   }, [user]);
 
-  const loadIdentities = async () => {
-    try {
-      const result = await authService.getIdentities();
-      if (result.success && result.data) {
-        const data = result.data as any;
-        const payload = data.data || data;
-        setIsEmailVerified(
-          Boolean(payload.email_verified ?? (user as any)?.email_verified_at),
-        );
-      }
-    } catch {
-      // ignore — non-blocking
-    }
-  };
-
+  // Re-send the verification link using the new public resend endpoint.
+  // Reachable only when the account is somehow signed-in but unverified
+  // (rare edge case). The email is read from the user object.
   const handleSendVerificationEmail = async () => {
     if (isSendingVerification) return;
+    if (!user?.email) {
+      Alert.alert("Error", "No email on file for this account.");
+      return;
+    }
     setIsSendingVerification(true);
     try {
-      const result = await authService.sendVerificationEmail();
+      const result = await authService.resendEmailLink(user.email);
       if (result.success) {
         const msg =
           (result.data as any)?.message ||
-          "Verification email sent. Check your inbox.";
+          "Verification link sent. Check your inbox.";
         Alert.alert("Email sent", msg);
-        setVerifyEmailModalVisible(true);
       } else {
         Alert.alert(
           "Error",
-          (result.data as any)?.message || "Could not send verification email",
+          (result.data as any)?.message || "Could not send verification link",
         );
       }
     } catch {
-      Alert.alert("Error", "Could not send verification email");
+      Alert.alert("Error", "Could not send verification link");
     } finally {
       setIsSendingVerification(false);
     }
