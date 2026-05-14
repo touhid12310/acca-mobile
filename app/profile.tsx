@@ -24,6 +24,7 @@ import { WebView } from "react-native-webview";
 
 import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
+import { notifyToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
@@ -103,7 +104,7 @@ export default function ProfileScreen() {
   const handleSendVerificationEmail = async () => {
     if (isSendingVerification) return;
     if (!user?.email) {
-      Alert.alert("Error", "No email on file for this account.");
+      notifyToast.error("No email on file for this account.");
       return;
     }
     setIsSendingVerification(true);
@@ -113,15 +114,14 @@ export default function ProfileScreen() {
         const msg =
           (result.data as any)?.message ||
           "Verification link sent. Check your inbox.";
-        Alert.alert("Email sent", msg);
+        notifyToast.success(msg, { title: "Email sent" });
       } else {
-        Alert.alert(
-          "Error",
+        notifyToast.error(
           (result.data as any)?.message || "Could not send verification link",
         );
       }
     } catch {
-      Alert.alert("Error", "Could not send verification link");
+      notifyToast.error("Could not send verification link");
     } finally {
       setIsSendingVerification(false);
     }
@@ -130,7 +130,7 @@ export default function ProfileScreen() {
   const handleVerifyEmail = async () => {
     const trimmed = verifyEmailCode.trim();
     if (!trimmed) {
-      Alert.alert("Error", "Please enter the verification code");
+      notifyToast.error("Please enter the verification code");
       return;
     }
     if (isVerifyingEmail) return;
@@ -138,20 +138,18 @@ export default function ProfileScreen() {
     try {
       const result = await authService.verifyEmail(trimmed);
       if (result.success) {
-        Alert.alert("Verified", "Your email has been verified.");
+        notifyToast.success("Your email has been verified.", { title: "Verified" });
         setVerifyEmailModalVisible(false);
         setVerifyEmailCode("");
         setIsEmailVerified(true);
         await checkAuthStatus?.();
-        await loadIdentities();
       } else {
-        Alert.alert(
-          "Error",
+        notifyToast.error(
           (result.data as any)?.message || "Invalid or expired code",
         );
       }
     } catch {
-      Alert.alert("Error", "Could not verify code");
+      notifyToast.error("Could not verify code");
     } finally {
       setIsVerifyingEmail(false);
     }
@@ -159,11 +157,11 @@ export default function ProfileScreen() {
 
   const handleDeleteAccount = async () => {
     if (deleteAccountConfirm !== "DELETE") {
-      Alert.alert("Error", "Type DELETE in the confirmation field.");
+      notifyToast.error("Type DELETE in the confirmation field.");
       return;
     }
     if (!deleteAccountPassword) {
-      Alert.alert("Error", "Enter your password to confirm.");
+      notifyToast.error("Enter your password to confirm.");
       return;
     }
     if (isDeletingAccount) return;
@@ -171,26 +169,17 @@ export default function ProfileScreen() {
     try {
       const result = await authService.deleteAccount(deleteAccountPassword);
       if (result.success) {
-        Alert.alert(
-          "Account deleted",
-          "Your account has been permanently removed.",
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                router.replace("/(auth)/login");
-              },
-            },
-          ],
-        );
+        notifyToast.success("Your account has been permanently removed.", {
+          title: "Account deleted",
+        });
+        router.replace("/(auth)/login");
       } else {
-        Alert.alert(
-          "Error",
+        notifyToast.error(
           (result.data as any)?.message || "Could not delete account",
         );
       }
     } catch {
-      Alert.alert("Error", "Could not delete account");
+      notifyToast.error("Could not delete account");
     } finally {
       setIsDeletingAccount(false);
     }
@@ -214,11 +203,11 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!profileForm.name.trim()) {
-      Alert.alert("Error", "Name is required");
+      notifyToast.error("Name is required");
       return;
     }
     if (!isValidTimeZone(profileForm.timezone)) {
-      Alert.alert("Error", "Please enter a valid timezone, like Asia/Dhaka");
+      notifyToast.error("Please enter a valid timezone, like Asia/Dhaka");
       return;
     }
 
@@ -227,13 +216,13 @@ export default function ProfileScreen() {
       const result = await authService.updateProfile(profileForm);
       if (result.success) {
         setActiveTimeZone(profileForm.timezone);
-        Alert.alert("Success", "Profile updated successfully");
+        notifyToast.success("Profile updated successfully");
         await checkAuthStatus();
       } else {
-        Alert.alert("Error", result.error || "Failed to update profile");
+        notifyToast.error(result.error || "Failed to update profile");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred while updating profile");
+      notifyToast.error("An error occurred while updating profile");
     } finally {
       setIsProfileSaving(false);
     }
@@ -244,10 +233,9 @@ export default function ProfileScreen() {
       await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permissionResult.granted) {
-      Alert.alert(
-        "Permission Required",
-        "Please allow access to your photo library",
-      );
+      notifyToast.warning("Please allow access to your photo library", {
+        title: "Permission required",
+      });
       return;
     }
 
@@ -290,16 +278,16 @@ export default function ProfileScreen() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        Alert.alert("Success", "Profile picture updated");
+        notifyToast.success("Profile picture updated");
         setProfilePictureUrl(
           data.data?.profile_picture_url || data.profile_picture_url,
         );
         await checkAuthStatus();
       } else {
-        Alert.alert("Error", data.message || "Failed to upload picture");
+        notifyToast.error(data.message || "Failed to upload picture");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred while uploading");
+      notifyToast.error("An error occurred while uploading");
     } finally {
       setIsUploadingPicture(false);
     }
@@ -328,17 +316,14 @@ export default function ProfileScreen() {
               const data = await response.json();
 
               if (response.ok && data.success) {
-                Alert.alert("Success", "Profile picture removed");
+                notifyToast.success("Profile picture removed");
                 setProfilePictureUrl(null);
                 await checkAuthStatus();
               } else {
-                Alert.alert(
-                  "Error",
-                  data.message || "Failed to remove picture",
-                );
+                notifyToast.error(data.message || "Failed to remove picture");
               }
             } catch (error) {
-              Alert.alert("Error", "An error occurred");
+              notifyToast.error("An error occurred");
             }
           },
         },
@@ -352,17 +337,17 @@ export default function ProfileScreen() {
       !passwordForm.password ||
       !passwordForm.password_confirmation
     ) {
-      Alert.alert("Error", "All fields are required");
+      notifyToast.error("All fields are required");
       return;
     }
 
     if (passwordForm.password.length < 8) {
-      Alert.alert("Error", "New password must be at least 8 characters");
+      notifyToast.error("New password must be at least 8 characters");
       return;
     }
 
     if (passwordForm.password !== passwordForm.password_confirmation) {
-      Alert.alert("Error", "Passwords do not match");
+      notifyToast.error("Passwords do not match");
       return;
     }
 
@@ -370,7 +355,7 @@ export default function ProfileScreen() {
     try {
       const result = await authService.changePassword(passwordForm);
       if (result.success) {
-        Alert.alert("Success", "Password changed successfully");
+        notifyToast.success("Password changed successfully");
         setPasswordModalVisible(false);
         setPasswordForm({
           current_password: "",
@@ -378,10 +363,10 @@ export default function ProfileScreen() {
           password_confirmation: "",
         });
       } else {
-        Alert.alert("Error", result.error || "Failed to change password");
+        notifyToast.error(result.error || "Failed to change password");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred while changing password");
+      notifyToast.error("An error occurred while changing password");
     } finally {
       setIsPasswordSaving(false);
     }
@@ -398,10 +383,10 @@ export default function ProfileScreen() {
         setShowVerifyStep(false);
         setTwoFactorModalVisible(true);
       } else {
-        Alert.alert("Error", "Failed to setup 2FA");
+        notifyToast.error("Failed to setup 2FA");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred");
+      notifyToast.error("An error occurred");
     } finally {
       setIs2FALoading(false);
     }
@@ -409,7 +394,7 @@ export default function ProfileScreen() {
 
   const handleVerifyTwoFactor = async () => {
     if (twoFactorCode.length !== 6) {
-      Alert.alert("Error", "Please enter a valid 6-digit code");
+      notifyToast.error("Please enter a valid 6-digit code");
       return;
     }
 
@@ -417,15 +402,15 @@ export default function ProfileScreen() {
     try {
       const result = await authService.verifyTwoFactor(twoFactorCode);
       if (result.success) {
-        Alert.alert("Success", "Two-factor authentication enabled");
+        notifyToast.success("Two-factor authentication enabled");
         setTwoFactorModalVisible(false);
         setTwoFactorCode("");
         loadTwoFactorStatus();
       } else {
-        Alert.alert("Error", result.error || "Invalid verification code");
+        notifyToast.error(result.error || "Invalid verification code");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred");
+      notifyToast.error("An error occurred");
     } finally {
       setIs2FALoading(false);
     }
@@ -433,7 +418,7 @@ export default function ProfileScreen() {
 
   const handleDisableTwoFactor = async () => {
     if (!disablePassword) {
-      Alert.alert("Error", "Please enter your password");
+      notifyToast.error("Please enter your password");
       return;
     }
 
@@ -441,15 +426,15 @@ export default function ProfileScreen() {
     try {
       const result = await authService.disableTwoFactor(disablePassword);
       if (result.success) {
-        Alert.alert("Success", "Two-factor authentication disabled");
+        notifyToast.success("Two-factor authentication disabled");
         setTwoFactorModalVisible(false);
         setDisablePassword("");
         loadTwoFactorStatus();
       } else {
-        Alert.alert("Error", result.error || "Failed to disable 2FA");
+        notifyToast.error(result.error || "Failed to disable 2FA");
       }
     } catch (error) {
-      Alert.alert("Error", "An error occurred");
+      notifyToast.error("An error occurred");
     } finally {
       setIs2FALoading(false);
     }

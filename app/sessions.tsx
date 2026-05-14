@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   RefreshControl,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { Stack } from "expo-router";
@@ -21,6 +20,7 @@ import {
 } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
+import { notifyToast } from "../src/contexts/NotificationContext";
 import {
   Badge,
   Button,
@@ -65,9 +65,9 @@ export default function SessionsScreen() {
     mutationFn: (sessionId: number) => authService.revokeSession(sessionId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
-      Alert.alert("Success", "Session revoked successfully");
+      notifyToast.success("Session revoked successfully");
     },
-    onError: () => Alert.alert("Error", "Failed to revoke session"),
+    onError: () => notifyToast.error("Failed to revoke session"),
     onSettled: () => setRevokingId(null),
   });
 
@@ -79,9 +79,9 @@ export default function SessionsScreen() {
         data?: { revoked_count?: number };
         message?: string;
       };
-      Alert.alert("Success", data?.message || "All other sessions revoked");
+      notifyToast.success(data?.message || "All other sessions revoked");
     },
-    onError: () => Alert.alert("Error", "Failed to revoke sessions"),
+    onError: () => notifyToast.error("Failed to revoke sessions"),
   });
 
   const handleRevokeSession = (sessionId: number) => {
@@ -93,7 +93,7 @@ export default function SessionsScreen() {
 
   const handleRevokeAll = () => {
     if (otherSessionCount === 0) {
-      Alert.alert("Info", "No other sessions to revoke");
+      notifyToast.info("No other sessions to revoke");
       return;
     }
     setConfirmAllOpen(true);

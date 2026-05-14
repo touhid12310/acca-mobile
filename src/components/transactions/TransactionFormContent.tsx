@@ -8,7 +8,6 @@ import {
   Platform,
   Image,
   Linking,
-  Alert,
   ActivityIndicator,
   Modal as RNModal,
 } from 'react-native';
@@ -441,17 +440,19 @@ export default function TransactionFormContent({
           updateField('receipt_name', file.name);
         }
 
-        Alert.alert(
-          'Receipt Processed',
+        toast.success(
           formItems.length > 0
             ? `Found ${formItems.length} item(s) totaling ${currencySymbol}${formItems.reduce((sum, item) => sum + parseFloat(item.total), 0).toFixed(2)}`
-            : 'Transaction details extracted successfully'
+            : 'Transaction details extracted successfully',
+          { title: 'Receipt processed' },
         );
       } else {
-        Alert.alert('Processing Failed', result.error || 'Could not extract data from receipt');
+        toast.error(result.error || 'Could not extract data from receipt', {
+          title: 'Processing failed',
+        });
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to process receipt. Please try again.');
+      toast.error('Failed to process receipt. Please try again.');
     } finally {
       setIsProcessingReceipt(false);
       setProcessingStage('');
@@ -485,7 +486,9 @@ export default function TransactionFormContent({
     if (!cameraPermission?.granted) {
       const permission = await requestCameraPermission();
       if (!permission.granted) {
-        Alert.alert('Permission Required', 'Camera permission is needed to capture receipts');
+        toast.warning('Camera permission is needed to capture receipts', {
+          title: 'Permission required',
+        });
         return;
       }
     }
@@ -514,7 +517,7 @@ export default function TransactionFormContent({
       updateField('receipt', file);
       await processReceiptWithAI(file);
     } catch (error) {
-      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+      toast.error('Failed to capture photo. Please try again.');
     }
   };
 
@@ -840,11 +843,11 @@ export default function TransactionFormContent({
                           if (canOpen) {
                             await Linking.openURL(fullUrl);
                           } else {
-                            Alert.alert('Cannot Open', 'Unable to open this file.');
+                            toast.error('Unable to open this file.', { title: 'Cannot open' });
                           }
                         }
                       } catch (error) {
-                        Alert.alert('Error', 'Failed to open file.');
+                        toast.error('Failed to open file.');
                       }
                     }
                   }}

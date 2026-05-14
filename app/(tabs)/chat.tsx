@@ -8,7 +8,6 @@ import {
   Platform,
   TouchableOpacity,
   Image,
-  Alert,
   Keyboard,
 } from "react-native";
 import {
@@ -33,6 +32,7 @@ import { ThemedDatePicker } from "../../src/components/ui/ThemedDatePicker";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
 import { useAuth } from "../../src/contexts/AuthContext";
+import { notifyToast } from "../../src/contexts/NotificationContext";
 import { BrandedHeader } from "../../src/components";
 import chatService from "../../src/services/chatService";
 import categoryService from "../../src/services/categoryService";
@@ -437,9 +437,9 @@ export default function ChatScreen() {
           event?.error !== "aborted" &&
           event?.error !== "no-speech"
         ) {
-          Alert.alert(
-            "Voice input error",
+          notifyToast.error(
             event?.message || "Unable to transcribe your speech right now.",
+            { title: "Voice input error" },
           );
         }
 
@@ -705,7 +705,7 @@ export default function ChatScreen() {
     }
 
     lastHistoryErrorRef.current = message;
-    Alert.alert("Chat date error", message);
+    notifyToast.error(message, { title: "Chat date error" });
   }, [messagesHistoryError]);
 
   // Send message mutation
@@ -814,7 +814,7 @@ export default function ChatScreen() {
         chatDate: selectedChatDate,
       });
     } catch (error) {
-      Alert.alert("Error", "Failed to send message. Please try again.");
+      notifyToast.error("Failed to send message. Please try again.");
     } finally {
       setIsSending(false);
     }
@@ -824,9 +824,9 @@ export default function ChatScreen() {
   const handlePickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission needed",
+      notifyToast.warning(
         "Please grant camera roll access to upload images.",
+        { title: "Permission needed" },
       );
       return;
     }
@@ -850,10 +850,9 @@ export default function ChatScreen() {
   const handleTakePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission needed",
-        "Please grant camera access to take photos.",
-      );
+      notifyToast.warning("Please grant camera access to take photos.", {
+        title: "Permission needed",
+      });
       return;
     }
 
@@ -896,17 +895,17 @@ export default function ChatScreen() {
   const startRecording = async () => {
     try {
       if (!SpeechRecognitionModule) {
-        Alert.alert(
-          "Voice unavailable",
+        notifyToast.warning(
           "Speech recognition needs a development build. Run npx expo run:android or npx expo run:ios.",
+          { title: "Voice unavailable" },
         );
         return;
       }
 
       if (!SpeechRecognitionModule.isRecognitionAvailable()) {
-        Alert.alert(
-          "Not available",
+        notifyToast.warning(
           "Speech recognition is not available on this device.",
+          { title: "Not available" },
         );
         return;
       }
@@ -914,9 +913,9 @@ export default function ChatScreen() {
       const permission =
         await SpeechRecognitionModule.requestPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert(
-          "Permission needed",
+        notifyToast.warning(
           "Please grant microphone and speech recognition permissions.",
+          { title: "Permission needed" },
         );
         return;
       }
@@ -939,7 +938,7 @@ export default function ChatScreen() {
     } catch (error) {
       setIsRecording(false);
       setIsTranscribing(false);
-      Alert.alert("Error", "Failed to start voice transcription.");
+      notifyToast.error("Failed to start voice transcription.");
     }
   };
 
@@ -953,7 +952,7 @@ export default function ChatScreen() {
       voiceStopRequestedRef.current = false;
       setIsRecording(false);
       setIsTranscribing(false);
-      Alert.alert("Error", "Failed to stop voice transcription.");
+      notifyToast.error("Failed to stop voice transcription.");
     }
   };
 

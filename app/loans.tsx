@@ -5,7 +5,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -34,6 +33,7 @@ import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
+import { notifyToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import loanService from "../src/services/loanService";
@@ -188,7 +188,7 @@ export default function LoansScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       closeModal();
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => notifyToast.error(error.message),
   });
 
   const paymentMutation = useMutation({
@@ -219,7 +219,7 @@ export default function LoansScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       closePaymentModal();
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => notifyToast.error(error.message),
   });
 
   const deleteMutation = useMutation({
@@ -231,7 +231,7 @@ export default function LoansScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loans"] });
     },
-    onError: (error: Error) => Alert.alert("Error", error.message),
+    onError: (error: Error) => notifyToast.error(error.message),
   });
 
   const openModal = () => {
@@ -286,22 +286,22 @@ export default function LoansScreen() {
 
   const handleSave = () => {
     if (!formData.loan_name.trim()) {
-      Alert.alert("Error", "Please enter a loan name");
+      notifyToast.error("Please enter a loan name");
       return;
     }
     if (
       !formData.original_amount ||
       parseFloat(formData.original_amount) <= 0
     ) {
-      Alert.alert("Error", "Please enter a valid amount");
+      notifyToast.error("Please enter a valid amount");
       return;
     }
     if (!formData.category_id) {
-      Alert.alert("Error", "Please select a category");
+      notifyToast.error("Please select a category");
       return;
     }
     if (!formData.account_id) {
-      Alert.alert("Error", "Please select an account");
+      notifyToast.error("Please select an account");
       return;
     }
     createMutation.mutate(formData);
@@ -311,15 +311,15 @@ export default function LoansScreen() {
     if (!selectedLoan) return;
     const amount = parseFloat(paymentData.payment_amount);
     if (!amount || amount <= 0) {
-      Alert.alert("Error", "Please enter a valid payment amount");
+      notifyToast.error("Please enter a valid payment amount");
       return;
     }
     if (amount > parseFloat(String(selectedLoan.remaining_balance ?? 0))) {
-      Alert.alert("Error", "Payment amount exceeds remaining balance");
+      notifyToast.error("Payment amount exceeds remaining balance");
       return;
     }
     if (!paymentData.account_id) {
-      Alert.alert("Error", "Please select an account");
+      notifyToast.error("Please select an account");
       return;
     }
     paymentMutation.mutate({ id: selectedLoan.id, data: paymentData });
