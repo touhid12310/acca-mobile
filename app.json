@@ -20,7 +20,14 @@
         "NSMicrophoneUsageDescription": "Allow Accounte to access your microphone for voice transcription.",
         "NSCameraUsageDescription": "Accounte needs access to your camera to capture receipts.",
         "NSPhotoLibraryUsageDescription": "Accounte needs access to your photos to upload receipts.",
-        "NSSpeechRecognitionUsageDescription": "Allow Accounte to use speech recognition for live transcription."
+        "NSSpeechRecognitionUsageDescription": "Allow Accounte to use speech recognition for live transcription.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.799451467900-8t35fi6ope0c7nfbsnla38c660icadpv"
+            ]
+          }
+        ]
       }
     },
     "android": {

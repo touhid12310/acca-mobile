@@ -62,68 +62,124 @@ export default function RegisterScreen() {
     }
   };
 
+  // Native Google sign-up via expo-auth-session/providers/google.
+  // Same flow as Login: fetch the per-platform client IDs from
+  // /api/public/app-config, hand them to Google.useAuthRequest, then
+  // exchange the returned id_token for a Sanctum token via the backend.
+  const [googleClientIds, setGoogleClientIds] = useState<{
+    iosClientId?: string;
+    androidClientId?: string;
+    webClientId?: string;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cfg = await getPublicAppConfig();
+      if (cancelled || !cfg) return;
+      setGoogleClientIds({
+        iosClientId: cfg.google_oauth.ios_client_id || undefined,
+        androidClientId: cfg.google_oauth.android_client_id || undefined,
+        webClientId: cfg.google_oauth.web_client_id || undefined,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    iosClientId: googleClientIds?.iosClientId,
+    androidClientId: googleClientIds?.androidClientId,
+    webClientId: googleClientIds?.webClientId,
+    scopes: ["openid", "email", "profile"],
+  });
+
+  useEffect(() => {
+    if (!googleResponse) return;
+    if (googleResponse.type !== "success") {
+      if (googleResponse.type === "error") {
+        setErrors({
+          general: googleResponse.error?.message || "Google sign-in failed",
+        });
+      }
+      setSocialProvider(null);
+      return;
+    }
+
+    const idToken =
+      googleResponse.params?.id_token ?? googleResponse.authentication?.idToken;
+    if (!idToken) {
+      setErrors({ general: "Google did not return an id_token." });
+      setSocialProvider(null);
+      return;
+    }
+
+    (async () => {
+      try {
+        const platform =
+          Platform.OS === "android" ? "android"
+            : Platform.OS === "ios" ? "ios" : "web";
+        const exchange = await socialAuthService.exchangeIdToken(idToken, platform);
+
+        if (exchange.requiresTwoFactor && exchange.pendingToken) {
+          router.replace({
+            pathname: "/auth/callback",
+            params: { pending_token: exchange.pendingToken },
+          });
+          return;
+        }
+
+        if (exchange.success && exchange.accessToken) {
+          await loginWithToken(exchange.accessToken, exchange.user);
+          router.replace("/(tabs)");
+          return;
+        }
+
+        if (exchange.requiresPasswordLogin) {
+          setErrors({
+            general:
+              exchange.message ||
+              "An account with this email already exists. Sign in with your password first to link.",
+          });
+          return;
+        }
+
+        setErrors({ general: exchange.message || "Sign-up failed" });
+      } catch (err: any) {
+        setErrors({ general: err?.message || "Sign-up failed" });
+      } finally {
+        setSocialProvider(null);
+      }
+    })();
+  }, [googleResponse, loginWithToken]);
+
   const handleSocialSignup = async (provider: SocialProvider) => {
     if (socialProvider) return;
-    setSocialProvider(provider);
     setErrors({});
-    try {
-      const urlResult = await socialAuthService.getAuthorizationUrl({
-        provider,
-        intent: "signup",
+
+    if (provider !== "google") {
+      setErrors({ general: "Only Google sign-up is wired up so far." });
+      return;
+    }
+
+    if (!googleClientIds?.iosClientId && !googleClientIds?.androidClientId) {
+      setErrors({
+        general:
+          "Google sign-in is not configured yet. Ask an administrator to set the iOS / Android client IDs in the admin panel.",
       });
-      if (!urlResult.success || !urlResult.url) {
-        setErrors({
-          general: urlResult.message || "Could not start social sign-up",
-        });
-        return;
-      }
+      return;
+    }
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        urlResult.url,
-        MOBILE_REDIRECT_URI,
-      );
+    if (!googleRequest) {
+      setErrors({ general: "Google sign-in isn't ready yet — try again." });
+      return;
+    }
 
-      if (result.type !== "success" || !result.url) {
-        return;
-      }
-
-      const parsed = new URL(result.url);
-      const errorParam = parsed.searchParams.get("error");
-      if (errorParam) {
-        setErrors({
-          general:
-            parsed.searchParams.get("error_description") || errorParam,
-        });
-        return;
-      }
-
-      const code = parsed.searchParams.get("code");
-      if (!code) {
-        setErrors({ general: "Missing authorization code from provider" });
-        return;
-      }
-
-      const exchange = await socialAuthService.exchange(code);
-      if (exchange.success && exchange.accessToken) {
-        await loginWithToken(exchange.accessToken, exchange.user);
-        router.replace("/(tabs)");
-        return;
-      }
-
-      if (exchange.requiresPasswordLogin) {
-        setErrors({
-          general:
-            exchange.message ||
-            "An account with this email already exists. Sign in with your password first to link.",
-        });
-        return;
-      }
-
-      setErrors({ general: exchange.message || "Sign-up failed" });
+    setSocialProvider(provider);
+    try {
+      await promptGoogleAsync();
     } catch (err: any) {
-      console.error("WorkOS signup failed:", err);
-      setErrors({ general: err?.message || "Sign-up failed" });
-    } finally {
+      setErrors({ general: err?.message || "Could not open Google sign-in" });
       setSocialProvider(null);
     }
   };
