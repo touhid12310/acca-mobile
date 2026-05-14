@@ -87,10 +87,13 @@ export default function RegisterScreen() {
     };
   }, []);
 
+  // Pass non-null placeholders until the real IDs land — Google.useAuthRequest
+  // throws "must be defined" on undefined. Empty strings pass the null
+  // check, and we still block promptGoogleAsync() below until real IDs load.
   const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    iosClientId: googleClientIds?.iosClientId,
-    androidClientId: googleClientIds?.androidClientId,
-    webClientId: googleClientIds?.webClientId,
+    iosClientId: googleClientIds?.iosClientId ?? "",
+    androidClientId: googleClientIds?.androidClientId ?? "",
+    webClientId: googleClientIds?.webClientId ?? "",
     scopes: ["openid", "email", "profile"],
   });
 
