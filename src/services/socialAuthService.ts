@@ -24,6 +24,16 @@ interface ExchangeResult {
   message?: string;
   status?: number;
   requiresPasswordLogin?: boolean;
+  requiresTwoFactor?: boolean;
+  pendingToken?: string;
+}
+
+interface VerifyTwoFactorResult {
+  success: boolean;
+  user?: User | null;
+  accessToken?: string;
+  message?: string;
+  status?: number;
 }
 
 /**
@@ -93,9 +103,22 @@ const socialAuthService = {
         payload,
         'requires_password_login'
       );
+      const requires2faTop = readField<boolean>(payload, 'requires_two_factor');
       const inner = readField<Record<string, unknown>>(payload, 'data');
       const accessToken = readField<string>(inner, 'access_token');
       const user = readField<User>(inner, 'user') ?? null;
+      const requires2faInner = readField<boolean>(inner, 'requires_two_factor');
+      const pendingToken = readField<string>(inner, 'pending_token');
+
+      if (requires2faTop || requires2faInner) {
+        return {
+          success: false,
+          status: response.status,
+          message: message || 'Two-factor authentication code required',
+          requiresTwoFactor: true,
+          pendingToken,
+        };
+      }
 
       if (response.success && apiSuccess && accessToken) {
         return {
@@ -117,6 +140,44 @@ const socialAuthService = {
 
     inFlightExchanges.set(code, promise);
     return promise;
+  },
+
+  /**
+   * Step-2 of social sign-in for 2FA-enabled users. The exchange call
+   * returned `requires_two_factor: true` + a `pending_token`. The user
+   * supplies the 6-digit code from their authenticator; submit both here.
+   */
+  async verifyTwoFactor(
+    pendingToken: string,
+    code: string,
+  ): Promise<VerifyTwoFactorResult> {
+    const response = await apiRequest(`/auth/social/verify-2fa`, {
+      method: 'POST',
+      body: JSON.stringify({ pending_token: pendingToken, code }),
+    });
+
+    const payload = response.data as Record<string, unknown> | undefined;
+    const apiSuccess = readField<boolean>(payload, 'success');
+    const message = readField<string>(payload, 'message');
+    const inner = readField<Record<string, unknown>>(payload, 'data');
+    const accessToken = readField<string>(inner, 'access_token');
+    const user = readField<User>(inner, 'user') ?? null;
+
+    if (response.success && apiSuccess && accessToken) {
+      return {
+        success: true,
+        accessToken,
+        user,
+        message,
+        status: response.status,
+      };
+    }
+
+    return {
+      success: false,
+      status: response.status,
+      message: message || response.error || 'Invalid code',
+    };
   },
 };
 

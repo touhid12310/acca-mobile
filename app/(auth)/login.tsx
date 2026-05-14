@@ -163,6 +163,17 @@ export default function LoginScreen() {
       }
 
       const exchange = await socialAuthService.exchange(code);
+
+      // 2FA required — bounce to the deep-link callback screen with the
+      // pending token so the existing 6-digit-code prompt handles it.
+      if (exchange.requiresTwoFactor && exchange.pendingToken) {
+        router.replace({
+          pathname: "/auth/callback",
+          params: { pending_token: exchange.pendingToken },
+        });
+        return;
+      }
+
       if (exchange.success && exchange.accessToken) {
         await loginWithToken(exchange.accessToken, exchange.user);
         router.replace("/(tabs)");

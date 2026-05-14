@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../src/contexts/AuthContext';
@@ -22,11 +29,18 @@ export default function AuthCallback() {
   const [message, setMessage] = useState('Signing you in…');
   const ran = useRef(false);
 
+  // 2FA state — when the backend says the account has TOTP enabled, we
+  // stop on this screen and prompt for the 6-digit code.
+  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+
   useEffect(() => {
     if (ran.current) return;
     ran.current = true;
 
-    const code = typeof params.code === 'string' ? params.code : undefined;
+    const codeParam = typeof params.code === 'string' ? params.code : undefined;
     const error = typeof params.error === 'string' ? params.error : undefined;
     const errorDescription =
       typeof params.error_description === 'string'
@@ -43,21 +57,28 @@ export default function AuthCallback() {
       return;
     }
 
-    if (!code) {
+    if (!codeParam) {
       finishWithError('Missing authorization code');
       return;
     }
 
-    if (processedCodes.has(code)) {
+    if (processedCodes.has(codeParam)) {
       // Inline handler already exchanged this code. The other path will
       // navigate to /(tabs) shortly — just sit on the loader.
       return;
     }
-    processedCodes.add(code);
+    processedCodes.add(codeParam);
 
     (async () => {
       try {
-        const result = await socialAuthService.exchange(code);
+        const result = await socialAuthService.exchange(codeParam);
+
+        if (result.requiresTwoFactor && result.pendingToken) {
+          setPendingToken(result.pendingToken);
+          setMessage('Two-factor authentication required');
+          return;
+        }
+
         if (result.success && result.accessToken) {
           setMessage('Welcome back!');
           await loginWithToken(result.accessToken, result.user);
@@ -78,6 +99,101 @@ export default function AuthCallback() {
     })();
   }, [params.code, params.error, params.error_description, loginWithToken]);
 
+  const handleVerifyTwoFactor = async () => {
+    if (!pendingToken) return;
+    const trimmed = code.replace(/\D/g, '').slice(0, 6);
+    if (trimmed.length !== 6) {
+      setTwoFactorError('Enter the 6-digit code from your authenticator app');
+      return;
+    }
+    if (isVerifying) return;
+    setIsVerifying(true);
+    setTwoFactorError(null);
+    try {
+      const result = await socialAuthService.verifyTwoFactor(pendingToken, trimmed);
+      if (result.success && result.accessToken) {
+        await loginWithToken(result.accessToken, result.user);
+        router.replace('/(tabs)');
+      } else {
+        setTwoFactorError(result.message || 'Invalid code. Try again.');
+      }
+    } catch (err: any) {
+      setTwoFactorError(err?.message || 'Could not verify the code.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  if (pendingToken) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.outline ?? '#d1d5db',
+            },
+          ]}
+        >
+          <Text style={[styles.cardTitle, { color: colors.onSurface }]}>
+            Two-factor authentication
+          </Text>
+          <Text style={[styles.cardSubtitle, { color: colors.onSurfaceVariant }]}>
+            Enter the 6-digit code from your authenticator app to finish signing in.
+          </Text>
+          <TextInput
+            value={code}
+            onChangeText={(t) => {
+              setCode(t.replace(/\D/g, '').slice(0, 6));
+              if (twoFactorError) setTwoFactorError(null);
+            }}
+            keyboardType="number-pad"
+            placeholder="000000"
+            placeholderTextColor={colors.onSurfaceVariant}
+            maxLength={6}
+            autoFocus
+            style={[
+              styles.codeInput,
+              {
+                color: colors.onSurface,
+                borderColor: colors.outline ?? '#d1d5db',
+                backgroundColor: colors.surface,
+              },
+            ]}
+          />
+          {twoFactorError && (
+            <Text style={styles.errorText}>{twoFactorError}</Text>
+          )}
+          <Pressable
+            onPress={handleVerifyTwoFactor}
+            disabled={isVerifying || code.length !== 6}
+            style={[
+              styles.verifyBtn,
+              {
+                backgroundColor: colors.primary,
+                opacity: isVerifying || code.length !== 6 ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text style={styles.verifyBtnText}>
+              {isVerifying ? 'Verifying…' : 'Verify & sign in'}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.replace('/(auth)/login')}
+            hitSlop={6}
+            style={styles.cancelBtn}
+          >
+            <Text style={[styles.cancelText, { color: colors.onSurfaceVariant }]}>
+              Cancel
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ActivityIndicator size="large" color={colors.primary} />
@@ -97,5 +213,54 @@ const styles = StyleSheet.create({
   message: {
     fontSize: 15,
     opacity: 0.85,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    gap: 14,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    opacity: 0.85,
+    lineHeight: 18,
+  },
+  codeInput: {
+    borderWidth: 2,
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 20,
+    textAlign: 'center',
+    letterSpacing: 6,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 13,
+  },
+  verifyBtn: {
+    paddingVertical: 13,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  verifyBtnText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  cancelBtn: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+  },
+  cancelText: {
+    fontSize: 13,
   },
 });
