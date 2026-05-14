@@ -26,26 +26,9 @@ interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
   sessionExpired: boolean;
-  login: (
-    email: string,
-    password: string,
-    twoFactorCode?: string
-  ) => Promise<{
-    success: boolean;
-    message?: string;
-    requiresTwoFactor?: boolean;
-    errors?: Record<string, string[]>;
-  }>;
-  register: (
-    name: string,
-    email: string,
-    password: string,
-    confirmPassword: string
-  ) => Promise<{
-    success: boolean;
-    message?: string;
-    errors?: Record<string, string[]>;
-  }>;
+  // Sign-in is passwordless: components call authService.requestEmailCode +
+  // verifyEmailCode (or googleAuthorizationUrl + googleExchange) and feed the
+  // returned access_token + user into loginWithToken.
   loginWithToken: (
     token: string,
     user?: User | null
@@ -145,69 +128,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [token, isAuthenticated]);
 
-  const login = async (
-    email: string,
-    password: string,
-    twoFactorCode?: string
-  ) => {
-    try {
-      const result = await authService.login(email, password, twoFactorCode);
-
-      // 2FA required: backend returns 401 with requires_two_factor flag.
-      // The user is NOT authenticated yet — the client must prompt for the code.
-      const responsePayload = result.data as
-        | {
-            requires_two_factor?: boolean;
-            data?: { requires_two_factor?: boolean };
-          }
-        | undefined;
-      if (
-        responsePayload?.requires_two_factor ||
-        responsePayload?.data?.requires_two_factor
-      ) {
-        return {
-          success: false,
-          requiresTwoFactor: true,
-          message: 'Two-factor authentication required',
-        };
-      }
-
-      if (result.success && result.data) {
-        const data = result.data as {
-          success?: boolean;
-          data?: { access_token?: string; user?: User };
-          message?: string;
-        };
-
-        if (data.success && data.data?.access_token) {
-          const authToken = data.data.access_token;
-          const userData = data.data.user;
-          setActiveTimeZone(userData?.timezone || detectTimeZone());
-
-          queryClient.clear();
-          await saveAuthToken(authToken);
-          setToken(authToken);
-          setUser(userData || null);
-          setIsAuthenticated(true);
-
-          return { success: true, message: data.message || 'Login successful!' };
-        }
-      }
-
-      return {
-        success: false,
-        message:
-          (result.data as { message?: string })?.message || 'Login failed',
-        errors: (result.data as { errors?: Record<string, string[]> })?.errors,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Network error. Please try again.',
-      };
-    }
-  };
-
   const loginWithToken = useCallback(
     async (authToken: string, userData?: User | null) => {
       if (!authToken) {
@@ -224,61 +144,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     },
     [queryClient]
   );
-
-  const register = async (
-    name: string,
-    email: string,
-    password: string,
-    confirmPassword: string
-  ) => {
-    try {
-      const result = await authService.register(
-        name,
-        email,
-        password,
-        confirmPassword
-      );
-
-      if (result.success && result.data) {
-        const data = result.data as {
-          success?: boolean;
-          data?: { access_token?: string; token?: string; user?: User };
-          message?: string;
-        };
-
-        if (data.success) {
-          const authToken = data.data?.access_token || data.data?.token;
-          const userData = data.data?.user;
-          setActiveTimeZone(userData?.timezone || detectTimeZone());
-
-          if (authToken) {
-            queryClient.clear();
-            await saveAuthToken(authToken);
-            setToken(authToken);
-            setUser(userData || null);
-            setIsAuthenticated(true);
-          }
-
-          return {
-            success: true,
-            message: data.message || 'Registration successful!',
-          };
-        }
-      }
-
-      return {
-        success: false,
-        message:
-          (result.data as { message?: string })?.message || 'Registration failed',
-        errors: (result.data as { errors?: Record<string, string[]> })?.errors,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Network error. Please try again.',
-      };
-    }
-  };
 
   const logout = async (showMessage = true) => {
     // Clear interval
@@ -446,9 +311,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     loading,
     isAuthenticated,
     sessionExpired,
-    login,
     loginWithToken,
-    register,
     logout,
     checkAuthStatus,
     updateUser,

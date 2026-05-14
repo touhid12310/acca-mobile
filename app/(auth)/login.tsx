@@ -7,208 +7,192 @@ import {
   ScrollView,
   Text,
   Pressable,
-  TouchableOpacity,
   Image,
 } from "react-native";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
-import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
+import * as Linking from "expo-linking";
+import { Mail, ShieldCheck, ArrowRight } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { spacing } from "../../src/constants/theme";
-import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
-import workosService, {
-  WorkOSProvider,
-} from "../../src/services/workosService";
 import authService from "../../src/services/authService";
 
 WebBrowser.maybeCompleteAuthSession();
 
+// Deep-link redirect captured by app/auth/callback.tsx (the URL must also be
+// added as an Authorized Redirect URI in Google Cloud Console for the OAuth
+// client we use — the same client whose ID/secret are stored in the admin
+// panel under GOOGLE_OAUTH_CLIENT_ID / _SECRET).
 const MOBILE_REDIRECT_URI = "accounte://auth/callback";
 
+type Step = "email" | "code";
+
 export default function LoginScreen() {
-  const { login, loginWithToken } = useAuth();
+  const { loginWithToken } = useAuth();
   const { colors, isDark } = useTheme();
 
+  const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [code, setCode] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState("");
-  const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
-    null,
-  );
-  const [magicAuthStep, setMagicAuthStep] = useState<"idle" | "email" | "code">("idle");
-  const [magicAuthEmail, setMagicAuthEmail] = useState("");
-  const [magicAuthCode, setMagicAuthCode] = useState("");
-  const [isMagicAuthLoading, setIsMagicAuthLoading] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleMagicAuthStart = async () => {
-    const trimmed = magicAuthEmail.trim();
+  const handleRequestCode = async () => {
+    const trimmed = email.trim().toLowerCase();
     if (!trimmed) {
-      setErrors({ general: "Enter your email first" });
+      setErrors({ email: "Email is required" });
       return;
     }
-    if (isMagicAuthLoading) return;
-    setIsMagicAuthLoading(true);
+    if (!/\S+@\S+\.\S+/.test(trimmed)) {
+      setErrors({ email: "That doesn't look like a valid email" });
+      return;
+    }
+    if (isSendingCode) return;
+
     setErrors({});
+    setIsSendingCode(true);
     try {
-      const result = await authService.requestMagicLink(trimmed);
+      const result = await authService.requestEmailCode(trimmed);
       if (result.success) {
-        setMagicAuthStep("code");
+        setStep("code");
       } else {
         setErrors({
-          general: (result.data as any)?.message || "Could not send code",
+          general:
+            (result.data as { message?: string } | undefined)?.message ||
+            "Could not send the code. Try again.",
         });
       }
     } catch {
-      setErrors({ general: "Could not send code" });
+      setErrors({ general: "Network error. Please try again." });
     } finally {
-      setIsMagicAuthLoading(false);
+      setIsSendingCode(false);
     }
   };
 
-  const handleMagicAuthVerify = async () => {
-    const trimmed = magicAuthCode.trim();
+  const handleVerifyCode = async () => {
+    const trimmed = code.trim();
     if (!trimmed) {
-      setErrors({ general: "Enter the code from your email" });
+      setErrors({ code: "Enter the code we emailed you" });
       return;
     }
-    if (isMagicAuthLoading) return;
-    setIsMagicAuthLoading(true);
+    if (isVerifying) return;
+
     setErrors({});
+    setIsVerifying(true);
     try {
-      const result = await authService.verifyMagicLink(magicAuthEmail.trim(), trimmed);
-      const data = result.data as any;
-      const payload = data?.data || data;
-      if (result.success && payload?.access_token) {
-        await loginWithToken(payload.access_token, payload.user);
-        router.replace("/(tabs)");
-      } else {
-        setErrors({
-          general: data?.message || "Invalid or expired code",
-        });
+      const result = await authService.verifyEmailCode(
+        email.trim().toLowerCase(),
+        trimmed,
+      );
+      if (result.success && result.data) {
+        const data = result.data as {
+          data?: { access_token?: string; user?: any };
+        };
+        const accessToken = data.data?.access_token;
+        const user = data.data?.user;
+        if (accessToken) {
+          await loginWithToken(accessToken, user);
+          router.replace("/(tabs)");
+          return;
+        }
       }
+      setErrors({
+        general:
+          (result.data as { message?: string } | undefined)?.message ||
+          "Incorrect or expired code",
+      });
     } catch {
-      setErrors({ general: "Could not verify code" });
+      setErrors({ general: "Network error. Please try again." });
     } finally {
-      setIsMagicAuthLoading(false);
+      setIsVerifying(false);
     }
   };
 
-  const handleSocialLogin = async (provider: WorkOSProvider) => {
-    if (socialProvider) return;
-    setSocialProvider(provider);
+  const handleGoogleLogin = async () => {
+    if (isGoogleLoading) return;
     setErrors({});
+    setIsGoogleLoading(true);
     try {
-      const urlResult = await workosService.getAuthorizationUrl({
-        provider,
-        intent: "login",
-      });
-      if (!urlResult.success || !urlResult.url) {
+      const urlResult = await authService.googleAuthorizationUrl(
+        MOBILE_REDIRECT_URI,
+        "login",
+      );
+      if (!urlResult.success) {
         setErrors({
-          general: urlResult.message || "Could not start social sign-in",
+          general:
+            (urlResult.data as { message?: string } | undefined)?.message ||
+            "Could not start Google sign-in",
         });
         return;
       }
+      const data = urlResult.data as {
+        data?: { url?: string; state?: string };
+      };
+      const url = data.data?.url;
+      if (!url) {
+        setErrors({ general: "Google sign-in is not configured." });
+        return;
+      }
 
-      const result = await WebBrowser.openAuthSessionAsync(
-        urlResult.url,
+      const browserResult = await WebBrowser.openAuthSessionAsync(
+        url,
         MOBILE_REDIRECT_URI,
       );
 
-      if (result.type !== "success" || !result.url) {
-        // user dismissed or cancelled — silent
+      if (browserResult.type !== "success" || !browserResult.url) {
+        // User cancelled or dismissed — silent.
         return;
       }
 
-      const parsed = new URL(result.url);
-      const errorParam = parsed.searchParams.get("error");
-      if (errorParam) {
-        setErrors({
-          general:
-            parsed.searchParams.get("error_description") || errorParam,
-        });
+      const parsed = Linking.parse(browserResult.url);
+      const queryCode = parsed.queryParams?.code as string | undefined;
+      const queryState = parsed.queryParams?.state as string | undefined;
+      const queryError = parsed.queryParams?.error as string | undefined;
+
+      if (queryError) {
+        setErrors({ general: `Sign-in cancelled: ${queryError}` });
+        return;
+      }
+      if (!queryCode || !queryState) {
+        setErrors({ general: "Google did not return a sign-in code." });
         return;
       }
 
-      const code = parsed.searchParams.get("code");
-      if (!code) {
-        setErrors({ general: "Missing authorization code from provider" });
-        return;
-      }
-
-      const exchange = await workosService.exchange(code);
-      if (exchange.success && exchange.accessToken) {
-        await loginWithToken(exchange.accessToken, exchange.user);
-        router.replace("/(tabs)");
-        return;
-      }
-
-      if (exchange.requiresPasswordLogin) {
-        setErrors({
-          general:
-            exchange.message ||
-            "An account with this email already exists. Sign in with your password first to link.",
-        });
-        return;
-      }
-
-      setErrors({ general: exchange.message || "Sign-in failed" });
-    } catch (err: any) {
-      console.error("WorkOS login failed:", err);
-      setErrors({ general: err?.message || "Sign-in failed" });
-    } finally {
-      setSocialProvider(null);
-    }
-  };
-
-  const validateForm = () => {
-    const newErrors: Record<string, string> = {};
-    if (!email.trim()) newErrors.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(email))
-      newErrors.email = "Please enter a valid email";
-    if (!password) newErrors.password = "Password is required";
-    if (requiresTwoFactor && !twoFactorCode.trim())
-      newErrors.twoFactorCode = "Two-factor code is required";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleLogin = async () => {
-    if (!validateForm()) return;
-    setIsLoading(true);
-    setErrors({});
-    try {
-      const result = await login(
-        email.trim(),
-        password,
-        requiresTwoFactor ? twoFactorCode.trim() : undefined,
+      const exchange = await authService.googleExchange(
+        queryCode,
+        queryState,
+        MOBILE_REDIRECT_URI,
       );
-      if (result.success) {
-        router.replace("/(tabs)");
-      } else if (result.requiresTwoFactor) {
-        setRequiresTwoFactor(true);
-      } else {
-        setErrors({
-          general: result.message || "Login failed. Please try again.",
-        });
-        if (result.errors) {
-          const fieldErrors: Record<string, string> = {};
-          Object.entries(result.errors).forEach(([key, messages]) => {
-            fieldErrors[key] = Array.isArray(messages) ? messages[0] : messages;
-          });
-          setErrors((prev) => ({ ...prev, ...fieldErrors }));
+      if (exchange.success && exchange.data) {
+        const data2 = exchange.data as {
+          data?: { access_token?: string; user?: any };
+        };
+        const accessToken = data2.data?.access_token;
+        const user = data2.data?.user;
+        if (accessToken) {
+          await loginWithToken(accessToken, user);
+          router.replace("/(tabs)");
+          return;
         }
       }
-    } catch (error) {
-      setErrors({ general: "An unexpected error occurred. Please try again." });
+      setErrors({
+        general:
+          (exchange.data as { message?: string } | undefined)?.message ||
+          "Google sign-in failed",
+      });
+    } catch (err) {
+      setErrors({
+        general:
+          (err as Error)?.message || "Could not complete Google sign-in",
+      });
     } finally {
-      setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -225,7 +209,6 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero */}
           <View style={styles.hero}>
             <Image
               source={
@@ -237,253 +220,168 @@ export default function LoginScreen() {
               resizeMode="contain"
             />
             <View
-              style={[
-                styles.logoDivider,
-                { backgroundColor: colors.onSurface },
-              ]}
+              style={[styles.logoDivider, { backgroundColor: colors.onSurface }]}
             />
             <Text style={[styles.title, { color: colors.onSurface }]}>
-              Welcome back
+              Sign in to Accounte
             </Text>
             <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-              Sign in to continue managing your finances
+              No password — just your email or your Google account.
             </Text>
           </View>
 
-          {/* Form */}
           <View style={styles.form}>
             {errors.general && (
               <AlertBar tone="error" message={errors.general} />
             )}
 
-            <SocialAuthButtons
-              onSelect={handleSocialLogin}
-              activeProvider={socialProvider}
-              disabled={isLoading}
-            />
-
-            {magicAuthStep === "idle" && (
-              <TouchableOpacity
-                activeOpacity={0.6}
-                onPress={() => setMagicAuthStep("email")}
-                style={{
-                  width: "100%",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: 12,
-                  paddingHorizontal: 8,
-                  borderWidth: 1,
-                  borderStyle: "dashed",
-                  borderColor: "#cbd5e1",
-                  borderRadius: 10,
-                  backgroundColor: "transparent",
-                  marginTop: 6,
-                }}
+            <Pressable
+              onPress={handleGoogleLogin}
+              disabled={isGoogleLoading || isSendingCode || isVerifying}
+              style={({ pressed }) => [
+                styles.googleBtn,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.outline ?? "#cbd5e1",
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <View style={styles.googleIconWrap}>
+                <Text style={styles.googleG}>G</Text>
+              </View>
+              <Text
+                style={[styles.googleBtnText, { color: colors.onSurface }]}
               >
-                <Mail size={16} color="#2563eb" />
-                <Text
-                  style={{
-                    color: "#2563eb",
-                    fontWeight: "600",
-                    fontSize: 13,
-                    marginLeft: 6,
-                  }}
-                >
-                  Sign in with an email code
-                </Text>
-              </TouchableOpacity>
-            )}
+                {isGoogleLoading ? "Redirecting…" : "Continue with Google"}
+              </Text>
+            </Pressable>
 
-            {magicAuthStep === "email" && (
+            <View style={styles.dividerRow}>
               <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.sm,
-                }}
+                style={[
+                  styles.dividerLine,
+                  { backgroundColor: colors.outlineVariant ?? "#e2e8f0" },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.dividerLabel,
+                  { color: colors.onSurfaceVariant },
+                ]}
               >
-                <Text
-                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
-                >
-                  Email me a one-time sign-in code
-                </Text>
+                or use your email
+              </Text>
+              <View
+                style={[
+                  styles.dividerLine,
+                  { backgroundColor: colors.outlineVariant ?? "#e2e8f0" },
+                ]}
+              />
+            </View>
+
+            {step === "email" && (
+              <>
                 <Input
                   label="Email"
                   placeholder="you@example.com"
-                  value={magicAuthEmail}
-                  onChangeText={setMagicAuthEmail}
+                  value={email}
+                  onChangeText={(t) => {
+                    setEmail(t);
+                    if (errors.email) setErrors((p) => ({ ...p, email: "" }));
+                  }}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoComplete="email"
                   icon={Mail}
+                  error={errors.email}
+                  autoFocus
                 />
                 <Button
-                  label={isMagicAuthLoading ? "Sending..." : "Send code"}
-                  onPress={handleMagicAuthStart}
-                  loading={isMagicAuthLoading}
-                  disabled={isMagicAuthLoading}
+                  label={isSendingCode ? "Sending code…" : "Email me a sign-in code"}
+                  onPress={handleRequestCode}
+                  loading={isSendingCode}
+                  disabled={isSendingCode}
                   fullWidth
+                  size="lg"
+                  icon={ArrowRight}
                 />
-                <Pressable
-                  onPress={() => setMagicAuthStep("idle")}
-                  style={{ alignSelf: "center", paddingVertical: spacing.xs }}
-                  hitSlop={6}
+                <Text
+                  style={[
+                    styles.fineprint,
+                    { color: colors.onSurfaceVariant },
+                  ]}
                 >
-                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                    Cancel
-                  </Text>
-                </Pressable>
-              </View>
+                  First time? We'll create your account when you submit the
+                  code.
+                </Text>
+              </>
             )}
 
-            {magicAuthStep === "code" && (
-              <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.sm,
-                }}
-              >
+            {step === "code" && (
+              <>
                 <Text
-                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
+                  style={{
+                    color: colors.onSurface,
+                    fontWeight: "600",
+                    fontSize: 14,
+                  }}
                 >
-                  Enter the code we emailed to {magicAuthEmail}
+                  Enter the code sent to {email}
                 </Text>
                 <Input
-                  label="Code"
-                  placeholder="123456"
-                  value={magicAuthCode}
-                  onChangeText={(t) => setMagicAuthCode(t.replace(/\s+/g, ""))}
+                  label="Sign-in code"
+                  placeholder="000000"
+                  value={code}
+                  onChangeText={(t) => {
+                    setCode(t.replace(/\s+/g, "").slice(0, 10));
+                    if (errors.code || errors.general) setErrors({});
+                  }}
                   keyboardType="number-pad"
                   maxLength={10}
                   icon={ShieldCheck}
+                  error={errors.code}
+                  autoFocus
                 />
                 <Button
-                  label={isMagicAuthLoading ? "Verifying..." : "Sign in"}
-                  onPress={handleMagicAuthVerify}
-                  loading={isMagicAuthLoading}
-                  disabled={isMagicAuthLoading}
+                  label={isVerifying ? "Verifying…" : "Verify & sign in"}
+                  onPress={handleVerifyCode}
+                  loading={isVerifying}
+                  disabled={isVerifying}
                   fullWidth
+                  size="lg"
+                  icon={ArrowRight}
                 />
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
+                <View style={styles.codeActions}>
                   <Pressable
-                    onPress={handleMagicAuthStart}
-                    disabled={isMagicAuthLoading}
+                    onPress={handleRequestCode}
+                    disabled={isSendingCode}
                     hitSlop={6}
                   >
-                    <Text style={{ color: colors.primary, fontSize: 12 }}>
+                    <Text style={{ color: colors.primary, fontSize: 13 }}>
                       Resend code
                     </Text>
                   </Pressable>
                   <Pressable
                     onPress={() => {
-                      setMagicAuthStep("idle");
-                      setMagicAuthCode("");
+                      setStep("email");
+                      setCode("");
+                      setErrors({});
                     }}
                     hitSlop={6}
                   >
-                    <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                      Cancel
+                    <Text
+                      style={{
+                        color: colors.onSurfaceVariant,
+                        fontSize: 13,
+                      }}
+                    >
+                      Use a different email
                     </Text>
                   </Pressable>
                 </View>
-              </View>
+              </>
             )}
-
-            <Input
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={(t) => {
-                setEmail(t);
-                if (errors.email) setErrors((p) => ({ ...p, email: "" }));
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              icon={Mail}
-              error={errors.email}
-            />
-
-            <Input
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChangeText={(t) => {
-                setPassword(t);
-                if (errors.password) setErrors((p) => ({ ...p, password: "" }));
-              }}
-              autoCapitalize="none"
-              autoComplete="password"
-              icon={Lock}
-              secureTextEntry
-              secureToggleable
-              error={errors.password}
-            />
-
-            {requiresTwoFactor && (
-              <Input
-                label="Two-factor code"
-                placeholder="123456"
-                value={twoFactorCode}
-                onChangeText={(t) => {
-                  setTwoFactorCode(t);
-                  if (errors.twoFactorCode)
-                    setErrors((p) => ({ ...p, twoFactorCode: "" }));
-                }}
-                keyboardType="number-pad"
-                maxLength={6}
-                icon={ShieldCheck}
-                error={errors.twoFactorCode}
-              />
-            )}
-
-            <Pressable
-              style={styles.forgotPassword}
-              onPress={() => router.push("/(auth)/forgot-password")}
-              hitSlop={6}
-            >
-              <Text
-                style={[styles.forgotPasswordText, { color: colors.primary }]}
-              >
-                Forgot password?
-              </Text>
-            </Pressable>
-
-            <Button
-              label={isLoading ? "Signing in..." : "Sign in"}
-              onPress={handleLogin}
-              loading={isLoading}
-              disabled={isLoading}
-              fullWidth
-              size="lg"
-              icon={LogIn}
-              style={styles.primaryButton}
-            />
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text
-              style={[styles.footerText, { color: colors.onSurfaceVariant }]}
-            >
-              Don't have an account?{" "}
-            </Text>
-            <Link href="/(auth)/register" asChild>
-              <Pressable hitSlop={6}>
-                <Text style={[styles.linkText, { color: colors.primary }]}>
-                  Sign up
-                </Text>
-              </Pressable>
-            </Link>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -505,58 +403,54 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
-  logoImageDark: {
-    width: 220,
-    height: 33,
-    marginBottom: spacing.sm,
-  },
-  logoImageLight: {
-    width: 220,
-    height: 47,
-    marginBottom: spacing.sm,
-  },
+  logoImageDark: { width: 220, height: 33, marginBottom: spacing.sm },
+  logoImageLight: { width: 220, height: 47, marginBottom: spacing.sm },
   logoDivider: {
     width: 220,
     height: 2,
     borderRadius: 999,
     marginBottom: spacing.xs,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
+  title: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
   subtitle: {
     fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
-    maxWidth: 300,
+    maxWidth: 320,
   },
-  form: {
-    gap: spacing.lg,
-  },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.xs,
-  },
-  forgotPasswordText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  footer: {
+  form: { gap: spacing.lg },
+  googleBtn: {
     flexDirection: "row",
-    justifyContent: "center",
     alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  footerText: {
-    fontSize: 14,
+  googleIconWrap: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  linkText: {
-    fontSize: 14,
-    fontWeight: "700",
+  googleG: { fontSize: 14, fontWeight: "700", color: "#4285F4" },
+  googleBtnText: { fontSize: 15, fontWeight: "600" },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  primaryButton: {
-    marginTop: spacing.xs,
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  dividerLabel: { fontSize: 12, fontWeight: "500" },
+  fineprint: { fontSize: 12, textAlign: "center", lineHeight: 18 },
+  codeActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
 });

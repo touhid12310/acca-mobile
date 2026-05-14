@@ -3,58 +3,57 @@ import { User, LoginResponse, RegisterResponse, ApiResponse } from '../types';
 import { detectTimeZone } from '../utils/timezone';
 
 export const authService = {
-  login: async (
-    email: string,
-    password: string,
-    twoFactorCode?: string
-  ): Promise<ApiResponse<LoginResponse>> => {
-    const body: Record<string, string> = { email, password, timezone: detectTimeZone() };
-    if (twoFactorCode) {
-      body.two_factor_code = twoFactorCode;
-    }
-
-    const result = await apiRequest<LoginResponse>(API_CONFIG.ENDPOINTS.LOGIN, {
+  // ── Email-code sign-in (replaces password login + register) ──
+  // Single passwordless flow: request a 6-digit code, then submit it. First-
+  // time submission creates the user — there is no separate registration.
+  requestEmailCode: async (email: string, name?: string): Promise<ApiResponse<{ email: string }>> => {
+    return apiRequest<{ email: string }>('/auth/email-code/request', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ email, ...(name ? { name } : {}) }),
     });
-
-    // Save token on successful login
-    if (result.success && result.data) {
-      const data = result.data as LoginResponse;
-      if (data.data?.access_token) {
-        await saveAuthToken(data.data.access_token);
-      }
-    }
-
-    return result;
   },
 
-  register: async (
-    name: string,
+  verifyEmailCode: async (
     email: string,
-    password: string,
-    confirmPassword: string
-  ): Promise<ApiResponse<RegisterResponse>> => {
-    const result = await apiRequest<RegisterResponse>(API_CONFIG.ENDPOINTS.REGISTER, {
+    code: string,
+    name?: string,
+  ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
+    return apiRequest<{ access_token: string; user: User }>('/auth/email-code/verify', {
       method: 'POST',
       body: JSON.stringify({
-        name,
         email,
-        password,
-        confirm_password: confirmPassword,
+        code,
+        timezone: detectTimeZone(),
+        ...(name ? { name } : {}),
+      }),
+    });
+  },
+
+  // ── Google OAuth (custom — no Socialite, no WorkOS) ──
+  googleAuthorizationUrl: async (
+    redirectUri: string,
+    intent: 'login' | 'signup' = 'login',
+  ): Promise<ApiResponse<{ url: string; state: string }>> => {
+    const params = new URLSearchParams({ redirect_uri: redirectUri, intent });
+    return apiRequest<{ url: string; state: string }>(`/auth/google/url?${params.toString()}`, {
+      method: 'GET',
+    });
+  },
+
+  googleExchange: async (
+    code: string,
+    state: string,
+    redirectUri: string,
+  ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
+    return apiRequest<{ access_token: string; user: User }>('/auth/google/exchange', {
+      method: 'POST',
+      body: JSON.stringify({
+        code,
+        state,
+        redirect_uri: redirectUri,
         timezone: detectTimeZone(),
       }),
     });
-
-    // Save token on successful registration
-    if (result.success && result.data) {
-      const data = result.data as RegisterResponse;
-      if (data.data?.access_token) {
-        await saveAuthToken(data.data.access_token);
-      }
-    }
-
-    return result;
   },
 
   logout: async (): Promise<ApiResponse<void>> => {
@@ -105,30 +104,6 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify(passwordData),
       token,
-    });
-  },
-
-  forgotPassword: async (email: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>('/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
-  },
-
-  resetPassword: async (
-    email: string,
-    token: string,
-    password: string,
-    passwordConfirmation: string
-  ): Promise<ApiResponse<void>> => {
-    return apiRequest<void>('/reset-password', {
-      method: 'POST',
-      body: JSON.stringify({
-        email,
-        token,
-        password,
-        password_confirmation: passwordConfirmation,
-      }),
     });
   },
 
@@ -200,57 +175,47 @@ export const authService = {
     });
   },
 
-  requestMagicLink: async (email: string): Promise<ApiResponse<void>> => {
-    return apiRequest<void>('/auth/magic/request', {
-      method: 'POST',
-      body: JSON.stringify({ email }),
-    });
-  },
-
-  verifyMagicLink: async (
-    email: string,
-    code: string,
-  ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
-    return apiRequest<{ access_token: string; user: User }>('/auth/magic/verify', {
-      method: 'POST',
-      body: JSON.stringify({ email, code, timezone: detectTimeZone() }),
-    });
-  },
-
-  // WorkOS account-management features
-  sendVerificationEmail: async (): Promise<ApiResponse<void>> => {
-    const token = await getAuthToken();
-    return apiRequest<void>('/email/send-verification', {
-      method: 'POST',
-      token,
-    });
-  },
-
-  verifyEmail: async (code: string): Promise<ApiResponse<void>> => {
-    const token = await getAuthToken();
-    return apiRequest<void>('/email/verify', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-      token,
-    });
-  },
-
-  getIdentities: async (): Promise<ApiResponse<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>> => {
-    const token = await getAuthToken();
-    return apiRequest<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>(
-      '/account/identities',
-      { method: 'GET', token },
-    );
-  },
-
-  deleteAccount: async (password: string): Promise<ApiResponse<void>> => {
+  // Account deletion. Passwordless mode — Sanctum token is the proof; the
+  // password parameter (if any) is ignored. Caller must still send confirm.
+  deleteAccount: async (_password?: string): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
     return apiRequest<void>('/account', {
       method: 'DELETE',
-      body: JSON.stringify({ password, confirm: 'DELETE' }),
+      body: JSON.stringify({ confirm: 'DELETE' }),
       token,
     });
   },
+
+  // Stubs — endpoints removed when WorkOS was stripped. The mobile profile
+  // screen still calls these from a few legacy UI sections; these no-ops
+  // avoid runtime errors until those sections are cleaned up.
+  getIdentities: async (): Promise<ApiResponse<{ identities: Array<Record<string, unknown>>; email_verified?: boolean }>> => ({
+    success: false,
+    status: 410,
+    data: {
+      success: false,
+      message: 'Linked-identity listing is no longer available.',
+      data: { identities: [] },
+    } as any,
+  }),
+
+  sendVerificationEmail: async (): Promise<ApiResponse<void>> => ({
+    success: false,
+    status: 410,
+    data: {
+      success: false,
+      message: 'Email verification happens automatically when you sign in with the email code.',
+    } as any,
+  }),
+
+  verifyEmail: async (_code: string): Promise<ApiResponse<void>> => ({
+    success: false,
+    status: 410,
+    data: {
+      success: false,
+      message: 'Email verification happens automatically when you sign in with the email code.',
+    } as any,
+  }),
 };
 
 // Session type for session management

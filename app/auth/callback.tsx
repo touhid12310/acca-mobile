@@ -4,16 +4,19 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
-import workosService from '../../src/services/workosService';
+import authService from '../../src/services/authService';
 
-// Codes already processed in this app session — prevents double-exchange if
-// the inline WebBrowser.openAuthSessionAsync() handler in (auth)/login.tsx
-// catches the redirect AND the deep link also fires the same callback.
+// Codes already processed in this app session — prevents double-exchange when
+// the inline WebBrowser handler in (auth)/login.tsx catches the redirect AND
+// the deep link also fires the same callback.
 const processedCodes = new Set<string>();
+
+const MOBILE_REDIRECT_URI = 'accounte://auth/callback';
 
 export default function AuthCallback() {
   const params = useLocalSearchParams<{
     code?: string;
+    state?: string;
     error?: string;
     error_description?: string;
   }>();
@@ -27,6 +30,7 @@ export default function AuthCallback() {
     ran.current = true;
 
     const code = typeof params.code === 'string' ? params.code : undefined;
+    const state = typeof params.state === 'string' ? params.state : undefined;
     const error = typeof params.error === 'string' ? params.error : undefined;
     const errorDescription =
       typeof params.error_description === 'string'
@@ -43,13 +47,13 @@ export default function AuthCallback() {
       return;
     }
 
-    if (!code) {
-      finishWithError('Missing authorization code');
+    if (!code || !state) {
+      finishWithError('Missing authorization code or state');
       return;
     }
 
     if (processedCodes.has(code)) {
-      // Inline handler already exchanged this code. The other path will
+      // Inline handler already exchanged this code; the other path will
       // navigate to /(tabs) shortly — just sit on the loader.
       return;
     }
@@ -57,26 +61,31 @@ export default function AuthCallback() {
 
     (async () => {
       try {
-        const result = await workosService.exchange(code);
-        if (result.success && result.accessToken) {
-          setMessage('Welcome back!');
-          await loginWithToken(result.accessToken, result.user);
-          router.replace('/(tabs)');
-          return;
+        const result = await authService.googleExchange(
+          code,
+          state,
+          MOBILE_REDIRECT_URI,
+        );
+        if (result.success && result.data) {
+          const data = result.data as { data?: { access_token?: string; user?: any } };
+          const accessToken = data.data?.access_token;
+          const user = data.data?.user;
+          if (accessToken) {
+            setMessage('Welcome!');
+            await loginWithToken(accessToken, user);
+            router.replace('/(tabs)');
+            return;
+          }
         }
-        if (result.requiresPasswordLogin) {
-          finishWithError(
-            result.message ||
-              'An account already exists. Sign in with your password first to link.',
-          );
-          return;
-        }
-        finishWithError(result.message || 'Sign-in failed');
+        finishWithError(
+          (result.data as { message?: string } | undefined)?.message ||
+            'Sign-in failed',
+        );
       } catch (err: any) {
         finishWithError(err?.message || 'Sign-in failed');
       }
     })();
-  }, [params.code, params.error, params.error_description, loginWithToken]);
+  }, [params.code, params.state, params.error, params.error_description, loginWithToken]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
