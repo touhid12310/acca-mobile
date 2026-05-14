@@ -23,6 +23,10 @@ export default function AuthCallback() {
     code?: string;
     error?: string;
     error_description?: string;
+    // Set by the inline WebBrowser handler in (auth)/login.tsx when the
+    // exchange already happened there and 2FA is required — skip the
+    // exchange step and jump straight to the code prompt.
+    pending_token?: string;
   }>();
   const { loginWithToken } = useAuth();
   const { colors } = useTheme();
@@ -46,6 +50,8 @@ export default function AuthCallback() {
       typeof params.error_description === 'string'
         ? params.error_description
         : undefined;
+    const pendingTokenParam =
+      typeof params.pending_token === 'string' ? params.pending_token : undefined;
 
     const finishWithError = (msg: string) => {
       setMessage(msg);
@@ -54,6 +60,13 @@ export default function AuthCallback() {
 
     if (error) {
       finishWithError(errorDescription || error);
+      return;
+    }
+
+    // Hand-off from inline login handler: exchange already done, 2FA required.
+    if (pendingTokenParam) {
+      setPendingToken(pendingTokenParam);
+      setMessage('Two-factor authentication required');
       return;
     }
 
