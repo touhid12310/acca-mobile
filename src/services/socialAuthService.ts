@@ -143,6 +143,59 @@ const socialAuthService = {
   },
 
   /**
+   * Native mobile path. expo-auth-session/providers/google handled the
+   * OAuth dance on the device and gave us a Google id_token directly.
+   * Backend verifies it via Google's tokeninfo endpoint and issues Sanctum
+   * (or returns the 2FA challenge).
+   */
+  async exchangeIdToken(
+    idToken: string,
+    platform: 'ios' | 'android' | 'web' = 'ios',
+  ): Promise<ExchangeResult> {
+    const response = await apiRequest(`/auth/social/exchange-id-token`, {
+      method: 'POST',
+      body: JSON.stringify({
+        id_token: idToken,
+        platform,
+        client: 'mobile',
+        timezone: detectTimeZone(),
+      }),
+    });
+
+    const payload = response.data as Record<string, unknown> | undefined;
+    const apiSuccess = readField<boolean>(payload, 'success');
+    const message = readField<string>(payload, 'message');
+    const requiresPasswordLogin = readField<boolean>(payload, 'requires_password_login');
+    const requires2faTop = readField<boolean>(payload, 'requires_two_factor');
+    const inner = readField<Record<string, unknown>>(payload, 'data');
+    const accessToken = readField<string>(inner, 'access_token');
+    const user = readField<User>(inner, 'user') ?? null;
+    const requires2faInner = readField<boolean>(inner, 'requires_two_factor');
+    const pendingToken = readField<string>(inner, 'pending_token');
+
+    if (requires2faTop || requires2faInner) {
+      return {
+        success: false,
+        status: response.status,
+        message: message || 'Two-factor authentication code required',
+        requiresTwoFactor: true,
+        pendingToken,
+      };
+    }
+
+    if (response.success && apiSuccess && accessToken) {
+      return { success: true, accessToken, user, message, status: response.status };
+    }
+
+    return {
+      success: false,
+      status: response.status,
+      message: message || response.error || 'Sign-in failed',
+      requiresPasswordLogin: !!requiresPasswordLogin,
+    };
+  },
+
+  /**
    * Step-2 of social sign-in for 2FA-enabled users. The exchange call
    * returned `requires_two_factor: true` + a `pending_token`. The user
    * supplies the 6-digit code from their authenticator; submit both here.

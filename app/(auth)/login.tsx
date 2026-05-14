@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -13,6 +13,7 @@ import {
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
+import * as Google from "expo-auth-session/providers/google";
 import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -24,10 +25,9 @@ import socialAuthService, {
   SocialProvider,
 } from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
+import { getPublicAppConfig } from "../../src/services/appConfigService";
 
 WebBrowser.maybeCompleteAuthSession();
-
-const MOBILE_REDIRECT_URI = "accounte://auth/callback";
 
 export default function LoginScreen() {
   const { login, loginWithToken } = useAuth();
