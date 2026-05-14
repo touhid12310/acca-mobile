@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
-import workosService from '../../src/services/workosService';
+import socialAuthService from '../../src/services/socialAuthService';
 
 // Codes already processed in this app session — prevents double-exchange if
 // the inline WebBrowser.openAuthSessionAsync() handler in (auth)/login.tsx
@@ -57,7 +57,7 @@ export default function AuthCallback() {
 
     (async () => {
       try {
-        const result = await workosService.exchange(code);
+        const result = await socialAuthService.exchange(code);
         if (result.success && result.accessToken) {
           setMessage('Welcome back!');
           await loginWithToken(result.accessToken, result.user);

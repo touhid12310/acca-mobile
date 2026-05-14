@@ -2,10 +2,10 @@ import { apiRequest } from '../config/api';
 import { detectTimeZone } from '../utils/timezone';
 import { User } from '../types';
 
-export type WorkOSProvider = 'google' | 'apple' | 'facebook' | 'linkedin' | 'microsoft';
+export type SocialProvider = 'google' | 'apple' | 'facebook' | 'linkedin' | 'microsoft';
 
 interface AuthorizationUrlOptions {
-  provider?: WorkOSProvider;
+  provider?: SocialProvider;
   intent?: 'login' | 'signup';
   state?: string;
 }
@@ -42,7 +42,7 @@ const readField = <T = unknown>(obj: unknown, key: string): T | undefined => {
 // auth/callback.tsx deep-link handler don't both POST the same one-time code.
 const inFlightExchanges = new Map<string, Promise<ExchangeResult>>();
 
-const workosService = {
+const socialAuthService = {
   async getAuthorizationUrl(
     options: AuthorizationUrlOptions = {}
   ): Promise<AuthorizationUrlResult> {
@@ -51,7 +51,7 @@ const workosService = {
     if (options.state) params.set('state', options.state);
 
     const response = await apiRequest(
-      `/auth/workos/url?${params.toString()}`,
+      `/auth/social/url?${params.toString()}`,
       { method: 'GET' }
     );
 
@@ -77,7 +77,7 @@ const workosService = {
     if (existing) return existing;
 
     const promise = (async (): Promise<ExchangeResult> => {
-      const response = await apiRequest(`/auth/workos/exchange`, {
+      const response = await apiRequest(`/auth/social/exchange`, {
         method: 'POST',
         body: JSON.stringify({
           code,
@@ -120,4 +120,4 @@ const workosService = {
   },
 };
 
-export default workosService;
+export default socialAuthService;

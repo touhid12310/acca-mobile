@@ -10,11 +10,11 @@ import Svg, { Path } from 'react-native-svg';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { spacing, radius } from '../../constants/theme';
-import type { WorkOSProvider } from '../../services/workosService';
+import type { SocialProvider } from '../../services/socialAuthService';
 
 interface SocialAuthButtonsProps {
-  onSelect: (provider: WorkOSProvider) => void;
-  activeProvider?: WorkOSProvider | null;
+  onSelect: (provider: SocialProvider) => void;
+  activeProvider?: SocialProvider | null;
   disabled?: boolean;
   heading?: string;
 }
@@ -56,7 +56,7 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
 
   // Temporarily Google-only. Restore Microsoft / Apple here when ready.
   const buttons: Array<{
-    key: WorkOSProvider;
+    key: SocialProvider;
     label: string;
     icon: React.ReactNode;
     background: string;

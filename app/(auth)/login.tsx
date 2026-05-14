@@ -20,9 +20,9 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { spacing } from "../../src/constants/theme";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
-import workosService, {
-  WorkOSProvider,
-} from "../../src/services/workosService";
+import socialAuthService, {
+  SocialProvider,
+} from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -41,7 +41,7 @@ export default function LoginScreen() {
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
   const [isResendingLink, setIsResendingLink] = useState(false);
-  const [socialProvider, setSocialProvider] = useState<WorkOSProvider | null>(
+  const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(
     null,
   );
 
@@ -120,12 +120,12 @@ export default function LoginScreen() {
     }
   };
 
-  const handleSocialLogin = async (provider: WorkOSProvider) => {
+  const handleSocialLogin = async (provider: SocialProvider) => {
     if (socialProvider) return;
     setSocialProvider(provider);
     setErrors({});
     try {
-      const urlResult = await workosService.getAuthorizationUrl({
+      const urlResult = await socialAuthService.getAuthorizationUrl({
         provider,
         intent: "login",
       });
@@ -162,7 +162,7 @@ export default function LoginScreen() {
         return;
       }
 
-      const exchange = await workosService.exchange(code);
+      const exchange = await socialAuthService.exchange(code);
       if (exchange.success && exchange.accessToken) {
         await loginWithToken(exchange.accessToken, exchange.user);
         router.replace("/(tabs)");
