@@ -1132,7 +1132,6 @@ export default function ChatScreen() {
     const candidates = getExpenseCandidates(message);
     const tables = !isUser ? getStructuredTables(message) : [];
     const toolSummary = !isUser ? getToolSummary(message) : null;
-    const suggestedActions = message.metadata?.suggested_actions || [];
     const attachment = getMessageAttachment(message);
     // For assistant messages with candidates, find the related user attachment
     const relatedAttachment =
@@ -1240,7 +1239,9 @@ export default function ChatScreen() {
             </Text>
           )}
 
-          {/* Expense candidates */}
+          {/* Candidate summary card (merchant + amount), shown ABOVE the items
+              table. The Preview & Save button is rendered separately AFTER the
+              items list so users don't have to scroll up to find it. */}
           {candidates.length > 0 && (
             <View style={styles.candidatesContainer}>
               {(message as any)?.metadata?.transactions_saved_at && (
@@ -1306,36 +1307,6 @@ export default function ChatScreen() {
                       {formatAmount(candidate.amount || 0)}
                     </Text>
                   </View>
-                  {!(message as any)?.metadata?.transactions_saved_at && (
-                    <Button
-                      mode="contained"
-                      compact
-                      onPress={() => {
-                        if (isOpeningTransactionModal) {
-                          return;
-                        }
-                        lockPreviewTap();
-
-                        const receiptUri = getCandidateReceiptUri(message.id);
-                        const params = prepareTransactionParams(
-                          candidate,
-                          receiptUri,
-                          message.id,
-                        );
-
-                        router.push({
-                          pathname: "/transaction-modal",
-                          params,
-                        });
-                      }}
-                      style={styles.previewButton}
-                      disabled={isOpeningTransactionModal}
-                    >
-                      {isOpeningTransactionModal
-                        ? "Opening..."
-                        : "Preview & Save"}
-                    </Button>
-                  )}
                 </Surface>
               ))}
             </View>
@@ -1520,25 +1491,47 @@ export default function ChatScreen() {
             </View>
           )}
 
-          {/* Suggested actions */}
-          {!isUser && suggestedActions.length > 0 && (
-            <View style={styles.suggestedActions}>
-              {suggestedActions.map((action, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.suggestedAction,
-                    { backgroundColor: colors.primaryContainer },
-                  ]}
-                  onPress={() => handleQuickAction(action)}
-                >
-                  <Text style={{ color: colors.primary, fontSize: 13 }}>
-                    {action}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+          {/* Preview & Save buttons — rendered at the END so they always sit
+              below the items table and don't require scrolling back up. */}
+          {candidates.length > 0 &&
+            !(message as any)?.metadata?.transactions_saved_at && (
+              <View style={styles.candidateActions}>
+                {candidates.map((candidate, index) => (
+                  <Button
+                    key={`save-${candidate.id || index}`}
+                    mode="contained"
+                    compact
+                    onPress={() => {
+                      if (isOpeningTransactionModal) {
+                        return;
+                      }
+                      lockPreviewTap();
+
+                      const receiptUri = getCandidateReceiptUri(message.id);
+                      const params = prepareTransactionParams(
+                        candidate,
+                        receiptUri,
+                        message.id,
+                      );
+
+                      router.push({
+                        pathname: "/transaction-modal",
+                        params,
+                      });
+                    }}
+                    style={styles.previewButton}
+                    disabled={isOpeningTransactionModal}
+                  >
+                    {isOpeningTransactionModal
+                      ? "Opening..."
+                      : candidates.length > 1
+                      ? `Preview & Save — ${candidate.merchant_name || "Transaction"}`
+                      : "Preview & Save"}
+                  </Button>
+                ))}
+              </View>
+            )}
+
         </View>
 
         {/* User avatar — prefer the saved profile picture, fall back to the
@@ -2165,11 +2158,14 @@ const styles = StyleSheet.create({
   candidateHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
   },
   candidateInfo: {
     flex: 1,
     marginLeft: 12,
+  },
+  candidateActions: {
+    marginTop: 12,
+    gap: 8,
   },
   previewButton: {
     marginTop: 4,
@@ -2241,17 +2237,6 @@ const styles = StyleSheet.create({
   viewTransactionsButton: {
     alignSelf: "flex-start",
     marginTop: 4,
-  },
-  suggestedActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12,
-  },
-  suggestedAction: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
   },
   typingContainer: {
     flexDirection: "row",
