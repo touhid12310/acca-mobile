@@ -98,12 +98,15 @@ const getMessageAttachment = (
 ): { url: string; name: string; isImage: boolean } | null => {
   const metadata = message.metadata || {};
 
-  // Try different paths for image/file URL
+  // Prefer full URLs (file_url/receipt_url) over raw paths. Backend returns
+  // file_url as the full https://cdn.accounte.com/... URL after the R2
+  // migration; if we picked image_path first, ensureAbsoluteUrl would prepend
+  // the api origin and produce a broken https://api.accounte.com/... URL.
   const candidates = [
-    message.image_path,
-    (metadata as any).receipt_path,
     message.file_url,
     (metadata as any).receipt_url,
+    message.image_path,
+    (metadata as any).receipt_path,
   ].filter(Boolean);
 
   for (const candidate of candidates) {
