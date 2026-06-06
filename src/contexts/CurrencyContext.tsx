@@ -27,7 +27,7 @@ interface CurrencyContextType {
   updatingCurrencyCode: string | null;
   updateCurrency: (code: string) => Promise<void>;
   refreshCurrency: () => Promise<void>;
-  formatAmount: (amount: number, options?: FormatOptions) => string;
+  formatAmount: (amount: number | string | null | undefined, options?: FormatOptions) => string;
 }
 
 interface FormatOptions {
@@ -207,15 +207,19 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
 
   // Format amount with currency
   const formatAmount = useCallback(
-    (amount: number, options: FormatOptions = {}) => {
+    (amount: number | string | null | undefined, options: FormatOptions = {}) => {
       const {
         showSymbol = true,
         minimumFractionDigits = 2,
         maximumFractionDigits = 2,
       } = options;
 
-      // Ensure amount is a valid number
-      const safeAmount = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+      // Coerce to a number. The Laravel API serializes decimal columns as
+      // STRINGS (e.g. "45.50"), so a strict number check would render every
+      // such amount as 0.00. Accept numeric strings too.
+      const numeric = typeof amount === 'string' ? parseFloat(amount) : amount;
+      const safeAmount =
+        typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : 0;
 
       const formatted = safeAmount.toLocaleString(undefined, {
         minimumFractionDigits,

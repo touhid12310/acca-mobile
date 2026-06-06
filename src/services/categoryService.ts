@@ -3,7 +3,7 @@ import { Category, Subcategory, ApiResponse } from '../types';
 
 export const categoryService = {
   getAll: async (
-    type?: 'income' | 'expense',
+    type?: 'income' | 'expense' | 'asset' | 'liability' | null,
     includeSubcategories: boolean = false
   ): Promise<ApiResponse<Category[]>> => {
     const token = await getAuthToken();
@@ -101,6 +101,41 @@ export const categoryService = {
     return apiRequest<void>(API_CONFIG.ENDPOINTS.CATEGORIES_ORDER, {
       method: 'POST',
       body: JSON.stringify(payload),
+      token,
+    });
+  },
+
+  // Subcategory helpers exposed on categoryService so screens that already hold
+  // a categoryService reference can manage subcategories without a second import.
+  // (Previously these were called but did not exist → runtime crash on the
+  // categories screen's subcategory create/delete.)
+  createSubcategory: async (
+    data: Partial<Subcategory>
+  ): Promise<ApiResponse<Subcategory>> => {
+    const token = await getAuthToken();
+    return apiRequest<Subcategory>(API_CONFIG.ENDPOINTS.SUBCATEGORIES, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  updateSubcategory: async (
+    id: number,
+    data: Partial<Subcategory>
+  ): Promise<ApiResponse<Subcategory>> => {
+    const token = await getAuthToken();
+    return apiRequest<Subcategory>(`${API_CONFIG.ENDPOINTS.SUBCATEGORIES}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  deleteSubcategory: async (id: number): Promise<ApiResponse<void>> => {
+    const token = await getAuthToken();
+    return apiRequest<void>(`${API_CONFIG.ENDPOINTS.SUBCATEGORIES}/${id}`, {
+      method: 'DELETE',
       token,
     });
   },

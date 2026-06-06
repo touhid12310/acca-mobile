@@ -235,7 +235,7 @@ export default function GoalsScreen() {
     );
   };
 
-  const getDaysRemaining = (targetDate: string) => {
+  const getDaysRemaining = (targetDate?: string | null) => {
     if (!targetDate) return null;
     const today = new Date();
     const target = new Date(targetDate);
@@ -540,7 +540,7 @@ export default function GoalsScreen() {
                       >
                         Target:{" "}
                         {new Date(
-                          goal.target_date || goal.deadline,
+                          goal.target_date || goal.deadline || "",
                         ).toLocaleDateString()}
                         {daysRemaining !== null && (
                           <Text

@@ -104,6 +104,8 @@ export interface Transaction {
   account?: Account;
   to_account?: Account;
   transaction_categories?: TransactionCategory[];
+  status?: 'approved' | 'pending_review' | 'rejected' | string;
+  source?: 'manual' | 'email' | 'chat' | 'csv' | 'receipt' | string;
   created_at?: string;
   updated_at?: string;
 }
@@ -118,6 +120,7 @@ export interface TransactionFormData {
   subcategory_id?: number;
   account_id?: number;
   to_account_id?: number;
+  payment_method?: number;
   notes?: string;
   items?: TransactionItem[];
   receipt_path?: string;
@@ -128,10 +131,12 @@ export interface TransactionFormData {
 export interface Category {
   id: number;
   name: string;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'asset' | 'liability';
   icon?: string;
   color?: string;
   is_default?: boolean;
+  is_active?: boolean | number;
+  user_id?: number;
   subcategories?: Subcategory[];
   sort_order?: number;
 }
@@ -141,6 +146,11 @@ export interface Subcategory {
   name: string;
   category_id: number;
   sort_order?: number;
+  color?: string;
+  icon?: string;
+  is_active?: boolean | number;
+  user_id?: number;
+  is_default?: boolean;
 }
 
 // Account Types
@@ -183,25 +193,40 @@ export interface Goal {
   target_amount: number;
   current_amount: number;
   deadline?: string;
+  target_date?: string;
   description?: string;
   icon?: string;
   color?: string;
+  category?: string;
+  status?: string;
   progress_percentage: number;
   is_completed: boolean;
 }
 
-// Loan Types
+// Loan Types — mirrors the Laravel Loan model.
 export interface Loan {
   id: number;
-  name: string;
-  principal: number;
-  interest_rate: number;
-  monthly_payment: number;
+  loan_name: string;
+  loan_type?: 'Borrowed' | 'Lent' | string;
+  original_amount?: number;
   remaining_balance: number;
+  interest_rate?: number;
+  next_payment?: number;
+  next_payment_date?: string;
+  term?: number;
+  term_period?: string;
   start_date: string;
+  status?: string;
+  account_id?: number;
+  category_id?: number | null;
+  notes?: string;
+  is_archived?: boolean;
+  // Legacy/optional aliases kept for backward compatibility with older callers.
+  name?: string;
+  principal?: number;
+  monthly_payment?: number;
   end_date?: string;
   lender?: string;
-  is_archived?: boolean;
 }
 
 export interface LoanPayment {

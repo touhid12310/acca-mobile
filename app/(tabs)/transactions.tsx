@@ -1765,7 +1765,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  modalBackdrop: {
+  modalCenteredBackdrop: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",

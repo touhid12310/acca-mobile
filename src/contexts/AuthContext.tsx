@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   ReactNode,
 } from 'react';
@@ -19,6 +20,19 @@ import { notifyToast } from './NotificationContext';
 
 // Session validation interval (30 seconds)
 const SESSION_CHECK_INTERVAL = 30000;
+
+// Cheap structural equality so the 30s session poll only triggers a re-render
+// when the user payload actually changed (otherwise every poll set a new object
+// reference and re-rendered every useAuth() consumer).
+const usersEqual = (a: User | null, b: User | null): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+};
 
 interface AuthContextType {
   user: User | null;
@@ -80,7 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
-  const sessionCheckInterval = useRef<NodeJS.Timeout | null>(null);
+  const sessionCheckInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const appState = useRef(AppState.currentState);
 
   const checkAuthStatus = useCallback(async () => {
@@ -147,7 +161,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [token, isAuthenticated]);
 
-  const login = async (
+  const login = useCallback(async (
     email: string,
     password: string,
     twoFactorCode?: string
@@ -225,7 +239,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         message: 'Network error. Please try again.',
       };
     }
-  };
+  }, [queryClient]);
 
   const loginWithToken = useCallback(
     async (authToken: string, userData?: User | null) => {
@@ -244,7 +258,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     [queryClient]
   );
 
-  const register = async (
+  const register = useCallback(async (
     name: string,
     email: string,
     password: string,
@@ -317,9 +331,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         message: 'Network error. Please try again.',
       };
     }
-  };
+  }, [queryClient]);
 
-  const logout = async (showMessage = true) => {
+  const logout = useCallback(async (showMessage = true) => {
     // Clear interval
     if (sessionCheckInterval.current) {
       clearInterval(sessionCheckInterval.current);
@@ -345,7 +359,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsAuthenticated(false);
       setSessionExpired(false);
     }
-  };
+  }, [token, queryClient]);
 
   // Force logout when session is invalid (deleted from DB)
   const forceLogout = useCallback((message = 'Your session has expired. Please login again.') => {
@@ -379,10 +393,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (result.success) {
         const data = result.data as { data?: { valid?: boolean; user?: User } };
         if (data?.data?.valid) {
-          // Session is valid, update user if needed
+          // Session is valid, update user only if it actually changed
           if (data.data.user) {
-            setActiveTimeZone(data.data.user.timezone || detectTimeZone());
-            setUser(data.data.user);
+            const nextUser = data.data.user;
+            setActiveTimeZone(nextUser.timezone || detectTimeZone());
+            setUser((prev) => (usersEqual(prev, nextUser) ? prev : nextUser));
           }
           return true;
         }
@@ -475,25 +490,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     });
   }, [isAuthenticated, token, user]);
 
-  const updateUser = (userData: Partial<User>) => {
+  const updateUser = useCallback((userData: Partial<User>) => {
     setUser((prev) => (prev ? { ...prev, ...userData } : null));
-  };
+  }, []);
 
-  const value: AuthContextType = {
-    user,
-    token,
-    loading,
-    isAuthenticated,
-    sessionExpired,
-    login,
-    loginWithToken,
-    register,
-    logout,
-    checkAuthStatus,
-    updateUser,
-    validateSession,
-    forceLogout,
-  };
+  const value: AuthContextType = useMemo(
+    () => ({
+      user,
+      token,
+      loading,
+      isAuthenticated,
+      sessionExpired,
+      login,
+      loginWithToken,
+      register,
+      logout,
+      checkAuthStatus,
+      updateUser,
+      validateSession,
+      forceLogout,
+    }),
+    [
+      user,
+      token,
+      loading,
+      isAuthenticated,
+      sessionExpired,
+      login,
+      loginWithToken,
+      register,
+      logout,
+      checkAuthStatus,
+      updateUser,
+      validateSession,
+      forceLogout,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

@@ -26,8 +26,15 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 
 export default function TabsLayout() {
   const { colors, isDark } = useTheme();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // Guard the whole tab group. Without this, a mid-session logout (the 30s
+  // session poll calling forceLogout on a revoked/expired session) clears auth
+  // but leaves the user stranded on an empty/erroring protected screen.
+  if (!loading && !isAuthenticated) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   // First-time login users must finish onboarding before they can use the app.
   if (isAuthenticated && user && !user.onboarding_completed_at) {

@@ -5,7 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
+import NetInfo from '@react-native-community/netinfo';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 
@@ -14,6 +15,7 @@ import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
 
 import '../global.css';
 
@@ -49,6 +51,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Bridge connectivity to TanStack Query. React Native has no navigator.onLine,
+// so without this Query's online state is always "online" and it never fires
+// the reconnect refetch when connectivity returns. NetInfo drives it instead.
+onlineManager.setEventListener((setOnline) =>
+  NetInfo.addEventListener((state) => {
+    setOnline(!!state.isConnected);
+  })
+);
 
 function RootLayoutNav() {
   const { theme, isDark } = useTheme();
@@ -124,20 +135,22 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <ThemeProvider>
-              <CurrencyProvider>
-                <NotificationProvider>
-                  <RootLayoutNav />
-                </NotificationProvider>
-              </CurrencyProvider>
-            </ThemeProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <ThemeProvider>
+                <CurrencyProvider>
+                  <NotificationProvider>
+                    <RootLayoutNav />
+                  </NotificationProvider>
+                </CurrencyProvider>
+              </ThemeProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   introIcon: {
     width: 64,
     height: 64,
-    borderRadius: radius.full,
+    borderRadius: radius.pill,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: spacing.md,

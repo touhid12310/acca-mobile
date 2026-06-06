@@ -55,8 +55,11 @@ export const loanService = {
   makePayment: async (
     id: number,
     paymentData: {
-      amount: number;
+      payment_amount: number;
+      account_id?: number;
       payment_date: string;
+      next_payment?: number;
+      next_payment_date?: string;
       notes?: string;
     }
   ): Promise<ApiResponse<LoanPayment>> => {

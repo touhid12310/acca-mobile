@@ -206,13 +206,20 @@ export const getAuthHeaders = async (token?: string | null): Promise<Record<stri
   return headers;
 };
 
+// Default request timeout (ms). RN fetch has NO default timeout, so without
+// this a stalled connection hangs the promise forever — leaving infinite
+// spinners, dead-locked pagination, and permanently-disabled submit buttons.
+const DEFAULT_TIMEOUT_MS = 20000;
+
 // API request options
 interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  body?: string | FormData;
+  // A plain object is JSON-stringified automatically; pass FormData for uploads.
+  body?: string | FormData | Record<string, unknown>;
   token?: string | null;
   headers?: HeadersInit;
   isFormData?: boolean;
+  timeoutMs?: number;
 }
 
 // Common API request wrapper
@@ -221,13 +228,27 @@ export const apiRequest = async <T = unknown>(
   options: ApiRequestOptions = {}
 ): Promise<ApiResponse<T>> => {
   const url = buildApiUrl(endpoint);
-  const { method = 'GET', body, token, headers: customHeaders, isFormData = false } = options;
+  const {
+    method = 'GET',
+    body,
+    token,
+    headers: customHeaders,
+    isFormData = false,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  } = options;
+
+  const isForm = isFormData || (typeof FormData !== 'undefined' && body instanceof FormData);
+
+  // Abort the request after timeoutMs so a hung connection rejects instead of
+  // hanging forever.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const defaultHeaders = await getAuthHeaders(token);
 
-    // Remove Content-Type for FormData (browser/fetch will set it with boundary)
-    const headers: Record<string, string> = isFormData
+    // Remove Content-Type for FormData (fetch sets it with the multipart boundary)
+    const headers: Record<string, string> = isForm
       ? {
           Authorization: defaultHeaders.Authorization || '',
           Accept: 'application/json',
@@ -237,28 +258,56 @@ export const apiRequest = async <T = unknown>(
     const fetchOptions: RequestInit = {
       method,
       headers,
+      signal: controller.signal,
     };
 
-    if (body && method !== 'GET') {
-      fetchOptions.body = body;
+    if (body !== undefined && body !== null && method !== 'GET') {
+      // Serialize plain objects to JSON. Previously a non-string body was
+      // assigned straight to fetch, which coerced it to the literal string
+      // "[object Object]" — silently breaking e.g. push-device registration.
+      fetchOptions.body =
+        isForm || typeof body === 'string' ? (body as BodyInit) : JSON.stringify(body);
     }
 
     const response = await fetch(url, fetchOptions);
-    const data = await response.json();
+
+    // Parse defensively: read text first so an empty (204) or non-JSON body
+    // (HTML 5xx/proxy error page) doesn't throw and lose the real status.
+    const rawBody = await response.text();
+    let data: unknown = undefined;
+    if (rawBody) {
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        data = undefined; // non-JSON body (e.g. an HTML error page)
+      }
+    }
+
+    const dataObj = (data ?? undefined) as { message?: string } | undefined;
 
     return {
       success: response.ok,
       status: response.status,
-      data,
-      message: data?.message,
-      error: !response.ok ? data?.message || 'Request failed' : undefined,
+      data: data as T,
+      message: dataObj?.message,
+      error: !response.ok
+        ? dataObj?.message || `Request failed (HTTP ${response.status})`
+        : undefined,
     };
   } catch (error) {
+    const aborted = error instanceof Error && error.name === 'AbortError';
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Network error',
+      status: 0,
+      error: aborted
+        ? 'Request timed out. Please check your connection and try again.'
+        : error instanceof Error
+          ? error.message
+          : 'Network error',
       data: undefined,
     };
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
