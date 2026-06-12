@@ -76,10 +76,14 @@ export const registerDevice = async (authToken: string): Promise<boolean> => {
 };
 
 export const unregisterDevice = async (authToken: string): Promise<boolean> => {
-  if (!cachedToken) return true;
+  // cachedToken lives in memory only — after an app restart it's gone but the
+  // server-side device row is not, so re-derive the token rather than bailing,
+  // otherwise a logged-out device keeps receiving the user's pushes.
+  const pushToken = cachedToken ?? (await getExpoPushToken());
+  if (!pushToken) return true;
   const result = await apiRequest(API_CONFIG.ENDPOINTS.DEVICES_UNREGISTER, {
     method: "POST",
-    body: { token: cachedToken },
+    body: { token: pushToken },
     token: authToken,
   });
   cachedToken = null;

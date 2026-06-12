@@ -42,6 +42,14 @@ const ROUTABLE_TYPES: Record<string, string> = {
   recurring_posted: '/(tabs)/transactions',
 };
 
+const routeFromNotificationData = (data: unknown): string | undefined => {
+  const d = data as { type?: string; route?: string } | undefined;
+  const route =
+    (typeof d?.route === 'string' && d.route) ||
+    (d?.type ? ROUTABLE_TYPES[d.type] : undefined);
+  return route || undefined;
+};
+
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -70,22 +78,21 @@ function RootLayoutNav() {
   }, []);
 
   // Route the user to the right screen when they tap a push notification.
+  // useLastNotificationResponse (not addNotificationResponseReceivedListener)
+  // because the listener is not reliably called when the tap launches the app
+  // from a killed state — the hook covers killed, background, and foreground.
+  const lastNotificationResponse = Notifications.useLastNotificationResponse();
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data as
-          | { type?: string; route?: string }
-          | undefined;
-        const route =
-          (typeof data?.route === 'string' && data.route) ||
-          (data?.type ? ROUTABLE_TYPES[data.type] : undefined);
-        if (route) {
-          router.push(route as any);
-        }
-      },
+    if (!lastNotificationResponse) return;
+    const route = routeFromNotificationData(
+      lastNotificationResponse.notification.request.content.data,
     );
-    return () => subscription.remove();
-  }, []);
+    // Clear so a remount doesn't replay the same tap.
+    Notifications.clearLastNotificationResponseAsync();
+    if (route) {
+      router.push(route as any);
+    }
+  }, [lastNotificationResponse]);
 
   return (
     <PaperProvider theme={theme}>
