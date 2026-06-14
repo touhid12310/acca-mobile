@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -13,7 +13,6 @@ import {
 import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
-import * as Google from "expo-auth-session/providers/google";
 import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -21,11 +20,9 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { Button, Input, AlertBar } from "../../src/components/ui";
 import { spacing } from "../../src/constants/theme";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
-import socialAuthService, {
-  SocialProvider,
-} from "../../src/services/socialAuthService";
+import { SocialProvider } from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
-import { getPublicAppConfig } from "../../src/services/appConfigService";
+import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -44,103 +41,6 @@ export default function LoginScreen() {
   const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(
     null,
   );
-
-  // Pull the per-platform Google client IDs from /api/public/app-config so
-  // they can be rotated/managed in the admin panel without a mobile rebuild.
-  const [googleClientIds, setGoogleClientIds] = useState<{
-    iosClientId?: string;
-    androidClientId?: string;
-    webClientId?: string;
-  } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cfg = await getPublicAppConfig();
-      if (cancelled || !cfg) return;
-      setGoogleClientIds({
-        iosClientId: cfg.google_oauth.ios_client_id || undefined,
-        androidClientId: cfg.google_oauth.android_client_id || undefined,
-        webClientId: cfg.google_oauth.web_client_id || undefined,
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // expo-auth-session/providers/google handles the platform-specific OAuth
-  // dance natively — iOS uses the reverse-bundle-ID redirect, Android
-  // validates by package + SHA-1, web uses the registered HTTPS callback.
-  // It returns a Google id_token which we send to the backend for Sanctum
-  // issuance via socialAuthService.exchangeIdToken().
-  // Pass non-null placeholders until the real IDs land — Google.useAuthRequest
-  // throws "must be defined" on undefined. Empty strings pass the null
-  // check, and we still block promptGoogleAsync() below until real IDs load.
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    iosClientId: googleClientIds?.iosClientId ?? "",
-    androidClientId: googleClientIds?.androidClientId ?? "",
-    webClientId: googleClientIds?.webClientId ?? "",
-    scopes: ["openid", "email", "profile"],
-  });
-
-  // React to the Google provider's response — exchange id_token → Sanctum.
-  useEffect(() => {
-    if (!googleResponse) return;
-    if (googleResponse.type !== "success") {
-      if (googleResponse.type === "error") {
-        setErrors({
-          general: googleResponse.error?.message || "Google sign-in failed",
-        });
-      }
-      setSocialProvider(null);
-      return;
-    }
-
-    const idToken = googleResponse.params?.id_token
-      ?? googleResponse.authentication?.idToken;
-    if (!idToken) {
-      setErrors({ general: "Google did not return an id_token." });
-      setSocialProvider(null);
-      return;
-    }
-
-    (async () => {
-      try {
-        const platform = Platform.OS === "android" ? "android"
-          : Platform.OS === "ios" ? "ios" : "web";
-        const exchange = await socialAuthService.exchangeIdToken(idToken, platform);
-
-        if (exchange.requiresTwoFactor && exchange.pendingToken) {
-          router.replace({
-            pathname: "/auth/callback",
-            params: { pending_token: exchange.pendingToken },
-          });
-          return;
-        }
-
-        if (exchange.success && exchange.accessToken) {
-          await loginWithToken(exchange.accessToken, exchange.user);
-          router.replace("/(tabs)");
-          return;
-        }
-
-        if (exchange.requiresPasswordLogin) {
-          setErrors({
-            general:
-              exchange.message ||
-              "An account with this email already exists. Sign in with your password first to link.",
-          });
-          return;
-        }
-
-        setErrors({ general: exchange.message || "Sign-in failed" });
-      } catch (err: any) {
-        setErrors({ general: err?.message || "Sign-in failed" });
-      } finally {
-        setSocialProvider(null);
-      }
-    })();
-  }, [googleResponse, loginWithToken]);
 
   const handleResendVerificationLink = async () => {
     if (isResendingLink) return;
@@ -217,8 +117,8 @@ export default function LoginScreen() {
     }
   };
 
-  // Trigger the platform-native Google sheet. The actual id_token →
-  // Sanctum handoff happens in the useEffect on `googleResponse` above.
+  // Open the browser-based Google flow; the code → Sanctum exchange (plus
+  // the 2FA prompt when needed) lives in app/auth/callback.tsx.
   const handleSocialLogin = async (provider: SocialProvider) => {
     if (socialProvider) return;
     setErrors({});
@@ -228,26 +128,21 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!googleClientIds?.iosClientId && !googleClientIds?.androidClientId) {
-      setErrors({
-        general:
-          "Google sign-in is not configured yet. Ask an administrator to set the iOS / Android client IDs in the admin panel.",
-      });
-      return;
-    }
-
-    if (!googleRequest) {
-      // Hook hasn't initialized yet (shouldn't normally happen once IDs
-      // are loaded, but guard so the press doesn't no-op silently).
-      setErrors({ general: "Google sign-in isn't ready yet — try again." });
-      return;
-    }
-
     setSocialProvider(provider);
     try {
-      await promptGoogleAsync();
+      const result = await startGoogleBrowserAuth("login");
+      if (result.type === "success" && result.code) {
+        router.push({
+          pathname: "/auth/callback",
+          params: { code: result.code },
+        });
+      } else if (result.type === "error") {
+        setErrors({ general: result.message || "Google sign-in failed" });
+      }
+      // 'cancel' — user closed the browser; nothing to show.
     } catch (err: any) {
       setErrors({ general: err?.message || "Could not open Google sign-in" });
+    } finally {
       setSocialProvider(null);
     }
   };
