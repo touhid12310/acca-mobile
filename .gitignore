@@ -43,6 +43,8 @@ bower_components/
 # Build output
 build/
 dist/
+*.aab
+*.apk
 
 # Dependencies
 npm-debug.log*
@@ -58,6 +60,10 @@ yarn-error.log*
 
 # Expo
 .expo/
+
+# Google Play service account key (NEVER commit — grants Play Console upload access)
+google-play-service-account.json
+*service-account*.json
 
 # OS generated files
 .DS_Store

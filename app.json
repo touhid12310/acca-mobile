@@ -2,7 +2,7 @@
   "expo": {
     "name": "Accounte",
     "slug": "accounte-expo",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -84,7 +84,8 @@
           "speechRecognitionPermission": "Allow Accounte to use speech recognition for live transcription."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withoutMediaPlaybackForegroundService"
     ],
     "experiments": {
       "typedRoutes": true
