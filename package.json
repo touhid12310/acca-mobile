@@ -9,7 +9,11 @@
     "web": "expo start --web",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "build:android:apk": "eas build --platform android --profile preview",
+    "build:android:aab": "eas build --platform android --profile production",
+    "build:android:apk:local": "eas build --platform android --profile preview --local",
+    "build:android:aab:local": "eas build --platform android --profile production --local"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

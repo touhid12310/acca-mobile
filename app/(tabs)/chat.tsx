@@ -130,7 +130,11 @@ const getMessageAttachment = (
   return null;
 };
 
-// Helper to find related attachment for an assistant message (looks at preceding user messages)
+// Helper to find related attachment for an assistant message.
+// Returns the attachment from the *nearest preceding user message* only
+// (i.e. the turn that this assistant reply is answering). We no longer
+// walk further back — that was causing old receipt images to appear
+// next to newer candidates, and the same old image to be passed on Save.
 const findRelatedAttachment = (
   targetMessage: ChatMessage,
   allMessages: ChatMessage[],
@@ -143,21 +147,14 @@ const findRelatedAttachment = (
   const targetIndex = allMessages.findIndex((m) => m.id === targetMessage.id);
   if (targetIndex === -1) return null;
 
-  // Look backwards for user messages with attachments (like web version)
-  let encounteredUser = false;
+  // Only consider the nearest prior user turn. If that user sent a file,
+  // show it with the candidates. If not, don't show a stale older image.
   for (let i = targetIndex - 1; i >= 0; i--) {
     const msg = allMessages[i];
     if (msg.is_user) {
-      encounteredUser = true;
-      const attachment = getMessageAttachment(msg);
-      if (attachment) return attachment;
-      // Continue looking at older messages (don't break)
-      continue;
+      return getMessageAttachment(msg);
     }
-    // If we've seen a user message and now hit an assistant message, stop
-    if (encounteredUser) {
-      break;
-    }
+    // If we hit another assistant before any user, keep walking (defensive).
   }
 
   return null;
@@ -365,6 +362,12 @@ export default function ChatScreen() {
   const [selectedChatDate, setSelectedChatDate] = useState<string>(
     todayDateInputValue(),
   );
+
+  // When the chat date changes we are looking at a different conversation
+  // thread, so any "last file" from the previous date is irrelevant.
+  useEffect(() => {
+    setLastUploadedFileUri(undefined);
+  }, [selectedChatDate]);
   const [showChatDatePicker, setShowChatDatePicker] = useState(false);
 
   const applyVoiceTextToInput = useCallback(() => {
@@ -754,9 +757,19 @@ export default function ChatScreen() {
           data?: { user?: ChatMessage; assistant?: ChatMessage };
         };
         if (data.success && data.data?.user && data.data?.assistant) {
+          const realUser = data.data.user;
+          const serverFile =
+            realUser.file_url ||
+            realUser.image_path ||
+            (realUser.metadata as any)?.receipt_url ||
+            (realUser.metadata as any)?.receipt_path;
+          if (serverFile) {
+            // Upgrade the fallback tracker to the durable server URL for this turn.
+            setLastUploadedFileUri(serverFile);
+          }
           setMessages((prev) => [
             ...prev,
-            data.data!.user!,
+            realUser,
             data.data!.assistant!,
           ]);
         }
@@ -790,9 +803,14 @@ export default function ChatScreen() {
     const messageText = inputText.trim();
     const file = selectedFile;
 
-    // Track uploaded file URI for receipt (any file type)
+    // Track uploaded file URI for receipt (any file type).
+    // Only set when this send actually carries a file; otherwise clear so that
+    // later text-only turns don't accidentally inherit a previous receipt via
+    // the narrow last-fallback paths.
     if (file) {
       setLastUploadedFileUri(file.uri);
+    } else {
+      setLastUploadedFileUri(undefined);
     }
 
     setInputText("");
@@ -996,7 +1014,11 @@ export default function ChatScreen() {
     string | undefined
   >();
 
-  // Track the last uploaded file URI (to use as fallback for receipt)
+  // Last file the user uploaded in this chat session. Used only as a narrow
+  // optimistic fallback for a candidate that was just produced from the send
+  // we haven't fully reconciled into the messages list yet. The per-candidate
+  // receipt resolution (getCandidateReceiptUri) prefers the actual preceding
+  // user message's attachment so older images don't leak to newer "Preview & Save".
   const [lastUploadedFileUri, setLastUploadedFileUri] = useState<
     string | undefined
   >();
@@ -1094,28 +1116,35 @@ export default function ChatScreen() {
     messageId: string | number,
   ): string | undefined => {
     const msgIndex = messages.findIndex((msg) => msg.id === messageId);
-    if (msgIndex > 0) {
-      for (let i = msgIndex - 1; i >= 0; i -= 1) {
-        const prevMsg = messages[i];
+    if (msgIndex <= 0) {
+      // Edge: the candidate appeared before we have history (very fresh send).
+      // The local URI captured at send time is the only thing available yet.
+      return lastUploadedFileUri;
+    }
 
-        if (prevMsg.is_user) {
-          const fileUrl =
-            prevMsg.file_url ||
-            prevMsg.image_path ||
-            (prevMsg.metadata as any)?.receipt_path ||
-            (prevMsg.metadata as any)?.receipt_url ||
-            (prevMsg.metadata as any)?.image_url ||
-            (prevMsg as any).image ||
-            (prevMsg as any).attachment_url;
+    // Walk back to the *nearest prior user message* (the turn that produced this assistant reply).
+    // Take only its attachment (if any). Never pull an image from an older turn.
+    for (let i = msgIndex - 1; i >= 0; i -= 1) {
+      const prevMsg = messages[i];
+      if (prevMsg.is_user) {
+        const fileUrl =
+          prevMsg.file_url ||
+          prevMsg.image_path ||
+          (prevMsg.metadata as any)?.receipt_path ||
+          (prevMsg.metadata as any)?.receipt_url ||
+          (prevMsg.metadata as any)?.image_url ||
+          (prevMsg as any).image ||
+          (prevMsg as any).attachment_url;
 
-          if (fileUrl) {
-            return ensureAbsoluteUrl(fileUrl) || fileUrl;
-          }
+        if (fileUrl) {
+          return ensureAbsoluteUrl(fileUrl) || fileUrl;
         }
+        // Nearest preceding user message had no attachment → this candidate has none.
+        return undefined;
       }
     }
 
-    return lastUploadedFileUri;
+    return undefined;
   };
 
   const lockPreviewTap = () => {
@@ -1996,9 +2025,16 @@ export default function ChatScreen() {
                     lockPreviewTap();
                     setPreviewVisible(false);
                     if (previewCandidate) {
-                      // Use previewReceiptUrl or fallback to lastUploadedFileUri
-                      const receiptUri =
-                        previewReceiptUrl || lastUploadedFileUri;
+                      // Prefer the explicitly captured one for this preview.
+                      // Else compute from the source message (so we get the right turn's image).
+                      // Fall back to the global last only as a last resort.
+                      let receiptUri = previewReceiptUrl;
+                      if (!receiptUri && previewSourceMessageId != null) {
+                        receiptUri = getCandidateReceiptUri(previewSourceMessageId);
+                      }
+                      if (!receiptUri) {
+                        receiptUri = lastUploadedFileUri;
+                      }
                       const params = prepareTransactionParams(
                         previewCandidate,
                         receiptUri,
