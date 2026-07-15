@@ -285,7 +285,7 @@ export default function NotificationSettingsScreen() {
               "email_notifications",
               Mail,
               "Email Notifications",
-              "Receive the alerts above (budget, payment, goal) by email too.",
+              "Receive the alerts above (budget, payment, goal, and daily reminders) by email too.",
               "Sending to your registered email",
             )}
 
