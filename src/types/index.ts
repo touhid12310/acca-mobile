@@ -22,6 +22,10 @@ export interface NotificationPreferences {
   budget_alerts?: boolean;
   payment_reminders?: boolean;
   goal_reached?: boolean;
+  // Daily "log your spend" nudges — 1pm / 6pm / 9pm local, individually toggleable.
+  daily_midday?: boolean;
+  daily_evening?: boolean;
+  daily_wrapup?: boolean;
   email_notifications?: boolean;
   weekly_summary?: boolean;
 }

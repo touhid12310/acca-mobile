@@ -18,6 +18,9 @@ import {
   Mail,
   PieChart,
   Bell,
+  Wallet,
+  Receipt,
+  Moon,
 } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -34,6 +37,9 @@ const DEFAULT_PREFS: Required<NotificationPreferences> = {
   budget_alerts: true,
   payment_reminders: true,
   goal_reached: true,
+  daily_midday: true,
+  daily_evening: true,
+  daily_wrapup: true,
   email_notifications: false,
   weekly_summary: false,
 };
@@ -104,6 +110,10 @@ export default function NotificationSettingsScreen() {
       case "payment_reminders":
         return "primary";
       case "goal_reached":
+        return "success";
+      case "daily_midday":
+      case "daily_evening":
+      case "daily_wrapup":
         return "success";
       case "email_notifications":
         return "info";
@@ -233,6 +243,36 @@ export default function NotificationSettingsScreen() {
               "Goal Reached",
               "Celebrates when you hit a savings goal target.",
               "Enabled",
+            )}
+
+            <View style={[styles.sectionLabel]}>
+              <Text style={[styles.sectionLabelText, { color: colors.onSurfaceVariant }]}>
+                Daily log reminders
+              </Text>
+            </View>
+
+            {renderRow(
+              "daily_midday",
+              Wallet,
+              "Midday Log Reminder",
+              "1 PM nudge to log lunch and morning spend — only on days you haven't logged anything.",
+              "1:00 PM your time",
+            )}
+
+            {renderRow(
+              "daily_evening",
+              Receipt,
+              "Evening Spend Check",
+              "6 PM prompt to record what you spent today — skipped once you've logged a transaction.",
+              "6:00 PM your time",
+            )}
+
+            {renderRow(
+              "daily_wrapup",
+              Moon,
+              "Nightly Wrap-up",
+              "9 PM reminder to wrap up your day in 30 seconds — only if the day is still unlogged.",
+              "9:00 PM your time",
             )}
 
             <View style={[styles.sectionLabel]}>

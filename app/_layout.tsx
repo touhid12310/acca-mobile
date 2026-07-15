@@ -40,6 +40,7 @@ const ROUTABLE_TYPES: Record<string, string> = {
   schedule_due_soon: '/schedules',
   low_balance: '/accounts',
   recurring_posted: '/(tabs)/transactions',
+  daily_log_nudge: '/transaction-modal',
 };
 
 const routeFromNotificationData = (data: unknown): string | undefined => {
