@@ -64,6 +64,7 @@ yarn-error.log*
 # Google Play service account key (NEVER commit — grants Play Console upload access)
 google-play-service-account.json
 *service-account*.json
+accounte-449ab-firebase-adminsdk-fbsvc-883b50969a.json
 
 # OS generated files
 .DS_Store
