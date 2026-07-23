@@ -370,6 +370,22 @@ export default function ChatScreen() {
   }, [selectedChatDate]);
   const [showChatDatePicker, setShowChatDatePicker] = useState(false);
 
+  // Structured tables (e.g. receipt products) render collapsed to the first few
+  // rows so the Preview & Save button stays reachable without long scrolling.
+  // A per-table "See more/less" toggle expands them. Keyed by `${msgId}-${tIdx}`.
+  const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const toggleTableExpanded = (key: string) => {
+    setExpandedTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   const applyVoiceTextToInput = useCallback(() => {
     const voiceText = mergeTranscriptText(
       voiceFinalTranscriptRef.current,
@@ -1379,7 +1395,14 @@ export default function ChatScreen() {
                 const rows: any[] = Array.isArray(table.rows) ? table.rows : [];
                 const totalRows =
                   typeof table.total_rows === "number" ? table.total_rows : rows.length;
-                const visibleRows = rows.slice(0, 8);
+                // Collapse long tables to the first row; a "See more" toggle
+                // reveals the rest so the Preview & Save button stays close.
+                const TABLE_COLLAPSED_ROWS = 1;
+                const tableKey = `${message.id}-${tIdx}`;
+                const isTableExpanded = expandedTables.has(tableKey);
+                const visibleRows = isTableExpanded
+                  ? rows
+                  : rows.slice(0, TABLE_COLLAPSED_ROWS);
                 // Mobile widths squeeze 5+ columns into unreadable strips, so
                 // stack each row as a card when the table is wide. Narrow
                 // tables (≤3 columns) keep the compact grid layout.
@@ -1524,12 +1547,26 @@ export default function ChatScreen() {
                       </>
                     )}
 
-                    {totalRows > visibleRows.length ? (
+                    {rows.length > TABLE_COLLAPSED_ROWS ? (
+                      <Button
+                        mode="text"
+                        compact
+                        onPress={() => toggleTableExpanded(tableKey)}
+                        style={{ alignSelf: "flex-start", marginTop: 4 }}
+                        labelStyle={{ fontSize: 12 }}
+                      >
+                        {isTableExpanded
+                          ? "See less"
+                          : `See ${rows.length - TABLE_COLLAPSED_ROWS} more`}
+                      </Button>
+                    ) : null}
+
+                    {isTableExpanded && totalRows > rows.length ? (
                       <Text
                         variant="bodySmall"
-                        style={{ color: colors.onSurfaceVariant, marginTop: 10 }}
+                        style={{ color: colors.onSurfaceVariant, marginTop: 6 }}
                       >
-                        Showing {visibleRows.length} of {totalRows} rows
+                        Showing {rows.length} of {totalRows} rows
                       </Text>
                     ) : null}
                   </Surface>
