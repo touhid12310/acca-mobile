@@ -501,6 +501,36 @@ export default function ChatScreen() {
   }, []);
 
   // Helper function to prepare transaction params for navigation (like web app)
+  // Build the line items for a single candidate: use its own items when
+  // present, otherwise synthesize one line from merchant + amount (mirrors the
+  // web app). Shared by the single- and merged-candidate save paths.
+  const buildCandidateItems = (
+    candidate: ExpenseCandidate,
+  ): Array<{ name: string; quantity: number; price: number; total: number }> => {
+    if (Array.isArray(candidate.items) && candidate.items.length > 0) {
+      return candidate.items.map((item, index) => {
+        const quantity = item.quantity || 1;
+        const price = item.price || 0;
+        const total = item.total || quantity * price;
+        return {
+          name: item.name || candidate.merchant_name || `Item ${index + 1}`,
+          quantity,
+          price,
+          total,
+        };
+      });
+    }
+    const amount = candidate.amount || 0;
+    return [
+      {
+        name: candidate.merchant_name || "Item",
+        quantity: 1,
+        price: amount,
+        total: amount,
+      },
+    ];
+  };
+
   const prepareTransactionParams = (
     candidate: ExpenseCandidate,
     receiptUri?: string,
@@ -553,36 +583,7 @@ export default function ChatScreen() {
     }
 
     // Prepare items - if candidate has items, use them; otherwise create a default item
-    let itemsToSend: Array<{
-      name: string;
-      quantity: number;
-      price: number;
-      total: number;
-    }> = [];
-
-    if (Array.isArray(candidate.items) && candidate.items.length > 0) {
-      itemsToSend = candidate.items.map((item, index) => {
-        const quantity = item.quantity || 1;
-        const price = item.price || 0;
-        const total = item.total || quantity * price;
-        return {
-          name: item.name || merchantName || `Item ${index + 1}`,
-          quantity,
-          price,
-          total,
-        };
-      });
-    } else {
-      // Create a single default item for simple transactions (like web app)
-      itemsToSend = [
-        {
-          name: merchantName,
-          quantity: 1,
-          price: amount,
-          total: amount,
-        },
-      ];
-    }
+    const itemsToSend = buildCandidateItems(candidate);
 
     // Determine file type from URI
     let receiptType = "";
@@ -619,6 +620,32 @@ export default function ChatScreen() {
       receipt_type: receiptType,
       receipt_name: receiptName,
       chat_message_id: chatMessageId ? String(chatMessageId) : "",
+    };
+  };
+
+  // Merge every candidate in one message into a SINGLE transaction whose items
+  // grid holds all the lines (e.g. "Zattgroup: laptop 50k, Ali Imam laptop 50k,
+  // office supplies 40k" → one Income transaction, 3 items, ৳140,000). The first
+  // candidate supplies the transaction-level header (type, date, merchant,
+  // category, payment method); the amount is the sum of every line item.
+  const prepareMergedTransactionParams = (
+    candidateList: ExpenseCandidate[],
+    receiptUri?: string,
+    chatMessageId?: string | number | null,
+  ) => {
+    const base = prepareTransactionParams(
+      candidateList[0],
+      receiptUri,
+      chatMessageId,
+    );
+    const mergedItems = candidateList.flatMap((candidate) =>
+      buildCandidateItems(candidate),
+    );
+    const total = mergedItems.reduce((sum, item) => sum + (item.total || 0), 0);
+    return {
+      ...base,
+      amount: total.toString(),
+      items: JSON.stringify(mergedItems),
     };
   };
 
@@ -1528,39 +1555,46 @@ export default function ChatScreen() {
           {candidates.length > 0 &&
             !(message as any)?.metadata?.transactions_saved_at && (
               <View style={styles.candidateActions}>
-                {candidates.map((candidate, index) => (
-                  <Button
-                    key={`save-${candidate.id || index}`}
-                    mode="contained"
-                    compact
-                    onPress={() => {
-                      if (isOpeningTransactionModal) {
-                        return;
-                      }
-                      lockPreviewTap();
+                {/* Multiple candidates from one message merge into a single
+                    transaction with one line item each, so a single button
+                    saves them all — never just the first. */}
+                <Button
+                  mode="contained"
+                  compact
+                  onPress={() => {
+                    if (isOpeningTransactionModal) {
+                      return;
+                    }
+                    lockPreviewTap();
 
-                      const receiptUri = getCandidateReceiptUri(message.id);
-                      const params = prepareTransactionParams(
-                        candidate,
-                        receiptUri,
-                        message.id,
-                      );
+                    const receiptUri = getCandidateReceiptUri(message.id);
+                    const params =
+                      candidates.length > 1
+                        ? prepareMergedTransactionParams(
+                            candidates,
+                            receiptUri,
+                            message.id,
+                          )
+                        : prepareTransactionParams(
+                            candidates[0],
+                            receiptUri,
+                            message.id,
+                          );
 
-                      router.push({
-                        pathname: "/transaction-modal",
-                        params,
-                      });
-                    }}
-                    style={styles.previewButton}
-                    disabled={isOpeningTransactionModal}
-                  >
-                    {isOpeningTransactionModal
-                      ? "Opening..."
-                      : candidates.length > 1
-                      ? `Preview & Save — ${candidate.merchant_name || "Transaction"}`
-                      : "Preview & Save"}
-                  </Button>
-                ))}
+                    router.push({
+                      pathname: "/transaction-modal",
+                      params,
+                    });
+                  }}
+                  style={styles.previewButton}
+                  disabled={isOpeningTransactionModal}
+                >
+                  {isOpeningTransactionModal
+                    ? "Opening..."
+                    : candidates.length > 1
+                    ? `Preview & Save all (${candidates.length} items)`
+                    : "Preview & Save"}
+                </Button>
               </View>
             )}
 
