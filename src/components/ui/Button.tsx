@@ -150,7 +150,10 @@ export function Button({
     borderWidth,
     opacity: disabled ? 0.5 : 1,
     alignSelf: fullWidth ? "stretch" : "flex-start",
-    overflow: "hidden",
+    // NOTE: intentionally NOT `overflow: hidden`. On Android that clips the
+    // elevation shadow to a rectangle behind the rounded pill (making the
+    // button look boxy). The gradient/colour fills below each carry their own
+    // borderRadius, so nothing needs clipping here.
   };
 
   if (isGradient) {
@@ -214,7 +217,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
-    overflow: "hidden",
   },
   fill: {
     ...StyleSheet.absoluteFillObject,

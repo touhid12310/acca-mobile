@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import Constants from "expo-constants";
 import {
   Bell,
   Building2,
@@ -197,7 +198,9 @@ export default function MoreScreen() {
         {
           icon: Info,
           label: "About",
-          description: "Version 1.0.0",
+          // Read from app.json (Constants.expoConfig.version) so it always
+          // reflects the shipped version — no more hardcoded string to update.
+          description: `Version ${Constants.expoConfig?.version ?? "1.2.0"}`,
           onPress: () => {},
           tone: "neutral",
         },

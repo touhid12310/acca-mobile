@@ -60,6 +60,11 @@ type SpeechRecognitionModuleType = {
   start: (options: Record<string, unknown>) => void;
   isRecognitionAvailable: () => boolean;
   requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  // Android-only: prompt the OS to download an offline voice model for a
+  // locale. Optional — not present on every version/platform.
+  androidTriggerOfflineModelDownload?: (options: {
+    locale: string;
+  }) => Promise<unknown>;
 };
 
 let SpeechRecognitionModule: SpeechRecognitionModuleType | null = null;
@@ -459,10 +464,33 @@ export default function ChatScreen() {
           event?.error !== "aborted" &&
           event?.error !== "no-speech"
         ) {
-          notifyToast.error(
-            event?.message || "Unable to transcribe your speech right now.",
-            { title: "Voice input error" },
-          );
+          const errMsg = String(event?.message || "");
+          const languageNotDownloaded =
+            event?.error === "language-not-supported" ||
+            /not yet downloaded|language.*download|download.*language/i.test(
+              errMsg,
+            );
+
+          if (languageNotDownloaded) {
+            // The device's offline voice model isn't installed. Kick off the
+            // download and tell the user to retry, instead of a raw error.
+            notifyToast.warning(
+              "Your phone needs the English voice pack. Starting the download now — tap the mic again in a few seconds.",
+              { title: "Voice pack downloading" },
+            );
+            try {
+              SpeechRecognitionModule?.androidTriggerOfflineModelDownload?.({
+                locale: "en-US",
+              });
+            } catch {
+              // best-effort — nothing more we can do here
+            }
+          } else {
+            notifyToast.error(
+              event?.message || "Unable to transcribe your speech right now.",
+              { title: "Voice input error" },
+            );
+          }
         }
 
         voiceStopRequestedRef.current = false;
@@ -998,6 +1026,11 @@ export default function ChatScreen() {
         continuous: true,
         maxAlternatives: 1,
         addsPunctuation: true,
+        // Use network (cloud) recognition instead of the on-device engine so
+        // it doesn't fail on phones that haven't downloaded the en-US voice
+        // pack ("language supported but not yet downloaded"). The error
+        // handler still triggers a pack download as a fallback.
+        requiresOnDeviceRecognition: false,
       });
     } catch (error) {
       setIsRecording(false);
