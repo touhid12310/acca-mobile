@@ -111,6 +111,11 @@ const API_CONFIG = {
     DEVICES_REGISTER: '/devices/register',
     DEVICES_UNREGISTER: '/devices/unregister',
 
+    // In-app notification feed
+    NOTIFICATIONS: '/notifications',
+    NOTIFICATIONS_UNREAD_COUNT: '/notifications/unread-count',
+    NOTIFICATIONS_READ_ALL: '/notifications/read-all',
+
     // Contact support
     SUPPORT_CATEGORIES: '/support/categories',
     SUPPORT_TICKETS: '/support/tickets',

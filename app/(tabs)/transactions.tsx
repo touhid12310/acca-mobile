@@ -28,6 +28,7 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  Archive,
   ChevronDown,
   CreditCard,
   Edit3,
@@ -128,9 +129,8 @@ export default function TransactionsScreen() {
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(new Set());
-  // Status view: 'approved' = ledger (default), 'pending_review' = drafts
-  // (email + schedule), 'rejected' = previously dismissed drafts.
-  const [statusView, setStatusView] = useState<"approved" | "pending_review" | "rejected">("approved");
+  // Status view: approved ledger, pending drafts, or archived transactions.
+  const [statusView, setStatusView] = useState<"approved" | "pending_review" | "archived">("approved");
   const [sourceView, setSourceView] = useState<"all" | "email" | "schedule">("all");
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
   const pendingDeleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -214,7 +214,12 @@ export default function TransactionsScreen() {
     mutationFn: async (id: number) => {
       const result = await transactionService.delete(id);
       if (!result.success) {
-        throw new Error(result.error || "Failed to delete transaction");
+        throw new Error(
+          result.error ||
+            (statusView === "archived"
+              ? "Failed to permanently delete transaction"
+              : "Failed to archive transaction"),
+        );
       }
       return result;
     },
@@ -230,7 +235,7 @@ export default function TransactionsScreen() {
         return next;
       });
       pendingDeleteTimers.current.delete(id);
-      toast.error(error.message || "Could not delete transaction");
+      toast.error(error.message || "Could not update transaction");
     },
   });
 
@@ -255,7 +260,11 @@ export default function TransactionsScreen() {
       pendingDeleteTimers.current.set(id, timer);
 
       const label = transaction.merchant_name || transaction.description || "Transaction";
-      toast.info(`${label} deleted`, {
+      toast.info(
+        statusView === "archived"
+          ? `${label} will be permanently deleted`
+          : `${label} moved to Archived`,
+        {
         duration: UNDO_WINDOW_MS,
         action: {
           label: "Undo",
@@ -270,9 +279,10 @@ export default function TransactionsScreen() {
             });
           },
         },
-      });
+      },
+      );
     },
-    [deleteMutation, toast],
+    [deleteMutation, statusView, toast],
   );
 
   useEffect(() => {
@@ -402,7 +412,7 @@ export default function TransactionsScreen() {
     refetchIntervalInBackground: false,
   });
 
-  // Whenever the user switches status (Ledger ↔ Pending ↔ Rejected) or source
+  // Whenever the user switches status (Ledger ↔ Pending ↔ Archived) or source
   // (All / Email / Schedule), force a fresh fetch so we don't render stale
   // cached pages (e.g. user comes back to Pending and the badge says 3 but
   // the cache only has the 2 items from their previous visit).
@@ -463,21 +473,21 @@ export default function TransactionsScreen() {
   });
   const inboundAddress = (settingsData as any)?.inbound_email_address as string | undefined;
 
-  // Reject draft mutation
+  // Archive draft mutation
   const rejectDraftMutation = useMutation({
     mutationFn: (id: number) => transactionService.reject(id),
     onSuccess: async (res) => {
       if (!res?.success) {
-        toast.error("Could not reject draft");
+        toast.error("Could not archive draft");
         return;
       }
-      toast.success("Draft rejected");
+      toast.success("Draft moved to Archived");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
     },
-    onError: () => toast.error("Reject failed"),
+    onError: () => toast.error("Archive failed"),
   });
 
   const { data: summaryStats } = useQuery({
@@ -844,26 +854,26 @@ export default function TransactionsScreen() {
           )}
         </Pressable>
         <Pressable
-          onPress={() => setStatusView("rejected")}
+          onPress={() => setStatusView("archived")}
           style={[
             styles.statusPill,
-            statusView === "rejected" && { backgroundColor: colors.primary },
+            statusView === "archived" && { backgroundColor: colors.primary },
             { borderColor: colors.outlineVariant },
           ]}
           hitSlop={6}
         >
-          <X
+          <Archive
             size={13}
-            color={statusView === "rejected" ? colors.onPrimary : colors.onSurfaceVariant}
+            color={statusView === "archived" ? colors.onPrimary : colors.onSurfaceVariant}
             strokeWidth={2.4}
           />
           <Text
             style={[
               styles.statusPillLabel,
-              { color: statusView === "rejected" ? colors.onPrimary : colors.onSurfaceVariant },
+              { color: statusView === "archived" ? colors.onPrimary : colors.onSurfaceVariant },
             ]}
           >
-            Rejected
+            Archived
           </Text>
         </Pressable>
       </View>
@@ -1063,14 +1073,14 @@ export default function TransactionsScreen() {
                     }}
                     onDelete={() => {
                       setExpandedRowId(null);
-                      // In pending-review mode, swipe-delete becomes "reject"
-                      // instead of permanent deletion. Confirms via modal.
+                      // Pending drafts use the archive confirmation modal.
                       if (statusView === "pending_review") {
                         setRejectTarget(t);
                       } else {
                         handleDeleteWithUndo(t);
                       }
                     }}
+                    isArchived={statusView === "archived"}
                     icon={getIcon(t.type)}
                     tone={getTone(t.type)}
                     amountColor={getAmountColor(t.type)}
@@ -1207,28 +1217,30 @@ export default function TransactionsScreen() {
                   ]}
                 />
 
-                <Pressable
-                  onPress={() => {
-                    handleEditTransaction(selectedTransaction);
-                    setShowActionSheet(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.actionSheetButton,
-                    {
-                      backgroundColor: pressed
-                        ? colors.surfaceVariant
-                        : "transparent",
-                    },
-                  ]}
-                >
-                  <IconBadge icon={Edit3} tone="primary" size="sm" />
-                  <Text
-                    style={[styles.actionBtnText, { color: colors.onSurface }]}
-                    numberOfLines={1}
+                {statusView !== "archived" && (
+                  <Pressable
+                    onPress={() => {
+                      handleEditTransaction(selectedTransaction);
+                      setShowActionSheet(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.actionSheetButton,
+                      {
+                        backgroundColor: pressed
+                          ? colors.surfaceVariant
+                          : "transparent",
+                      },
+                    ]}
                   >
-                    Edit transaction
-                  </Text>
-                </Pressable>
+                    <IconBadge icon={Edit3} tone="primary" size="sm" />
+                    <Text
+                      style={[styles.actionBtnText, { color: colors.onSurface }]}
+                      numberOfLines={1}
+                    >
+                      Edit transaction
+                    </Text>
+                  </Pressable>
+                )}
 
                 <Pressable
                   onPress={() => {
@@ -1253,7 +1265,9 @@ export default function TransactionsScreen() {
                     style={[styles.actionBtnText, { color: colors.error }]}
                     numberOfLines={1}
                   >
-                    Delete transaction
+                    {statusView === "archived"
+                      ? "Delete permanently"
+                      : "Move to Archived"}
                   </Text>
                 </Pressable>
 
@@ -1270,7 +1284,7 @@ export default function TransactionsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Reject draft confirmation modal */}
+      {/* Archive draft confirmation modal */}
       <Modal
         visible={!!rejectTarget}
         transparent
@@ -1290,15 +1304,15 @@ export default function TransactionsScreen() {
           >
             <Text style={{ fontSize: 36, marginBottom: 8 }}>⚠️</Text>
             <Text style={[styles.rejectModalTitle, { color: colors.onSurface }]}>
-              Reject draft
+              Archive draft?
             </Text>
             <Text style={[styles.rejectModalText, { color: colors.onSurfaceVariant }]}>
               {rejectTarget?.merchant_name
-                ? `Reject the draft for "${rejectTarget.merchant_name}"?`
-                : "Reject this draft?"}
+                ? `Archive the draft for "${rejectTarget.merchant_name}"?`
+                : "Archive this draft?"}
             </Text>
             <Text style={[styles.rejectModalNote, { color: colors.onSurfaceVariant }]}>
-              It won't be added to your ledger. You can still see rejected drafts under the Rejected tab.
+              It won't be added to your ledger. It will stay under Archived for 30 days unless you permanently delete it sooner.
             </Text>
             <View style={styles.rejectModalActions}>
               <Pressable
@@ -1324,7 +1338,7 @@ export default function TransactionsScreen() {
                 }}
                 style={[styles.rejectModalBtn, { backgroundColor: "#dc2626" }]}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Reject</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>Archive</Text>
               </Pressable>
             </View>
           </Pressable>
@@ -1347,6 +1361,7 @@ interface TransactionRowProps {
   onLongPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  isArchived: boolean;
   icon: LucideIcon;
   tone: "primary" | "success" | "danger" | "warning" | "info" | "neutral";
   amountColor: string;
@@ -1363,6 +1378,7 @@ function TransactionRow({
   onLongPress,
   onEdit,
   onDelete,
+  isArchived,
   icon,
   tone,
   amountColor,
@@ -1391,19 +1407,21 @@ function TransactionRow({
   const isPending = t.status === "pending_review";
   const renderRightActions = () => (
     <View style={styles.slideActions}>
-      <RectButton
-        onPress={() => {
-          swipeableRef.current?.close();
-          onEdit();
-        }}
-        rippleColor="rgba(255,255,255,0.2)"
-        style={[styles.slideAction, { backgroundColor: colors.primary }]}
-      >
-        <View style={styles.slideActionContent}>
-          <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
-          <Text style={styles.slideActionLabel}>Edit</Text>
-        </View>
-      </RectButton>
+      {!isArchived && (
+        <RectButton
+          onPress={() => {
+            swipeableRef.current?.close();
+            onEdit();
+          }}
+          rippleColor="rgba(255,255,255,0.2)"
+          style={[styles.slideAction, { backgroundColor: colors.primary }]}
+        >
+          <View style={styles.slideActionContent}>
+            <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
+            <Text style={styles.slideActionLabel}>Edit</Text>
+          </View>
+        </RectButton>
+      )}
       <RectButton
         onPress={() => {
           swipeableRef.current?.close();
@@ -1419,7 +1437,7 @@ function TransactionRow({
             <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
           )}
           <Text style={styles.slideActionLabel}>
-            {isPending ? "Reject" : "Delete"}
+            {isPending ? "Archive" : isArchived ? "Delete" : "Archive"}
           </Text>
         </View>
       </RectButton>

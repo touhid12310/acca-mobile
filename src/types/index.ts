@@ -108,7 +108,7 @@ export interface Transaction {
   account?: Account;
   to_account?: Account;
   transaction_categories?: TransactionCategory[];
-  status?: 'approved' | 'pending_review' | 'rejected' | string;
+  status?: 'approved' | 'pending_review' | 'archived' | string;
   source?: 'manual' | 'email' | 'chat' | 'csv' | 'receipt' | string;
   created_at?: string;
   updated_at?: string;
