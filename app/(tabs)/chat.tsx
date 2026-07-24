@@ -320,6 +320,32 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   },
 };
 
+const TEXT_SEND_STATUSES = [
+  "Sending to AI...",
+  "Reading your message...",
+  "Understanding request...",
+  "Thinking...",
+  "Analyzing details...",
+  "Checking context...",
+  "Preparing response...",
+  "Organizing results...",
+  "Writing reply...",
+  "Almost ready...",
+];
+
+const FILE_SEND_STATUSES = [
+  "Uploading file...",
+  "Sending to AI...",
+  "Reading document...",
+  "Scanning details...",
+  "Extracting information...",
+  "Analyzing content...",
+  "Matching categories...",
+  "Preparing transaction...",
+  "Reviewing results...",
+  "Almost ready...",
+];
+
 export default function ChatScreen() {
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
@@ -356,6 +382,8 @@ export default function ChatScreen() {
     type: string;
   } | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [sendingHasFile, setSendingHasFile] = useState(false);
+  const [sendStatusIndex, setSendStatusIndex] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -866,13 +894,29 @@ export default function ChatScreen() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
+  useEffect(() => {
+    if (!isSending) {
+      setSendStatusIndex(0);
+      return undefined;
+    }
+
+    const statuses = sendingHasFile ? FILE_SEND_STATUSES : TEXT_SEND_STATUSES;
+    const intervalId = setInterval(() => {
+      setSendStatusIndex((current) => (current + 1) % statuses.length);
+    }, 1400);
+
+    return () => clearInterval(intervalId);
+  }, [isSending, sendingHasFile]);
+
   // Handle sending message
   const handleSend = async () => {
     if (isSending || (!inputText.trim() && !selectedFile)) return;
 
-    setIsSending(true);
     const messageText = inputText.trim();
     const file = selectedFile;
+    setSendingHasFile(Boolean(file));
+    setSendStatusIndex(0);
+    setIsSending(true);
 
     // Track uploaded file URI for receipt (any file type).
     // Only set when this send actually carries a file; otherwise clear so that
@@ -1793,8 +1837,14 @@ export default function ChatScreen() {
               ]}
             >
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={{ color: colors.onSurfaceVariant, marginLeft: 8 }}>
-                Thinking...
+              <Text
+                key={sendStatusIndex}
+                accessibilityLiveRegion="polite"
+                style={{ color: colors.onSurfaceVariant, marginLeft: 8 }}
+              >
+                {(sendingHasFile
+                  ? FILE_SEND_STATUSES
+                  : TEXT_SEND_STATUSES)[sendStatusIndex]}
               </Text>
             </View>
           </View>

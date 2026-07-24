@@ -40,8 +40,8 @@ const DEFAULT_PREFS: Required<NotificationPreferences> = {
   daily_midday: true,
   daily_evening: true,
   daily_wrapup: true,
-  email_notifications: false,
-  weekly_summary: false,
+  email_notifications: true,
+  weekly_summary: true,
 };
 
 export default function NotificationSettingsScreen() {
