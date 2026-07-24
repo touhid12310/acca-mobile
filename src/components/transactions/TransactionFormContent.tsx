@@ -66,7 +66,18 @@ export type TransactionItemData = {
   quantity: string;
   price: string;
   total: string;
+  category_id: number | null;
+  subcategory_id: number | null;
 };
+
+const makeEmptyItem = (): TransactionItemData => ({
+  name: '',
+  quantity: '1',
+  price: '0',
+  total: '0',
+  category_id: null,
+  subcategory_id: null,
+});
 
 export type TransactionFormData = {
   type: TransactionType;
@@ -119,6 +130,8 @@ export default function TransactionFormContent({
       quantity: item.quantity?.toString() || '1',
       price: item.price?.toString() || '0',
       total: item.total?.toString() || '0',
+      category_id: item.category_id ?? null,
+      subcategory_id: item.subcategory_id ?? null,
     }));
   };
 
@@ -144,6 +157,7 @@ export default function TransactionFormContent({
         receipt_name: (initialData as any).receipt_name || 'receipt',
       };
     }
+    // New transactions start with one blank item row (web parity).
     return {
       type: 'expense',
       amount: '',
@@ -155,13 +169,16 @@ export default function TransactionFormContent({
       account_id: null,
       to_account_id: null,
       notes: '',
-      items: [],
+      items: [makeEmptyItem()],
       receipt: null,
     };
   });
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  // The shared category picker modal serves both the transaction-level field
+  // ('transaction') and per-item pickers (item index).
+  const [categoryPickerTarget, setCategoryPickerTarget] = useState<'transaction' | number>('transaction');
   const [categorySearchQuery, setCategorySearchQuery] = useState('');
   const [showAccountPicker, setShowAccountPicker] = useState(false);
   const [merchantSuggestions, setMerchantSuggestions] = useState<string[]>([]);
@@ -220,8 +237,7 @@ export default function TransactionFormContent({
         queryKey: ['categories', formData.type],
       });
       if (created?.id) {
-        updateField('category_id', created.id);
-        updateField('subcategory_id', null);
+        applyCategorySelection(created.id, null);
       }
       setCategorySearchQuery('');
       setShowCategoryPicker(false);
@@ -358,6 +374,8 @@ export default function TransactionFormContent({
           quantity: item.quantity?.toString() || '1',
           price: item.price?.toString() || '0',
           total: item.total?.toString() || (parseFloat(item.quantity || 1) * parseFloat(item.price || 0)).toFixed(2),
+          category_id: null,
+          subcategory_id: null,
         }));
 
         // Update form with extracted data
@@ -388,9 +406,12 @@ export default function TransactionFormContent({
         const transactionType = data.type?.toLowerCase() as TransactionType || 'expense';
         updateField('type', transactionType);
 
-        // Match category name to category ID
+        // Match AI category names to IDs (transaction-level + per-item).
         // Fetch categories for the new type directly since the query might not have updated yet
-        if (data.category) {
+        const itemsHaveCategoryNames = items.some(
+          (item: any) => item.category || item.subcategory,
+        );
+        if (data.category || itemsHaveCategoryNames) {
           try {
             const categoryResult = await categoryService.getForTransaction({ type: transactionType });
             if (categoryResult.success && categoryResult.data) {
@@ -400,32 +421,63 @@ export default function TransactionFormContent({
               else if (Array.isArray(categoryPayload.data)) typeCategories = categoryPayload.data;
               else if (Array.isArray(categoryPayload.data?.data)) typeCategories = categoryPayload.data.data;
 
-              if (typeCategories.length > 0) {
-                const categoryName = data.category.toLowerCase().trim();
-
-                // Find matching category by name (case-insensitive)
-                const matchedCategory = typeCategories.find(cat =>
-                  cat.name.toLowerCase().trim() === categoryName ||
-                  cat.name.toLowerCase().includes(categoryName) ||
-                  categoryName.includes(cat.name.toLowerCase())
+              // Fuzzy name matching (case-insensitive, partial both ways).
+              const matchByName = <T extends { name: string }>(
+                list: T[] | undefined,
+                rawName: unknown,
+              ): T | undefined => {
+                if (!list?.length || typeof rawName !== 'string' || !rawName.trim()) {
+                  return undefined;
+                }
+                const needle = rawName.toLowerCase().trim();
+                return list.find(entry =>
+                  entry.name.toLowerCase().trim() === needle ||
+                  entry.name.toLowerCase().includes(needle) ||
+                  needle.includes(entry.name.toLowerCase())
                 );
+              };
 
+              let matchedCategory: Category | undefined;
+              let matchedSubcategoryId: number | null = null;
+              if (typeCategories.length > 0 && data.category) {
+                matchedCategory = matchByName(typeCategories, data.category);
                 if (matchedCategory) {
                   updateField('category_id', matchedCategory.id);
-
-                  // Also check for subcategory match if available
-                  if (data.subcategory && matchedCategory.subcategories?.length) {
-                    const subcategoryName = data.subcategory.toLowerCase().trim();
-                    const matchedSubcategory = matchedCategory.subcategories.find(sub =>
-                      sub.name.toLowerCase().trim() === subcategoryName ||
-                      sub.name.toLowerCase().includes(subcategoryName) ||
-                      subcategoryName.includes(sub.name.toLowerCase())
-                    );
-                    if (matchedSubcategory) {
-                      updateField('subcategory_id', matchedSubcategory.id);
-                    }
+                  const matchedSubcategory = matchByName(
+                    matchedCategory.subcategories,
+                    data.subcategory,
+                  );
+                  if (matchedSubcategory) {
+                    matchedSubcategoryId = matchedSubcategory.id;
+                    updateField('subcategory_id', matchedSubcategory.id);
                   }
                 }
+              }
+
+              // Resolve each item's own AI-picked category; items without one
+              // inherit the transaction-level match (web parity).
+              if (typeCategories.length > 0 && formItems.length > 0) {
+                const resolvedItems = formItems.map((formItem, index) => {
+                  const raw = items[index] || {};
+                  const ownCategory = matchByName(typeCategories, raw.category);
+                  if (ownCategory) {
+                    const ownSub = matchByName(ownCategory.subcategories, raw.subcategory);
+                    return {
+                      ...formItem,
+                      category_id: ownCategory.id,
+                      subcategory_id: ownSub ? ownSub.id : null,
+                    };
+                  }
+                  if (!raw.category && matchedCategory) {
+                    return {
+                      ...formItem,
+                      category_id: matchedCategory.id,
+                      subcategory_id: matchedSubcategoryId,
+                    };
+                  }
+                  return formItem;
+                });
+                updateField('items', resolvedItems);
               }
             }
           } catch (e) {
@@ -557,10 +609,15 @@ export default function TransactionFormContent({
     };
   }, [formData.merchant_name, showMerchantSuggestions, formData.type]);
 
+  // A pristine default row (no name, price 0) doesn't count as user content.
+  const hasMeaningfulItems = formData.items.some(
+    (item) => item.name.trim() !== '' || (parseFloat(item.price) || 0) > 0,
+  );
+
   useEffect(() => {
     if (autoScanTriggeredRef.current) return;
     if (!autoScanMode || initialData?.id) return;
-    if (formData.receipt || formData.receipt_path || formData.items.length > 0) return;
+    if (formData.receipt || formData.receipt_path || hasMeaningfulItems) return;
 
     autoScanTriggeredRef.current = true;
     if (autoScanMode === 'camera') {
@@ -573,19 +630,61 @@ export default function TransactionFormContent({
     initialData?.id,
     formData.receipt,
     formData.receipt_path,
-    formData.items.length,
+    hasMeaningfulItems,
   ]);
 
   // Item management functions
   const addItem = () => {
+    // Inherit the previous row's category so single-category receipts
+    // don't need re-selection on every row (web parity).
+    const lastItem = formData.items[formData.items.length - 1];
     const newItem: TransactionItemData = {
-      name: '',
-      quantity: '1',
-      price: '0',
-      total: '0',
+      ...makeEmptyItem(),
+      category_id: lastItem?.category_id ?? null,
+      subcategory_id: lastItem?.subcategory_id ?? null,
     };
     updateField('items', [...formData.items, newItem]);
   };
+
+  const updateItemCategory = (
+    index: number,
+    categoryId: number | null,
+    subcategoryId: number | null,
+  ) => {
+    const updatedItems = [...formData.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      category_id: categoryId,
+      subcategory_id: subcategoryId,
+    };
+    updateField('items', updatedItems);
+  };
+
+  // Route a picker selection to whichever field opened the modal.
+  const applyCategorySelection = (
+    categoryId: number,
+    subcategoryId: number | null,
+  ) => {
+    if (categoryPickerTarget === 'transaction') {
+      updateField('category_id', categoryId);
+      updateField('subcategory_id', subcategoryId);
+    } else {
+      updateItemCategory(categoryPickerTarget, categoryId, subcategoryId);
+    }
+  };
+
+  // The pair currently selected for the picker's active target (drives the
+  // check marks in the modal).
+  const pickerSelection =
+    categoryPickerTarget === 'transaction'
+      ? {
+          category_id: formData.category_id,
+          subcategory_id: formData.subcategory_id,
+        }
+      : {
+          category_id: formData.items[categoryPickerTarget]?.category_id ?? null,
+          subcategory_id: formData.items[categoryPickerTarget]?.subcategory_id ?? null,
+        };
 
   const updateItem = (index: number, field: keyof TransactionItemData, value: string) => {
     const updatedItems = [...formData.items];
@@ -668,6 +767,16 @@ export default function TransactionFormContent({
   const getSelectedAccount = (accountId: number | null) => {
     if (!accountId) return null;
     return accounts.find((a) => a.id === accountId);
+  };
+
+  const getItemCategoryLabel = (item: TransactionItemData): string => {
+    if (!item.category_id) return '';
+    const category = categories.find((c) => c.id === item.category_id);
+    if (!category) return '';
+    const sub = item.subcategory_id
+      ? category.subcategories?.find((s) => s.id === item.subcategory_id)
+      : null;
+    return sub ? `${category.name} › ${sub.name}` : category.name;
   };
 
   const getTypeColor = (type: TransactionType) => {
@@ -997,6 +1106,37 @@ export default function TransactionFormContent({
                           {currencySymbol}{item.total}
                         </Text>
                       </View>
+                      <TouchableOpacity
+                        style={[styles.itemCategoryButton, { borderColor: colors.outline }]}
+                        onPress={() => {
+                          setCategoryPickerTarget(index);
+                          setShowCategoryPicker(true);
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="tag-outline"
+                          size={16}
+                          color={colors.onSurfaceVariant}
+                        />
+                        <Text
+                          style={{
+                            marginLeft: 8,
+                            flex: 1,
+                            fontSize: 13,
+                            color: getItemCategoryLabel(item)
+                              ? colors.onSurface
+                              : colors.onSurfaceVariant,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {getItemCategoryLabel(item) || 'Select category'}
+                        </Text>
+                        <MaterialCommunityIcons
+                          name="chevron-down"
+                          size={16}
+                          color={colors.onSurfaceVariant}
+                        />
+                      </TouchableOpacity>
                     </View>
                     <IconButton
                       icon="delete"
@@ -1140,7 +1280,10 @@ export default function TransactionFormContent({
                   styles.pickerButton,
                   { borderColor: errors.category_id ? colors.error : colors.outline },
                 ]}
-                onPress={() => setShowCategoryPicker(true)}
+                onPress={() => {
+                  setCategoryPickerTarget('transaction');
+                  setShowCategoryPicker(true);
+                }}
               >
                 <MaterialCommunityIcons name="tag" size={20} color={colors.onSurfaceVariant} />
                 <View style={{ marginLeft: 12, flex: 1 }}>
@@ -1458,13 +1601,12 @@ export default function TransactionFormContent({
                       </View>
                     )}
                     right={() =>
-                      formData.category_id === category.id && !formData.subcategory_id ? (
+                      pickerSelection.category_id === category.id && !pickerSelection.subcategory_id ? (
                         <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                       ) : null
                     }
                     onPress={() => {
-                      updateField('category_id', category.id);
-                      updateField('subcategory_id', null);
+                      applyCategorySelection(category.id, null);
                       if (!category.subcategories?.length) {
                         setShowCategoryPicker(false);
                       }
@@ -1476,13 +1618,12 @@ export default function TransactionFormContent({
                       title={sub.name}
                       style={{ paddingLeft: 32 }}
                       right={() =>
-                        formData.subcategory_id === sub.id ? (
+                        pickerSelection.subcategory_id === sub.id ? (
                           <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                         ) : null
                       }
                       onPress={() => {
-                        updateField('category_id', category.id);
-                        updateField('subcategory_id', sub.id);
+                        applyCategorySelection(category.id, sub.id);
                         setShowCategoryPicker(false);
                       }}
                     />
@@ -1926,6 +2067,15 @@ const styles = StyleSheet.create({
     minWidth: 70,
     textAlign: 'right',
     fontWeight: 'bold',
+  },
+  itemCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 8,
   },
   itemsTotalRow: {
     flexDirection: 'row',

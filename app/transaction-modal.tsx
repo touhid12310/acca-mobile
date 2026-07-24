@@ -150,12 +150,18 @@ export default function TransactionModalScreen() {
         }];
       }
 
-      // Add items array if present
-      if (data.items && data.items.length > 0) {
-        payload.items = data.items.map(item => ({
+      // Add items array if present. Blank rows (the default empty item) are
+      // skipped — the API requires a name on every submitted item.
+      const filledItems = (data.items || []).filter(item => item.name.trim() !== '');
+      if (filledItems.length > 0) {
+        payload.items = filledItems.map(item => ({
           name: item.name,
           quantity: parseFloat(item.quantity) || 1,
           price: parseFloat(item.price) || 0,
+          category_id: item.category_id ?? data.category_id ?? null,
+          subcategory_id:
+            item.subcategory_id ??
+            (item.category_id ? null : data.subcategory_id ?? null),
         }));
       }
 
@@ -218,12 +224,18 @@ export default function TransactionModalScreen() {
         }];
       }
 
-      // Add items array if present
-      if (data.items && data.items.length > 0) {
-        payload.items = data.items.map(item => ({
+      // Add items array if present. Blank rows (the default empty item) are
+      // skipped — the API requires a name on every submitted item.
+      const filledItems = (data.items || []).filter(item => item.name.trim() !== '');
+      if (filledItems.length > 0) {
+        payload.items = filledItems.map(item => ({
           name: item.name,
           quantity: parseFloat(item.quantity) || 1,
           price: parseFloat(item.price) || 0,
+          category_id: item.category_id ?? data.category_id ?? null,
+          subcategory_id:
+            item.subcategory_id ??
+            (item.category_id ? null : data.subcategory_id ?? null),
         }));
       }
 

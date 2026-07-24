@@ -392,9 +392,25 @@ export default function ChatScreen() {
   const [isOpeningTransactionModal, setIsOpeningTransactionModal] =
     useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // Android keyboard handling differs per device: with adjustPan (our
+  // manifest setting) the window is NOT resized, so we pad the composer up
+  // ourselves — but on Android 15 edge-to-edge the pan setting is ignored and
+  // the system resizes the window instead. Padding on top of that opens a big
+  // gap. Track the root view's height: how much it shrinks when the keyboard
+  // shows tells us how much the system already handled.
+  const [rootHeight, setRootHeight] = useState(0);
+  const baseRootHeightRef = useRef(0);
   const [selectedChatDate, setSelectedChatDate] = useState<string>(
     todayDateInputValue(),
   );
+
+  // Remember the root height while the keyboard is closed — the baseline to
+  // measure how much the system shrinks the window when it opens.
+  useEffect(() => {
+    if (keyboardHeight === 0 && rootHeight > 0) {
+      baseRootHeightRef.current = rootHeight;
+    }
+  }, [keyboardHeight, rootHeight]);
 
   // When the chat date changes we are looking at a different conversation
   // thread, so any "last file" from the previous date is irrelevant.
@@ -1746,6 +1762,7 @@ export default function ChatScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
+      onLayout={(e) => setRootHeight(e.nativeEvent.layout.height)}
     >
       <BrandedHeader
         title="AccountE Assistant"
@@ -1890,7 +1907,16 @@ export default function ChatScreen() {
             styles.inputContainer,
             { backgroundColor: colors.surface },
             Platform.OS === "android" &&
-              keyboardHeight > 0 && { paddingBottom: keyboardHeight - 50 },
+              keyboardHeight > 0 && {
+                // Pad only the part of the keyboard the system didn't already
+                // absorb by resizing the window (see rootHeight tracking).
+                paddingBottom: Math.max(
+                  0,
+                  keyboardHeight -
+                    Math.max(0, baseRootHeightRef.current - rootHeight) -
+                    50,
+                ),
+              },
           ]}
           elevation={2}
         >
