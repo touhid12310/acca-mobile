@@ -111,6 +111,10 @@ const API_CONFIG = {
     DEVICES_REGISTER: '/devices/register',
     DEVICES_UNREGISTER: '/devices/unregister',
 
+    // Contact support
+    SUPPORT_CATEGORIES: '/support/categories',
+    SUPPORT_TICKETS: '/support/tickets',
+
     // File uploads
     UPLOAD: '/upload',
     UPLOAD_AVATAR: '/upload/avatar',

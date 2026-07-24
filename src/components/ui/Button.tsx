@@ -140,9 +140,17 @@ export function Button({
     </View>
   );
 
+  const hasShadow =
+    isGradient || variant === "destructive" || variant === "success";
+
+  // Single view, explicit fixed height. NOT `overflow: hidden` — on Android
+  // that clips the elevation shadow into a rectangle behind the rounded pill.
+  // The gradient/colour fill below carries its own borderRadius, so the corners
+  // stay round without clipping the parent (which also kept the height sane).
   const baseStyle: ViewStyle = {
     height: sizeStyles.height,
     minHeight: sizeStyles.height,
+    maxHeight: sizeStyles.height,
     minWidth: fullWidth ? undefined : 88,
     width: fullWidth ? "100%" : undefined,
     backgroundColor: isGradient ? colors.primary : bgColor,
@@ -150,35 +158,7 @@ export function Button({
     borderWidth,
     opacity: disabled ? 0.5 : 1,
     alignSelf: fullWidth ? "stretch" : "flex-start",
-    // NOTE: intentionally NOT `overflow: hidden`. On Android that clips the
-    // elevation shadow to a rectangle behind the rounded pill (making the
-    // button look boxy). The gradient/colour fills below each carry their own
-    // borderRadius, so nothing needs clipping here.
   };
-
-  if (isGradient) {
-    return (
-      <Pressable
-        onPress={onPress}
-        disabled={disabled || loading}
-        style={({ pressed }) => [
-          styles.container,
-          baseStyle,
-          shadow.sm,
-          { transform: [{ scale: pressed ? 0.97 : 1 }] },
-          style,
-        ]}
-      >
-        <LinearGradient
-          colors={(isDark ? gradients.primaryDark : gradients.primary) as any}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.fill}
-        />
-        {content}
-      </Pressable>
-    );
-  }
 
   return (
     <Pressable
@@ -187,25 +167,27 @@ export function Button({
       style={({ pressed }) => [
         styles.container,
         baseStyle,
-        variant === "destructive" || variant === "success"
-          ? shadow.sm
-          : undefined,
+        hasShadow ? shadow.sm : null,
         { transform: [{ scale: pressed ? 0.97 : 1 }] },
         style,
       ]}
     >
-      <View
-        pointerEvents="none"
-        style={[
-          styles.fill,
-          {
-            backgroundColor: bgColor,
-            borderColor,
-            borderWidth,
-            borderRadius: radius.pill,
-          },
-        ]}
-      />
+      {isGradient ? (
+        <LinearGradient
+          colors={(isDark ? gradients.primaryDark : gradients.primary) as any}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.fill}
+        />
+      ) : (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.fill,
+            { backgroundColor: bgColor, borderColor, borderWidth },
+          ]}
+        />
+      )}
       {content}
     </Pressable>
   );
@@ -223,7 +205,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   inner: {
-    width: "100%",
+    // No width:"100%": when the button auto-sizes to its label, a 100% width
+    // collapses to the min width and truncates the text (numberOfLines={1}).
+    // The container centres this row, so alignment is unaffected.
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

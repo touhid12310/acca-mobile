@@ -192,7 +192,9 @@ export default function MoreScreen() {
         {
           icon: Mail,
           label: "Contact Support",
-          onPress: () => {},
+          // Cast: expo-router regenerates typed routes for /support on the next
+          // Metro start/build; keeps tsc green until then.
+          onPress: () => router.push("/support" as never),
           tone: "neutral",
         },
         {

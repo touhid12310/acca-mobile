@@ -702,8 +702,9 @@ export default function TransactionFormContent({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Scan Receipt with AI - Only show when no data entered yet */}
-          {!initialData?.id && !formData.receipt && !formData.receipt_path && formData.items.length === 0 && (
+          {/* Scan Receipt with AI - Only show when no data entered yet.
+              Transfers have no receipt/items (web parity), so hide it. */}
+          {formData.type !== 'transfer' && !initialData?.id && !formData.receipt && !formData.receipt_path && formData.items.length === 0 && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Scan Receipt (Optional)
@@ -825,7 +826,7 @@ export default function TransactionFormContent({
           </View>
 
           {/* Receipt Preview - Show after type when available (from scan or chat) */}
-          {(formData.receipt_path || formData.receipt) && (
+          {formData.type !== 'transfer' && (formData.receipt_path || formData.receipt) && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Attached Receipt
@@ -918,7 +919,32 @@ export default function TransactionFormContent({
             </View>
           )}
 
-          {/* Items Section - First like web app */}
+          {/* Transfer amount — a transfer moves one amount between accounts, so
+              it uses a direct amount field instead of the items grid (matches
+              the web app, which shows no items/receipt for transfers). */}
+          {formData.type === 'transfer' && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
+                Amount
+              </Text>
+              <TextInput
+                mode="outlined"
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                value={formData.amount}
+                onChangeText={(v) => updateField('amount', v.replace(/[^0-9.]/g, ''))}
+                left={<TextInput.Affix text={currencySymbol} />}
+              />
+              {errors.amount && (
+                <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
+                  {errors.amount}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Items Section - hidden for transfers (web parity) */}
+          {formData.type !== 'transfer' && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
@@ -1002,6 +1028,7 @@ export default function TransactionFormContent({
               </Text>
             )}
           </View>
+          )}
 
           {/* Date */}
           <View style={styles.section}>
