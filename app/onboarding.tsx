@@ -21,6 +21,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import onboardingService from "../src/services/onboardingService";
 import { detectTimeZone } from "../src/utils/timezone";
+import { BrandText } from "../src/components";
 
 type ProfileType = "personal" | "freelancer" | "family" | "business";
 
@@ -242,7 +243,7 @@ export default function OnboardingScreen() {
             <View style={styles.body}>
               <Text style={[styles.title, { color: colors.onSurface }]}>Let's get to know you</Text>
               <Text style={[styles.subtitle, { color: subtle }]}>
-                Just a few quick details so AccountE works the way you do. You can change all of this later in Settings.
+                <BrandText>Just a few quick details so AccountE works the way you do. You can change all of this later in Settings.</BrandText>
               </Text>
 
               <View style={styles.field}>
@@ -338,7 +339,7 @@ export default function OnboardingScreen() {
 
           {step === 2 && (
             <View style={styles.body}>
-              <Text style={[styles.title, { color: colors.onSurface }]}>What brings you to AccountE?</Text>
+              <Text style={[styles.title, { color: colors.onSurface }]}><BrandText>What brings you to AccountE?</BrandText></Text>
               <Text style={[styles.subtitle, { color: subtle }]}>
                 We'll tune your dashboard, categories, and features to match. You can switch profiles or mix-and-match later.
               </Text>

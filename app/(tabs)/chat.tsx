@@ -33,7 +33,7 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { notifyToast } from "../../src/contexts/NotificationContext";
-import { BrandedHeader } from "../../src/components";
+import { BrandedHeader, BrandText } from "../../src/components";
 import chatService from "../../src/services/chatService";
 import categoryService from "../../src/services/categoryService";
 import accountService from "../../src/services/accountService";
@@ -311,7 +311,7 @@ const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   is_user: false,
   message:
-    "Hello! I'm your Accounte assistant. You can upload receipts, CSVs, or ask me for quick reports.",
+    "Hello! I'm your AccountE assistant. You can upload receipts, CSVs, or ask me for quick reports.",
   metadata: {
     suggested_actions: [
       "Show me a report for the last 3 days",
@@ -1343,7 +1343,7 @@ export default function ChatScreen() {
                 { color: isUser ? "#ffffff" : colors.onSurface },
               ]}
             >
-              {message.message}
+              <BrandText>{message.message}</BrandText>
             </Text>
           )}
 
@@ -1704,7 +1704,7 @@ export default function ChatScreen() {
       edges={["top"]}
     >
       <BrandedHeader
-        title="Accounte Assistant"
+        title="AccountE Assistant"
         subtitle="Ask about expenses, reports, or scan receipts"
         right={
           <View style={[styles.statusDot, { backgroundColor: "#34a853" }]} />

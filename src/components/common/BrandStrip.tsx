@@ -14,7 +14,7 @@ type BrandStripProps = {
 };
 
 /**
- * Slim brand bar showing the Accounte wordmark. Picks the light/dark
+ * Slim brand bar showing the AccountE wordmark. Picks the light/dark
  * variant of the asset based on the active theme so the wordmark always
  * has good contrast against its background.
  */

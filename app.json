@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Accounte",
+    "name": "AccountE",
     "slug": "accounte-expo",
     "version": "1.2.0",
     "orientation": "portrait",
@@ -17,10 +17,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.accounte.finance",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Allow Accounte to access your microphone for voice transcription.",
-        "NSCameraUsageDescription": "Accounte needs access to your camera to capture receipts.",
-        "NSPhotoLibraryUsageDescription": "Accounte needs access to your photos to upload receipts.",
-        "NSSpeechRecognitionUsageDescription": "Allow Accounte to use speech recognition for live transcription.",
+        "NSMicrophoneUsageDescription": "Allow AccountE to access your microphone for voice transcription.",
+        "NSCameraUsageDescription": "AccountE needs access to your camera to capture receipts.",
+        "NSPhotoLibraryUsageDescription": "AccountE needs access to your photos to upload receipts.",
+        "NSSpeechRecognitionUsageDescription": "Allow AccountE to use speech recognition for live transcription.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -65,14 +65,14 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Accounte to access your microphone for voice recording."
+          "microphonePermission": "Allow AccountE to access your microphone for voice recording."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Accounte to access your photos to upload receipts.",
-          "cameraPermission": "Allow Accounte to access your camera to capture receipts."
+          "photosPermission": "Allow AccountE to access your photos to upload receipts.",
+          "cameraPermission": "Allow AccountE to access your camera to capture receipts."
         }
       ],
       "expo-font",
@@ -88,8 +88,8 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow Accounte to access your microphone for voice transcription.",
-          "speechRecognitionPermission": "Allow Accounte to use speech recognition for live transcription."
+          "microphonePermission": "Allow AccountE to access your microphone for voice transcription.",
+          "speechRecognitionPermission": "Allow AccountE to use speech recognition for live transcription."
         }
       ],
       "expo-web-browser",

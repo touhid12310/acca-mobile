@@ -1,5 +1,5 @@
 /**
- * Date utilities for the Accounte app
+ * Date utilities for the AccountE app
  */
 import { getActiveTimeZone } from './timezone';
 

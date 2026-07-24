@@ -3,7 +3,7 @@ const { withAndroidManifest } = require('@expo/config-plugins');
 // expo-audio ships an Android manifest that always declares the
 // FOREGROUND_SERVICE_MEDIA_PLAYBACK permission and an AudioControlsService
 // (a `mediaPlayback` foreground service used for background audio + media-session
-// controls). Accounte only uses expo-audio for voice recording and short in-app
+// controls). AccountE only uses expo-audio for voice recording and short in-app
 // (foreground) playback in the chat feature — it never plays audio in the
 // background — so this foreground service is unnecessary.
 //

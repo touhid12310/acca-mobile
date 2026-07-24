@@ -13,6 +13,7 @@ import { router } from "expo-router";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
+import { BrandText } from "./BrandText";
 
 const LOGO_LIGHT = require("../../../assets/logo-light.png");
 const LOGO_DARK = require("../../../assets/logo-dark.png");
@@ -94,7 +95,7 @@ export function BrandedHeader({
               style={[styles.title, { color: colors.onSurface }]}
               numberOfLines={1}
             >
-              {title}
+              <BrandText>{title}</BrandText>
             </Text>
           </View>
         </View>
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   /* Wordmark sits at a modest height; the asset's intrinsic aspect ratio
-     keeps the chevron + "Accounte" text legible without dominating. */
+     keeps the chevron + "AccountE" text legible without dominating. */
   brandLogo: {
     height: 24,
     width: 132,
