@@ -826,7 +826,7 @@ export default function TransactionsScreen() {
           </View>
         </View>
 
-        {/* Status pills — Ledger / Pending review / Rejected */}
+        {/* Status pills — Ledger / Pending review / Archived */}
         <View style={styles.statusPillsRow}>
           <Pressable
             onPress={() => setStatusView("approved")}
@@ -1535,7 +1535,11 @@ function TransactionRow({
           onDelete();
         }}
         rippleColor="rgba(255,255,255,0.2)"
-        style={[styles.slideAction, { backgroundColor: colors.error }]}
+        style={[
+          styles.slideAction,
+          isArchived && { width: ACTION_WIDTH },
+          { backgroundColor: colors.error },
+        ]}
       >
         <View style={styles.slideActionContent}>
           {isPending ? (

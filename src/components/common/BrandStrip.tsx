@@ -3,6 +3,7 @@ import { Image, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { spacing } from "../../constants/theme";
+import { NotificationBell } from "./NotificationBell";
 
 const LOGO_LIGHT = require("../../../assets/logo-light.png");
 const LOGO_DARK = require("../../../assets/logo-dark.png");
@@ -10,15 +11,21 @@ const LOGO_DARK = require("../../../assets/logo-dark.png");
 type BrandStripProps = {
   /** Hide the hairline divider when the strip sits over a custom header. */
   borderless?: boolean;
+  /** Render the notification bell on the right. Default true. */
+  showNotifications?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
 /**
- * Slim brand bar showing the AccountE wordmark. Picks the light/dark
- * variant of the asset based on the active theme so the wordmark always
- * has good contrast against its background.
+ * Slim brand bar: AccountE wordmark on the left, notification bell on the
+ * right. Picks the light/dark variant of the asset based on the active theme
+ * so the wordmark always has good contrast against its background.
  */
-export function BrandStrip({ borderless = false, style }: BrandStripProps) {
+export function BrandStrip({
+  borderless = false,
+  showNotifications = true,
+  style,
+}: BrandStripProps) {
   const { isDark } = useTheme();
 
   return (
@@ -45,6 +52,7 @@ export function BrandStrip({ borderless = false, style }: BrandStripProps) {
         style={styles.logo}
         resizeMode="contain"
       />
+      {showNotifications && <NotificationBell />}
     </View>
   );
 }
@@ -53,7 +61,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,

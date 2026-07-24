@@ -8,14 +8,13 @@ import {
   View,
   ViewStyle,
 } from "react-native";
-import { Bell, ChevronLeft } from "lucide-react-native";
+import { ChevronLeft } from "lucide-react-native";
 import { router } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
 import { BrandText } from "./BrandText";
-import notificationService from "../../services/notificationService";
+import { NotificationBell } from "./NotificationBell";
 
 const LOGO_LIGHT = require("../../../assets/logo-light.png");
 const LOGO_DARK = require("../../../assets/logo-dark.png");
@@ -32,41 +31,6 @@ type BrandedHeaderProps = {
   /** Render the notification bell in the brand strip. Default true. */
   showNotifications?: boolean;
 };
-
-/** Bell + unread badge in the brand strip. Opens the notification feed. */
-export function NotificationBell() {
-  const { colors } = useTheme();
-
-  const { data: unreadCount = 0 } = useQuery({
-    queryKey: ["notifications", "unread-count"],
-    queryFn: async () => {
-      const result = await notificationService.unreadCount();
-      if (!result.success || !result.data) return 0;
-      const payload = result.data as any;
-      return Number(payload.data?.unread_count ?? payload.unread_count ?? 0);
-    },
-    refetchInterval: 30000,
-    staleTime: 10000,
-  });
-
-  return (
-    <Pressable
-      onPress={() => router.push("/notifications" as any)}
-      hitSlop={8}
-      style={styles.bellButton}
-      accessibilityLabel="Notifications"
-    >
-      <Bell size={20} color={colors.onSurface} strokeWidth={2} />
-      {unreadCount > 0 && (
-        <View style={[styles.bellBadge, { backgroundColor: colors.error }]}>
-          <Text style={styles.bellBadgeText}>
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
 
 export function BrandedHeader({
   title,
@@ -162,29 +126,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-  },
-  bellButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bellBadge: {
-    position: "absolute",
-    top: 2,
-    right: 0,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bellBadgeText: {
-    color: "#ffffff",
-    fontSize: 9,
-    fontWeight: "800",
   },
   /* Wordmark sits at a modest height; the asset's intrinsic aspect ratio
      keeps the chevron + "AccountE" text legible without dominating. */
