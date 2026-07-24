@@ -305,7 +305,12 @@ export default function OnboardingScreen() {
                     ]}
                   >
                     <View style={[styles.radioDot, { borderColor: subtle }, monthMode === "first" && { borderColor: colors.primary, backgroundColor: colors.primary }]} />
-                    <Text style={{ color: colors.onSurface, fontSize: 14, fontWeight: "500" }}>1st of the month</Text>
+                    <Text
+                      style={{ color: colors.onSurface, fontSize: 14, fontWeight: "500", flexShrink: 1 }}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >1st of the month</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setField("monthMode", "custom")}
@@ -316,7 +321,12 @@ export default function OnboardingScreen() {
                     ]}
                   >
                     <View style={[styles.radioDot, { borderColor: subtle }, monthMode === "custom" && { borderColor: colors.primary, backgroundColor: colors.primary }]} />
-                    <Text style={{ color: colors.onSurface, fontSize: 14, fontWeight: "500" }}>Custom payday</Text>
+                    <Text
+                      style={{ color: colors.onSurface, fontSize: 14, fontWeight: "500", flexShrink: 1 }}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                    >Custom payday</Text>
                   </Pressable>
                 </View>
                 {monthMode === "custom" && (
@@ -687,19 +697,21 @@ const styles = StyleSheet.create({
   radioRow: { flexDirection: "row", gap: 10 },
   radioCard: {
     flex: 1,
+    minWidth: 0,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 8,
   },
   radioDot: {
     width: 14,
     height: 14,
     borderRadius: 999,
     borderWidth: 2,
+    flexShrink: 0,
   },
   profileGrid: {
     flexDirection: "row",
