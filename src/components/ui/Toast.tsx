@@ -18,6 +18,7 @@ import {
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
+import { BrandText } from "../common/BrandText";
 import type { AlertTone } from "./AlertBar";
 
 export interface ToastItem {
@@ -111,7 +112,7 @@ export function Toast({ item, onClose }: ToastProps) {
         <View style={styles.content}>
           {item.title ? (
             <Text style={[styles.title, { color: palette.fg }]} numberOfLines={2}>
-              {item.title}
+              <BrandText>{item.title}</BrandText>
             </Text>
           ) : null}
           <Text
@@ -121,13 +122,13 @@ export function Toast({ item, onClose }: ToastProps) {
             ]}
             numberOfLines={3}
           >
-            {item.message}
+            <BrandText>{item.message}</BrandText>
           </Text>
         </View>
         {item.action ? (
           <Pressable onPress={handleAction} hitSlop={8} style={styles.actionBtn}>
             <Text style={[styles.action, { color: palette.fg }]}>
-              {item.action.label}
+              <BrandText>{item.action.label}</BrandText>
             </Text>
           </Pressable>
         ) : (
