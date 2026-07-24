@@ -1100,11 +1100,17 @@ export default function TransactionsScreen() {
           <View style={styles.emptyStateWrap}>
             <EmptyState
               icon={Receipt}
-              title="No transactions yet"
+              title={
+                statusView === "archived"
+                  ? "No archived transactions"
+                  : "No transactions yet"
+              }
               message={
                 searchQuery
                   ? "Try a different search term"
-                  : "Tap the + button to add your first transaction."
+                  : statusView === "archived"
+                    ? "Transactions you archive will stay here for 30 days."
+                    : "Tap the + button to add your first transaction."
               }
               compact
             />
