@@ -33,7 +33,7 @@ export interface NotificationPreferences {
 export interface UserSettings {
   currency?: string;
   timezone?: string;
-  theme?: 'light' | 'dark' | 'system';
+  theme?: "light" | "dark" | "system";
   notifications?: boolean;
   notification_preferences?: NotificationPreferences;
 }
@@ -68,7 +68,12 @@ export interface RegisterResponse {
 }
 
 // Transaction Types
-export type TransactionType = 'income' | 'expense' | 'transfer' | 'asset' | 'liability';
+export type TransactionType =
+  | "income"
+  | "expense"
+  | "transfer"
+  | "asset"
+  | "liability";
 
 export interface TransactionItem {
   name: string;
@@ -108,8 +113,8 @@ export interface Transaction {
   account?: Account;
   to_account?: Account;
   transaction_categories?: TransactionCategory[];
-  status?: 'approved' | 'pending_review' | 'archived' | string;
-  source?: 'manual' | 'email' | 'chat' | 'csv' | 'receipt' | string;
+  status?: "approved" | "pending_review" | "archived" | string;
+  source?: "manual" | "email" | "chat" | "csv" | "receipt" | string;
   created_at?: string;
   updated_at?: string;
 }
@@ -135,7 +140,7 @@ export interface TransactionFormData {
 export interface Category {
   id: number;
   name: string;
-  type: 'income' | 'expense' | 'asset' | 'liability';
+  type: "income" | "expense" | "asset" | "liability";
   icon?: string;
   color?: string;
   is_default?: boolean;
@@ -158,7 +163,14 @@ export interface Subcategory {
 }
 
 // Account Types
-export type AccountType = 'checking' | 'savings' | 'credit' | 'cash' | 'investment' | 'loan' | 'other';
+export type AccountType =
+  | "checking"
+  | "savings"
+  | "credit"
+  | "cash"
+  | "investment"
+  | "loan"
+  | "other";
 
 export interface Account {
   id: number;
@@ -182,7 +194,7 @@ export interface Budget {
   amount: number;
   spent: number;
   remaining: number;
-  period: 'monthly' | 'weekly' | 'yearly';
+  period: "monthly" | "weekly" | "yearly";
   start_date: string;
   end_date?: string;
   category_id?: number;
@@ -211,7 +223,7 @@ export interface Goal {
 export interface Loan {
   id: number;
   loan_name: string;
-  loan_type?: 'Borrowed' | 'Lent' | string;
+  loan_type?: "Borrowed" | "Lent" | string;
   original_amount?: number;
   remaining_balance: number;
   interest_rate?: number;
@@ -251,8 +263,17 @@ export interface Schedule {
   amount: number | string;
   due_date?: string;
   next_due_date?: string;
-  frequency: 'monthly' | 'weekly' | 'yearly' | 'one-time' | 'Monthly' | 'Weekly' | 'Quarterly' | 'Yearly' | string;
-  type?: 'income' | 'expense';
+  frequency:
+    | "monthly"
+    | "weekly"
+    | "yearly"
+    | "one-time"
+    | "Monthly"
+    | "Weekly"
+    | "Quarterly"
+    | "Yearly"
+    | string;
+  type?: "income" | "expense";
   status?: string;
   notes?: string;
   is_paid?: boolean;

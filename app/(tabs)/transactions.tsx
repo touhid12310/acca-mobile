@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from "react";
 import {
   View,
   StyleSheet,
@@ -116,7 +122,13 @@ export default function TransactionsScreen() {
   })();
   const initialFilterType: FilterType = (() => {
     const t = routeParams?.type?.toString().trim();
-    if (t === "income" || t === "expense" || t === "transfer" || t === "asset" || t === "liability") {
+    if (
+      t === "income" ||
+      t === "expense" ||
+      t === "transfer" ||
+      t === "asset" ||
+      t === "liability"
+    ) {
       return t;
     }
     return "all";
@@ -128,12 +140,20 @@ export default function TransactionsScreen() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
-  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(new Set());
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(
+    new Set(),
+  );
   // Status view: approved ledger, pending drafts, or archived transactions.
-  const [statusView, setStatusView] = useState<"approved" | "pending_review" | "archived">("approved");
-  const [sourceView, setSourceView] = useState<"all" | "email" | "schedule">("all");
+  const [statusView, setStatusView] = useState<
+    "approved" | "pending_review" | "archived"
+  >("approved");
+  const [sourceView, setSourceView] = useState<"all" | "email" | "schedule">(
+    "all",
+  );
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
-  const pendingDeleteTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingDeleteTimers = useRef<
+    Map<number, ReturnType<typeof setTimeout>>
+  >(new Map());
   const [expandedRowId, setExpandedRowId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [periodModalVisible, setPeriodModalVisible] = useState(false);
@@ -150,7 +170,7 @@ export default function TransactionsScreen() {
     return computePeriodRange("this_month");
   });
   const [periodFilterActive, setPeriodFilterActive] = useState(
-    Boolean(routeParams?.dateFrom || routeParams?.dateTo)
+    Boolean(routeParams?.dateFrom || routeParams?.dateTo),
   );
   const [pendingPeriod, setPendingPeriod] = useState<PeriodRange | null>(null);
 
@@ -166,7 +186,13 @@ export default function TransactionsScreen() {
     if (search || category) {
       setSearchQuery(search || category || "");
     }
-    if (t === "income" || t === "expense" || t === "transfer" || t === "asset" || t === "liability") {
+    if (
+      t === "income" ||
+      t === "expense" ||
+      t === "transfer" ||
+      t === "asset" ||
+      t === "liability"
+    ) {
       setFilterType(t);
     }
     if (from || to) {
@@ -259,27 +285,28 @@ export default function TransactionsScreen() {
       }, UNDO_WINDOW_MS);
       pendingDeleteTimers.current.set(id, timer);
 
-      const label = transaction.merchant_name || transaction.description || "Transaction";
+      const label =
+        transaction.merchant_name || transaction.description || "Transaction";
       toast.info(
         statusView === "archived"
           ? `${label} will be permanently deleted`
           : `${label} moved to Archived`,
         {
-        duration: UNDO_WINDOW_MS,
-        action: {
-          label: "Undo",
-          onPress: () => {
-            const t = pendingDeleteTimers.current.get(id);
-            if (t) clearTimeout(t);
-            pendingDeleteTimers.current.delete(id);
-            setPendingDeleteIds((prev) => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
+          duration: UNDO_WINDOW_MS,
+          action: {
+            label: "Undo",
+            onPress: () => {
+              const t = pendingDeleteTimers.current.get(id);
+              if (t) clearTimeout(t);
+              pendingDeleteTimers.current.delete(id);
+              setPendingDeleteIds((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
+            },
           },
         },
-      },
       );
     },
     [deleteMutation, statusView, toast],
@@ -455,7 +482,10 @@ export default function TransactionsScreen() {
   const { data: pendingCount = 0 } = useQuery({
     queryKey: ["transactions", "pending_review", "count"],
     queryFn: async () => {
-      const res = await transactionService.getAll({ status: "pending_review", per_page: 1 } as any);
+      const res = await transactionService.getAll({
+        status: "pending_review",
+        per_page: 1,
+      } as any);
       const payload = res?.data as any;
       return Number(payload?.data?.total ?? payload?.total ?? 0);
     },
@@ -471,7 +501,9 @@ export default function TransactionsScreen() {
       return (res.data as any)?.data || (res.data as any);
     },
   });
-  const inboundAddress = (settingsData as any)?.inbound_email_address as string | undefined;
+  const inboundAddress = (settingsData as any)?.inbound_email_address as
+    | string
+    | undefined;
 
   // Archive draft mutation
   const rejectDraftMutation = useMutation({
@@ -667,437 +699,489 @@ export default function TransactionsScreen() {
           />
         }
       >
-      <View style={styles.headerWrap}>
-        <ScreenHeader
-          title="Activity"
-          subtitle="Transactions"
-          right={
-            <Pressable
-              onPress={handleOpenPeriodModal}
-              style={[
-                styles.periodBtn,
-                { backgroundColor: colors.surfaceVariant },
-              ]}
-              hitSlop={6}
-            >
-              <SlidersHorizontal
-                size={14}
-                color={colors.onSurface}
-                strokeWidth={2.4}
-              />
-              <Text
-                style={[styles.periodBtnLabel, { color: colors.onSurface }]}
-                numberOfLines={1}
+        <View style={styles.headerWrap}>
+          <ScreenHeader
+            title="Activity"
+            subtitle="Transactions"
+            right={
+              <Pressable
+                onPress={handleOpenPeriodModal}
+                style={[
+                  styles.periodBtn,
+                  { backgroundColor: colors.surfaceVariant },
+                ]}
+                hitSlop={6}
               >
-                {period.label}
-              </Text>
-              <ChevronDown
-                size={14}
-                color={colors.onSurfaceVariant}
-                strokeWidth={2.4}
-              />
-            </Pressable>
-          }
+                <SlidersHorizontal
+                  size={14}
+                  color={colors.onSurface}
+                  strokeWidth={2.4}
+                />
+                <Text
+                  style={[styles.periodBtnLabel, { color: colors.onSurface }]}
+                  numberOfLines={1}
+                >
+                  {period.label}
+                </Text>
+                <ChevronDown
+                  size={14}
+                  color={colors.onSurfaceVariant}
+                  strokeWidth={2.4}
+                />
+              </Pressable>
+            }
+          />
+        </View>
+
+        <PeriodModal
+          visible={periodModalVisible}
+          onClose={handleClosePeriodModal}
+          current={pendingPeriod ?? period}
+          onSelect={(range) => setPendingPeriod(range)}
         />
-      </View>
 
-      <PeriodModal
-        visible={periodModalVisible}
-        onClose={handleClosePeriodModal}
-        current={pendingPeriod ?? period}
-        onSelect={(range) => setPendingPeriod(range)}
-      />
-
-      {/* Totals summary */}
-      <View style={styles.summaryRow}>
-        <SummaryCard isDark={isDark}>
-          <View style={styles.summaryTopRow}>
-            <View style={styles.summaryLead}>
-              <View style={[styles.summaryIconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
-                <ArrowDownLeft
-                  size={18}
-                  color="#00e676"
-                  strokeWidth={3}
-                />
+        {/* Totals summary */}
+        <View style={styles.summaryRow}>
+          <SummaryCard isDark={isDark}>
+            <View style={styles.summaryTopRow}>
+              <View style={styles.summaryLead}>
+                <View
+                  style={[
+                    styles.summaryIconWrap,
+                    { backgroundColor: "rgba(255,255,255,0.22)" },
+                  ]}
+                >
+                  <ArrowDownLeft size={18} color="#00e676" strokeWidth={3} />
+                </View>
+                <Text style={styles.summaryLabel}>Total Income</Text>
               </View>
-              <Text style={styles.summaryLabel}>Total Income</Text>
             </View>
-          </View>
-          <Text
-            style={[styles.summaryValue, { color: "#86efac" }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-          >
-            {formatAmount(totalIncome)}
-          </Text>
-        </SummaryCard>
-        <SummaryCard isDark={isDark}>
-          <View style={styles.summaryTopRow}>
-            <View style={styles.summaryLead}>
-              <View style={[styles.summaryIconWrap, { backgroundColor: "rgba(255,255,255,0.22)" }]}>
-                <ArrowUpRight
-                  size={18}
-                  color="#ef4444"
-                  strokeWidth={2.8}
-                />
+            <Text
+              style={[styles.summaryValue, { color: "#86efac" }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {formatAmount(totalIncome)}
+            </Text>
+          </SummaryCard>
+          <SummaryCard isDark={isDark}>
+            <View style={styles.summaryTopRow}>
+              <View style={styles.summaryLead}>
+                <View
+                  style={[
+                    styles.summaryIconWrap,
+                    { backgroundColor: "rgba(255,255,255,0.22)" },
+                  ]}
+                >
+                  <ArrowUpRight size={18} color="#ef4444" strokeWidth={2.8} />
+                </View>
+                <Text style={styles.summaryLabel}>Total Expenses</Text>
               </View>
-              <Text style={styles.summaryLabel}>Total Expenses</Text>
             </View>
-          </View>
-          <Text
-            style={[styles.summaryValue, { color: "#fca5a5" }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            <Text
+              style={[styles.summaryValue, { color: "#fca5a5" }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {formatAmount(totalExpense)}
+            </Text>
+          </SummaryCard>
+        </View>
+
+        {errorMessage && (
+          <View
+            style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}
           >
-            {formatAmount(totalExpense)}
-          </Text>
-        </SummaryCard>
-      </View>
+            <AlertBar
+              tone="error"
+              message={errorMessage}
+              onClose={() => setErrorMessage(null)}
+            />
+          </View>
+        )}
 
-      {errorMessage && (
-        <View
-          style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}
-        >
-          <AlertBar
-            tone="error"
-            message={errorMessage}
-            onClose={() => setErrorMessage(null)}
-          />
-        </View>
-      )}
-
-      {/* Search */}
-      <View style={styles.searchWrap}>
-        <View
-          style={[styles.searchBox, { backgroundColor: colors.surfaceVariant }]}
-        >
-          <Search size={18} color={colors.onSurfaceVariant} strokeWidth={2} />
-          <TextInput
-            placeholder="Search transactions"
-            placeholderTextColor={colors.onSurfaceVariant}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={[styles.searchInput, { color: colors.onSurface }]}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
-              <X size={16} color={colors.onSurfaceVariant} strokeWidth={2} />
-            </Pressable>
-          )}
-        </View>
-      </View>
-
-      {/* Status pills — Ledger / Pending review / Rejected */}
-      <View style={styles.statusPillsRow}>
-        <Pressable
-          onPress={() => setStatusView("approved")}
-          style={[
-            styles.statusPill,
-            statusView === "approved" && { backgroundColor: colors.primary },
-            { borderColor: colors.outlineVariant },
-          ]}
-          hitSlop={6}
-        >
-          <Check
-            size={13}
-            color={statusView === "approved" ? colors.onPrimary : colors.onSurfaceVariant}
-            strokeWidth={2.4}
-          />
-          <Text
+        {/* Search */}
+        <View style={styles.searchWrap}>
+          <View
             style={[
-              styles.statusPillLabel,
-              { color: statusView === "approved" ? colors.onPrimary : colors.onSurfaceVariant },
+              styles.searchBox,
+              { backgroundColor: colors.surfaceVariant },
             ]}
           >
-            Ledger
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setStatusView("pending_review")}
-          style={[
-            styles.statusPill,
-            statusView === "pending_review" && { backgroundColor: colors.primary },
-            { borderColor: colors.outlineVariant },
-          ]}
-          hitSlop={6}
-        >
-          <View style={[styles.pendingDot, { backgroundColor: "#f59e0b" }]} />
-          <Text
+            <Search size={18} color={colors.onSurfaceVariant} strokeWidth={2} />
+            <TextInput
+              placeholder="Search transactions"
+              placeholderTextColor={colors.onSurfaceVariant}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={[styles.searchInput, { color: colors.onSurface }]}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+                <X size={16} color={colors.onSurfaceVariant} strokeWidth={2} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        {/* Status pills — Ledger / Pending review / Rejected */}
+        <View style={styles.statusPillsRow}>
+          <Pressable
+            onPress={() => setStatusView("approved")}
             style={[
-              styles.statusPillLabel,
-              { color: statusView === "pending_review" ? colors.onPrimary : colors.onSurfaceVariant },
+              styles.statusPill,
+              statusView === "approved" && { backgroundColor: colors.primary },
+              { borderColor: colors.outlineVariant },
             ]}
+            hitSlop={6}
           >
-            Pending
-          </Text>
-          {pendingCount > 0 && (
-            <View
+            <Check
+              size={13}
+              color={
+                statusView === "approved"
+                  ? colors.onPrimary
+                  : colors.onSurfaceVariant
+              }
+              strokeWidth={2.4}
+            />
+            <Text
               style={[
-                styles.statusPillBadge,
+                styles.statusPillLabel,
                 {
-                  backgroundColor:
-                    statusView === "pending_review" ? "rgba(255,255,255,0.25)" : "#ef4444",
+                  color:
+                    statusView === "approved"
+                      ? colors.onPrimary
+                      : colors.onSurfaceVariant,
                 },
               ]}
             >
-              <Text
+              Ledger
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setStatusView("pending_review")}
+            style={[
+              styles.statusPill,
+              statusView === "pending_review" && {
+                backgroundColor: colors.primary,
+              },
+              { borderColor: colors.outlineVariant },
+            ]}
+            hitSlop={6}
+          >
+            <View style={[styles.pendingDot, { backgroundColor: "#f59e0b" }]} />
+            <Text
+              style={[
+                styles.statusPillLabel,
+                {
+                  color:
+                    statusView === "pending_review"
+                      ? colors.onPrimary
+                      : colors.onSurfaceVariant,
+                },
+              ]}
+            >
+              Pending
+            </Text>
+            {pendingCount > 0 && (
+              <View
                 style={[
-                  styles.statusPillBadgeText,
-                  { color: statusView === "pending_review" ? colors.onPrimary : "#fff" },
+                  styles.statusPillBadge,
+                  {
+                    backgroundColor:
+                      statusView === "pending_review"
+                        ? "rgba(255,255,255,0.25)"
+                        : "#ef4444",
+                  },
                 ]}
               >
-                {pendingCount > 99 ? "99+" : pendingCount}
-              </Text>
-            </View>
-          )}
-        </Pressable>
-        <Pressable
-          onPress={() => setStatusView("archived")}
-          style={[
-            styles.statusPill,
-            statusView === "archived" && { backgroundColor: colors.primary },
-            { borderColor: colors.outlineVariant },
-          ]}
-          hitSlop={6}
-        >
-          <Archive
-            size={13}
-            color={statusView === "archived" ? colors.onPrimary : colors.onSurfaceVariant}
-            strokeWidth={2.4}
-          />
-          <Text
-            style={[
-              styles.statusPillLabel,
-              { color: statusView === "archived" ? colors.onPrimary : colors.onSurfaceVariant },
-            ]}
-          >
-            Archived
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Drafts mode: compact alias pill matching tanstack design */}
-      {statusView === "pending_review" && inboundAddress && (
-        <View
-          style={[
-            styles.aliasCard,
-            {
-              backgroundColor: isDark ? "#0f213d" : colors.surface,
-              borderColor: isDark
-                ? "rgba(125, 145, 180, 0.22)"
-                : colors.outlineVariant,
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={["#3b82f6", "#6366f1"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.aliasIconBox}
-          >
-            <Mail size={14} color="#fff" strokeWidth={2.4} />
-          </LinearGradient>
-          <View style={styles.aliasTextWrap}>
-            <Text style={[styles.aliasLabel, { color: colors.onSurfaceVariant }]}>
-              FORWARD RECEIPTS TO
-            </Text>
-            <Text
-              selectable
-              style={[styles.aliasValue, { color: colors.onSurface }]}
-              numberOfLines={1}
-            >
-              {inboundAddress}
-            </Text>
-          </View>
+                <Text
+                  style={[
+                    styles.statusPillBadgeText,
+                    {
+                      color:
+                        statusView === "pending_review"
+                          ? colors.onPrimary
+                          : "#fff",
+                    },
+                  ]}
+                >
+                  {pendingCount > 99 ? "99+" : pendingCount}
+                </Text>
+              </View>
+            )}
+          </Pressable>
           <Pressable
-            onPress={async () => {
-              try {
-                await Clipboard.setStringAsync(inboundAddress);
-                toast.success("Email address copied");
-              } catch {
-                toast.error("Could not copy — long-press the email above");
-              }
-            }}
+            onPress={() => setStatusView("archived")}
+            style={[
+              styles.statusPill,
+              statusView === "archived" && { backgroundColor: colors.primary },
+              { borderColor: colors.outlineVariant },
+            ]}
             hitSlop={6}
+          >
+            <Archive
+              size={13}
+              color={
+                statusView === "archived"
+                  ? colors.onPrimary
+                  : colors.onSurfaceVariant
+              }
+              strokeWidth={2.4}
+            />
+            <Text
+              style={[
+                styles.statusPillLabel,
+                {
+                  color:
+                    statusView === "archived"
+                      ? colors.onPrimary
+                      : colors.onSurfaceVariant,
+                },
+              ]}
+            >
+              Archived
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Drafts mode: compact alias pill matching tanstack design */}
+        {statusView === "pending_review" && inboundAddress && (
+          <View
+            style={[
+              styles.aliasCard,
+              {
+                backgroundColor: isDark ? "#0f213d" : colors.surface,
+                borderColor: isDark
+                  ? "rgba(125, 145, 180, 0.22)"
+                  : colors.outlineVariant,
+              },
+            ]}
           >
             <LinearGradient
               colors={["#3b82f6", "#6366f1"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.aliasCopyBtn}
+              style={styles.aliasIconBox}
             >
-              <Copy size={12} color="#fff" strokeWidth={2.4} />
-              <Text style={styles.aliasCopyLabel}>Copy</Text>
+              <Mail size={14} color="#fff" strokeWidth={2.4} />
             </LinearGradient>
-          </Pressable>
-        </View>
-      )}
-
-      {statusView === "pending_review" && (
-        <View style={styles.sourceTabsRow}>
-          {(["all", "email", "schedule"] as const).map((src) => {
-            const active = sourceView === src;
-            return (
-              <Pressable
-                key={src}
-                onPress={() => setSourceView(src)}
-                style={[
-                  styles.sourceTab,
-                  active && { backgroundColor: colors.primary },
-                ]}
-                hitSlop={6}
-              >
-                <Text
-                  style={[
-                    styles.sourceTabLabel,
-                    { color: active ? colors.onPrimary : colors.onSurfaceVariant },
-                  ]}
-                >
-                  {src === "all" ? "All" : src === "email" ? "Email" : "Schedule"}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      )}
-
-      {/* Filter Chips — hidden in pending_review (drafts) view since the
-          relevant filter there is the source pills (All / Email / Schedule). */}
-      {statusView !== "pending_review" && (
-      <View style={styles.filterShell}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filters}
-          keyboardShouldPersistTaps="handled"
-        >
-          {FILTERS.map((f) => {
-            const active = filterType === f.key;
-            return (
-              <Pressable
-                key={f.key}
-                onPress={() => handleFilterPress(f.key)}
-                style={[
-                  styles.filterPill,
-                  {
-                    backgroundColor: active
-                      ? colors.primary
-                      : colors.surfaceVariant,
-                  },
-                ]}
-                hitSlop={6}
-              >
-                <Text
-                  style={[
-                    styles.filterPillLabel,
-                    {
-                      color: active
-                        ? colors.onPrimary
-                        : colors.onSurfaceVariant,
-                    },
-                  ]}
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                >
-                  {f.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
-      )}
-
-      {/* List */}
-      {isLoading ||
-      filterChanging ||
-      (isFetching && groupedTransactions.length === 0) ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : groupedTransactions.length === 0 ? (
-        <View style={styles.emptyStateWrap}>
-          <EmptyState
-            icon={Receipt}
-            title="No transactions yet"
-            message={
-              searchQuery
-                ? "Try a different search term"
-                : "Tap the + button to add your first transaction."
-            }
-            compact
-          />
-        </View>
-      ) : (
-        <View
-          style={{
-            paddingHorizontal: spacing.lg,
-            gap: spacing.sm,
-          }}
-        >
-          {groupedTransactions.map((group, groupIndex) => (
-            <View
-              key={`${group.date}-${group.data[0]?.id ?? groupIndex}`}
-              style={{ gap: spacing.xs }}
-            >
+            <View style={styles.aliasTextWrap}>
               <Text
-                style={[styles.dateHeader, { color: colors.onSurfaceVariant }]}
+                style={[styles.aliasLabel, { color: colors.onSurfaceVariant }]}
               >
-                {formatDate(group.date, {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                })}
+                FORWARD RECEIPTS TO
               </Text>
-              <Card variant="elevated" padding={0} radiusSize="xl">
-                {group.data.map((t, idx) => (
-                  <TransactionRow
-                    key={t.id}
-                    t={t}
-                    isLast={idx === group.data.length - 1}
-                    expanded={expandedRowId === t.id}
-                    onOpen={() => setExpandedRowId(t.id)}
-                    onClose={() =>
-                      setExpandedRowId((prev) => (prev === t.id ? null : prev))
-                    }
-                    onLongPress={() => {
-                      setExpandedRowId(null);
-                      setSelectedTransaction(t);
-                      setShowActionSheet(true);
-                    }}
-                    onEdit={() => {
-                      setExpandedRowId(null);
-                      handleEditTransaction(t);
-                    }}
-                    onDelete={() => {
-                      setExpandedRowId(null);
-                      // Pending drafts use the archive confirmation modal.
-                      if (statusView === "pending_review") {
-                        setRejectTarget(t);
-                      } else {
-                        handleDeleteWithUndo(t);
+              <Text
+                selectable
+                style={[styles.aliasValue, { color: colors.onSurface }]}
+                numberOfLines={1}
+              >
+                {inboundAddress}
+              </Text>
+            </View>
+            <Pressable
+              onPress={async () => {
+                try {
+                  await Clipboard.setStringAsync(inboundAddress);
+                  toast.success("Email address copied");
+                } catch {
+                  toast.error("Could not copy — long-press the email above");
+                }
+              }}
+              hitSlop={6}
+            >
+              <LinearGradient
+                colors={["#3b82f6", "#6366f1"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.aliasCopyBtn}
+              >
+                <Copy size={12} color="#fff" strokeWidth={2.4} />
+                <Text style={styles.aliasCopyLabel}>Copy</Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        )}
+
+        {statusView === "pending_review" && (
+          <View style={styles.sourceTabsRow}>
+            {(["all", "email", "schedule"] as const).map((src) => {
+              const active = sourceView === src;
+              return (
+                <Pressable
+                  key={src}
+                  onPress={() => setSourceView(src)}
+                  style={[
+                    styles.sourceTab,
+                    active && { backgroundColor: colors.primary },
+                  ]}
+                  hitSlop={6}
+                >
+                  <Text
+                    style={[
+                      styles.sourceTabLabel,
+                      {
+                        color: active
+                          ? colors.onPrimary
+                          : colors.onSurfaceVariant,
+                      },
+                    ]}
+                  >
+                    {src === "all"
+                      ? "All"
+                      : src === "email"
+                        ? "Email"
+                        : "Schedule"}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Filter Chips — hidden in pending_review (drafts) view since the
+          relevant filter there is the source pills (All / Email / Schedule). */}
+        {statusView !== "pending_review" && (
+          <View style={styles.filterShell}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filters}
+              keyboardShouldPersistTaps="handled"
+            >
+              {FILTERS.map((f) => {
+                const active = filterType === f.key;
+                return (
+                  <Pressable
+                    key={f.key}
+                    onPress={() => handleFilterPress(f.key)}
+                    style={[
+                      styles.filterPill,
+                      {
+                        backgroundColor: active
+                          ? colors.primary
+                          : colors.surfaceVariant,
+                      },
+                    ]}
+                    hitSlop={6}
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillLabel,
+                        {
+                          color: active
+                            ? colors.onPrimary
+                            : colors.onSurfaceVariant,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      allowFontScaling={false}
+                    >
+                      {f.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* List */}
+        {isLoading ||
+        filterChanging ||
+        (isFetching && groupedTransactions.length === 0) ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : groupedTransactions.length === 0 ? (
+          <View style={styles.emptyStateWrap}>
+            <EmptyState
+              icon={Receipt}
+              title="No transactions yet"
+              message={
+                searchQuery
+                  ? "Try a different search term"
+                  : "Tap the + button to add your first transaction."
+              }
+              compact
+            />
+          </View>
+        ) : (
+          <View
+            style={{
+              paddingHorizontal: spacing.lg,
+              gap: spacing.sm,
+            }}
+          >
+            {groupedTransactions.map((group, groupIndex) => (
+              <View
+                key={`${group.date}-${group.data[0]?.id ?? groupIndex}`}
+                style={{ gap: spacing.xs }}
+              >
+                <Text
+                  style={[
+                    styles.dateHeader,
+                    { color: colors.onSurfaceVariant },
+                  ]}
+                >
+                  {formatDate(group.date, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </Text>
+                <Card variant="elevated" padding={0} radiusSize="xl">
+                  {group.data.map((t, idx) => (
+                    <TransactionRow
+                      key={t.id}
+                      t={t}
+                      isLast={idx === group.data.length - 1}
+                      expanded={expandedRowId === t.id}
+                      onOpen={() => setExpandedRowId(t.id)}
+                      onClose={() =>
+                        setExpandedRowId((prev) =>
+                          prev === t.id ? null : prev,
+                        )
                       }
-                    }}
-                    isArchived={statusView === "archived"}
-                    icon={getIcon(t.type)}
-                    tone={getTone(t.type)}
-                    amountColor={getAmountColor(t.type)}
-                    formatAmount={formatAmount}
-                    colors={colors}
-                  />
-                ))}
-              </Card>
-            </View>
-          ))}
-          {isFetchingNextPage && (
-            <View style={styles.paginationLoader}>
-              <ActivityIndicator size="small" color={colors.primary} />
-            </View>
-          )}
-        </View>
-      )}
+                      onLongPress={() => {
+                        setExpandedRowId(null);
+                        setSelectedTransaction(t);
+                        setShowActionSheet(true);
+                      }}
+                      onEdit={() => {
+                        setExpandedRowId(null);
+                        handleEditTransaction(t);
+                      }}
+                      onDelete={() => {
+                        setExpandedRowId(null);
+                        // Pending drafts use the archive confirmation modal.
+                        if (statusView === "pending_review") {
+                          setRejectTarget(t);
+                        } else {
+                          handleDeleteWithUndo(t);
+                        }
+                      }}
+                      isArchived={statusView === "archived"}
+                      icon={getIcon(t.type)}
+                      tone={getTone(t.type)}
+                      amountColor={getAmountColor(t.type)}
+                      formatAmount={formatAmount}
+                      colors={colors}
+                    />
+                  ))}
+                </Card>
+              </View>
+            ))}
+            {isFetchingNextPage && (
+              <View style={styles.paginationLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* FAB */}
@@ -1234,7 +1318,10 @@ export default function TransactionsScreen() {
                   >
                     <IconBadge icon={Edit3} tone="primary" size="sm" />
                     <Text
-                      style={[styles.actionBtnText, { color: colors.onSurface }]}
+                      style={[
+                        styles.actionBtnText,
+                        { color: colors.onSurface },
+                      ]}
                       numberOfLines={1}
                     >
                       Edit transaction
@@ -1292,27 +1379,46 @@ export default function TransactionsScreen() {
         onRequestClose={() => setRejectTarget(null)}
       >
         <Pressable
-          style={[styles.modalBackdrop, { backgroundColor: "rgba(0,0,0,0.55)" }]}
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: "rgba(0,0,0,0.55)" },
+          ]}
           onPress={() => setRejectTarget(null)}
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
             style={[
               styles.rejectModal,
-              { backgroundColor: colors.surface, borderColor: colors.outlineVariant },
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.outlineVariant,
+              },
             ]}
           >
             <Text style={{ fontSize: 36, marginBottom: 8 }}>⚠️</Text>
-            <Text style={[styles.rejectModalTitle, { color: colors.onSurface }]}>
+            <Text
+              style={[styles.rejectModalTitle, { color: colors.onSurface }]}
+            >
               Archive draft?
             </Text>
-            <Text style={[styles.rejectModalText, { color: colors.onSurfaceVariant }]}>
+            <Text
+              style={[
+                styles.rejectModalText,
+                { color: colors.onSurfaceVariant },
+              ]}
+            >
               {rejectTarget?.merchant_name
                 ? `Archive the draft for "${rejectTarget.merchant_name}"?`
                 : "Archive this draft?"}
             </Text>
-            <Text style={[styles.rejectModalNote, { color: colors.onSurfaceVariant }]}>
-              It won't be added to your ledger. It will stay under Archived for 30 days unless you permanently delete it sooner.
+            <Text
+              style={[
+                styles.rejectModalNote,
+                { color: colors.onSurfaceVariant },
+              ]}
+            >
+              It won't be added to your ledger. It will stay under Archived for
+              30 days unless you permanently delete it sooner.
             </Text>
             <View style={styles.rejectModalActions}>
               <Pressable
@@ -1338,13 +1444,14 @@ export default function TransactionsScreen() {
                 }}
                 style={[styles.rejectModalBtn, { backgroundColor: "#dc2626" }]}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Archive</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>
+                  Archive
+                </Text>
               </Pressable>
             </View>
           </Pressable>
         </Pressable>
       </Modal>
-
     </SafeAreaView>
   );
 }
