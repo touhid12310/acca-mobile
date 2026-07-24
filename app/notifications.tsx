@@ -202,6 +202,7 @@ export default function NotificationsScreen() {
         showBack
         showBrand={false}
         showNotifications={false}
+        style={{ paddingTop: 3 }}
         right={
           unreadCount > 0 ? (
             <Pressable
