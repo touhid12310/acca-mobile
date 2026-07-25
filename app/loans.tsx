@@ -478,23 +478,33 @@ export default function LoansScreen() {
           >
             <MaterialCommunityIcons
               name="hand-coin"
-              size={24}
+              size={18}
               color={colors.error}
             />
-            <Text variant="labelSmall" style={{ color: colors.error }}>
-              To Pay
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.error, fontWeight: "bold" }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalLoansToPay)}
-            </Text>
-            <Text variant="labelSmall" style={{ color: colors.error }}>
-              {borrowedLoans.length} loans
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.error }}
+                numberOfLines={1}
+              >
+                To Pay
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.error, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalLoansToPay)}
+              </Text>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.error }}
+                numberOfLines={1}
+              >
+                {borrowedLoans.length} loans
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -505,23 +515,33 @@ export default function LoansScreen() {
           >
             <MaterialCommunityIcons
               name="cash-plus"
-              size={24}
+              size={18}
               color={colors.tertiary}
             />
-            <Text variant="labelSmall" style={{ color: colors.tertiary }}>
-              To Receive
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.tertiary, fontWeight: "bold" }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalLoansToReceive)}
-            </Text>
-            <Text variant="labelSmall" style={{ color: colors.tertiary }}>
-              {lentLoans.length} loans
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.tertiary }}
+                numberOfLines={1}
+              >
+                To Receive
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.tertiary, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalLoansToReceive)}
+              </Text>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.tertiary }}
+                numberOfLines={1}
+              >
+                {lentLoans.length} loans
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -532,23 +552,33 @@ export default function LoansScreen() {
           >
             <MaterialCommunityIcons
               name="calendar-clock"
-              size={24}
+              size={18}
               color={colors.primary}
             />
-            <Text variant="labelSmall" style={{ color: colors.primary }}>
-              Installments
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.primary, fontWeight: "bold" }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalUpcomingInstallments)}
-            </Text>
-            <Text variant="labelSmall" style={{ color: colors.primary }}>
-              upcoming
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.primary }}
+                numberOfLines={1}
+              >
+                Installments
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.primary, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalUpcomingInstallments)}
+              </Text>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.primary }}
+                numberOfLines={1}
+              >
+                upcoming
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -559,27 +589,31 @@ export default function LoansScreen() {
           >
             <MaterialCommunityIcons
               name="format-list-bulleted"
-              size={24}
+              size={18}
               color={colors.onSurfaceVariant}
             />
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Active
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.onSurfaceVariant, fontWeight: "bold" }}
-            >
-              {activeLoans.length}
-            </Text>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              total loans
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Active
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.onSurfaceVariant, fontWeight: "bold" }}
+              >
+                {activeLoans.length}
+              </Text>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                total loans
+              </Text>
+            </View>
           </Surface>
         </View>
 
@@ -1711,15 +1745,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   statCard: {
     flex: 1,
     minWidth: "47%",
-    padding: 12,
-    borderRadius: 12,
+    padding: 8,
+    borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: 8,
+  },
+  statTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   loanCard: {
     borderRadius: 12,

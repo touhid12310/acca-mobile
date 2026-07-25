@@ -311,18 +311,26 @@ export default function GoalsScreen() {
           >
             <MaterialCommunityIcons
               name="target"
-              size={24}
+              size={18}
               color={colors.primary}
             />
-            <Text variant="labelSmall" style={{ color: colors.primary }}>
-              Total Target
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.primary, fontWeight: "bold" }}
-            >
-              {formatAmount(totalTargetAmount)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.primary }}
+                numberOfLines={1}
+              >
+                Total Target
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.primary, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalTargetAmount)}
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -333,18 +341,26 @@ export default function GoalsScreen() {
           >
             <MaterialCommunityIcons
               name="trending-up"
-              size={24}
+              size={18}
               color={colors.tertiary}
             />
-            <Text variant="labelSmall" style={{ color: colors.tertiary }}>
-              Total Saved
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.tertiary, fontWeight: "bold" }}
-            >
-              {formatAmount(totalCurrentAmount)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.tertiary }}
+                numberOfLines={1}
+              >
+                Total Saved
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.tertiary, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalCurrentAmount)}
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -355,18 +371,26 @@ export default function GoalsScreen() {
           >
             <MaterialCommunityIcons
               name="cash"
-              size={24}
+              size={18}
               color={colors.secondary}
             />
-            <Text variant="labelSmall" style={{ color: colors.secondary }}>
-              Remaining
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.secondary, fontWeight: "bold" }}
-            >
-              {formatAmount(totalRemaining > 0 ? totalRemaining : 0)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.secondary }}
+                numberOfLines={1}
+              >
+                Remaining
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.secondary, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalRemaining > 0 ? totalRemaining : 0)}
+              </Text>
+            </View>
           </Surface>
           <Surface
             style={[
@@ -377,21 +401,24 @@ export default function GoalsScreen() {
           >
             <MaterialCommunityIcons
               name="format-list-bulleted"
-              size={24}
+              size={18}
               color={colors.onSurfaceVariant}
             />
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Active Goals
-            </Text>
-            <Text
-              variant="titleMedium"
-              style={{ color: colors.onSurfaceVariant, fontWeight: "bold" }}
-            >
-              {goalsCount}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Active Goals
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.onSurfaceVariant, fontWeight: "bold" }}
+              >
+                {goalsCount}
+              </Text>
+            </View>
           </Surface>
         </View>
 
@@ -885,15 +912,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   statCard: {
     flex: 1,
     minWidth: "47%",
-    padding: 12,
-    borderRadius: 12,
+    padding: 8,
+    borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
+  },
+  statTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   goalCard: {
     borderRadius: 12,

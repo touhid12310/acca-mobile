@@ -487,24 +487,27 @@ export default function BudgetsScreen() {
             >
               <MaterialCommunityIcons
                 name="chart-pie"
-                size={20}
+                size={16}
                 color={colors.primary}
               />
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Budgeted
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.onSurface, fontWeight: "bold" }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalBudgeted)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Total Budgeted
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.onSurface, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalBudgeted)}
+              </Text>
+            </View>
           </Surface>
 
           <Surface
@@ -519,24 +522,27 @@ export default function BudgetsScreen() {
             >
               <MaterialCommunityIcons
                 name="cash-minus"
-                size={20}
+                size={16}
                 color={colors.error}
               />
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Total Spent
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.error, fontWeight: "bold" }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalSpent)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Total Spent
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.error, fontWeight: "bold" }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalSpent)}
+              </Text>
+            </View>
           </Surface>
 
           <Surface
@@ -551,27 +557,30 @@ export default function BudgetsScreen() {
             >
               <MaterialCommunityIcons
                 name="cash-check"
-                size={20}
+                size={16}
                 color={colors.tertiary}
               />
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Remaining
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{
-                color: totalRemaining >= 0 ? colors.tertiary : colors.error,
-                fontWeight: "bold",
-              }}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              {formatAmount(totalRemaining)}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Remaining
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{
+                  color: totalRemaining >= 0 ? colors.tertiary : colors.error,
+                  fontWeight: "bold",
+                }}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatAmount(totalRemaining)}
+              </Text>
+            </View>
           </Surface>
 
           <Surface
@@ -586,22 +595,25 @@ export default function BudgetsScreen() {
             >
               <MaterialCommunityIcons
                 name="format-list-bulleted"
-                size={20}
+                size={16}
                 color={colors.secondary}
               />
             </View>
-            <Text
-              variant="labelSmall"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              Budgets
-            </Text>
-            <Text
-              variant="titleSmall"
-              style={{ color: colors.onSurface, fontWeight: "bold" }}
-            >
-              {budgetsCount}
-            </Text>
+            <View style={styles.statTextCol}>
+              <Text
+                variant="labelSmall"
+                style={{ color: colors.onSurfaceVariant }}
+                numberOfLines={1}
+              >
+                Budgets
+              </Text>
+              <Text
+                variant="titleSmall"
+                style={{ color: colors.onSurface, fontWeight: "bold" }}
+              >
+                {budgetsCount}
+              </Text>
+            </View>
           </Surface>
         </View>
 
@@ -1329,23 +1341,28 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 12,
   },
   statCard: {
     width: "48%",
     flexGrow: 1,
-    padding: 12,
-    borderRadius: 12,
-    gap: 4,
+    padding: 8,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   statIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 4,
+  },
+  statTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   budgetCard: {
     borderRadius: 12,

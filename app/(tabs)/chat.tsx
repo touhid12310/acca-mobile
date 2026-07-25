@@ -346,6 +346,9 @@ const FILE_SEND_STATUSES = [
   "Almost ready...",
 ];
 
+/** How long each "Analyzing content..." style status stays on screen. */
+const SEND_STATUS_INTERVAL_MS = 3000;
+
 export default function ChatScreen() {
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
@@ -918,8 +921,10 @@ export default function ChatScreen() {
 
     const statuses = sendingHasFile ? FILE_SEND_STATUSES : TEXT_SEND_STATUSES;
     const intervalId = setInterval(() => {
-      setSendStatusIndex((current) => (current + 1) % statuses.length);
-    }, 1400);
+      // Hold on the last status instead of wrapping — restarting at
+      // "Uploading file..." on a slow request reads as if it began again.
+      setSendStatusIndex((current) => Math.min(current + 1, statuses.length - 1));
+    }, SEND_STATUS_INTERVAL_MS);
 
     return () => clearInterval(intervalId);
   }, [isSending, sendingHasFile]);
