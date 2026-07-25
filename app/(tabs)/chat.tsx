@@ -394,26 +394,9 @@ export default function ChatScreen() {
     useState<ExpenseCandidate | null>(null);
   const [isOpeningTransactionModal, setIsOpeningTransactionModal] =
     useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  // Android keyboard handling differs per device: with adjustPan (our
-  // manifest setting) the window is NOT resized, so we pad the composer up
-  // ourselves — but on Android 15 edge-to-edge the pan setting is ignored and
-  // the system resizes the window instead. Padding on top of that opens a big
-  // gap. Track the root view's height: how much it shrinks when the keyboard
-  // shows tells us how much the system already handled.
-  const [rootHeight, setRootHeight] = useState(0);
-  const baseRootHeightRef = useRef(0);
   const [selectedChatDate, setSelectedChatDate] = useState<string>(
     todayDateInputValue(),
   );
-
-  // Remember the root height while the keyboard is closed — the baseline to
-  // measure how much the system shrinks the window when it opens.
-  useEffect(() => {
-    if (keyboardHeight === 0 && rootHeight > 0) {
-      baseRootHeightRef.current = rootHeight;
-    }
-  }, [keyboardHeight, rootHeight]);
 
   // When the chat date changes we are looking at a different conversation
   // thread, so any "last file" from the previous date is irrelevant.
@@ -566,28 +549,21 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // Handle keyboard show/hide for Android
+  // Keep the latest message in view when the keyboard opens. The composer's
+  // position is left entirely to the platform — see the note on the input
+  // Surface for why we no longer offset it ourselves.
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-      (e) => {
-        setKeyboardHeight(e.endCoordinates.height);
-        // Scroll to bottom when keyboard shows
+      () => {
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 100);
       },
     );
-    const keyboardDidHideListener = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      () => {
-        setKeyboardHeight(0);
-      },
-    );
 
     return () => {
       keyboardDidShowListener.remove();
-      keyboardDidHideListener.remove();
     };
   }, []);
 
@@ -1767,7 +1743,6 @@ export default function ChatScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
-      onLayout={(e) => setRootHeight(e.nativeEvent.layout.height)}
     >
       <BrandedHeader
         title="AccountE Assistant"
@@ -1907,22 +1882,17 @@ export default function ChatScreen() {
         )}
 
         {/* Input area */}
+        {/*
+          No manual keyboard offset here. We used to add paddingBottom on
+          Android for the part of the keyboard we guessed the system had not
+          absorbed, inferred from how much the root view shrank. Under Expo 54
+          edge-to-edge the root view does not shrink at all, so that guess was
+          always "the system did nothing" and we lifted the composer by the full
+          keyboard height on top of the inset the platform had already applied —
+          the large empty band between the composer and the keyboard.
+        */}
         <Surface
-          style={[
-            styles.inputContainer,
-            { backgroundColor: colors.surface },
-            Platform.OS === "android" &&
-              keyboardHeight > 0 && {
-                // Pad only the part of the keyboard the system didn't already
-                // absorb by resizing the window (see rootHeight tracking).
-                paddingBottom: Math.max(
-                  0,
-                  keyboardHeight -
-                    Math.max(0, baseRootHeightRef.current - rootHeight) -
-                    50,
-                ),
-              },
-          ]}
+          style={[styles.inputContainer, { backgroundColor: colors.surface }]}
           elevation={2}
         >
           {/* Quick actions */}
