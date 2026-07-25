@@ -121,9 +121,12 @@ export default function TransactionFormContent({
   const { colors } = useTheme();
   const { currencySymbol } = useCurrency();
 
-  // Convert API items to form items
+  // Convert API items to form items. Always yields at least one row — the grid
+  // opens with an editable line instead of an empty "no items" state, so a
+  // transaction with no saved items is immediately typeable. A pristine row is
+  // dropped on save (see the name filter in transaction-modal).
   const convertApiItemsToFormItems = (apiItems?: any[]): TransactionItemData[] => {
-    if (!apiItems || apiItems.length === 0) return [];
+    if (!apiItems || apiItems.length === 0) return [makeEmptyItem()];
     return apiItems.map(item => ({
       id: item.id,
       name: item.name || '',
@@ -709,16 +712,17 @@ export default function TransactionFormContent({
   };
 
   const removeItem = (index: number) => {
-    const updatedItems = formData.items.filter((_, i) => i !== index);
+    const remaining = formData.items.filter((_, i) => i !== index);
+    // Removing the last row leaves a fresh blank one so the grid never collapses
+    // to an empty state.
+    const updatedItems = remaining.length > 0 ? remaining : [makeEmptyItem()];
     updateField('items', updatedItems);
 
     // Update total amount
-    if (updatedItems.length > 0) {
-      const totalAmount = updatedItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.total) || 0);
-      }, 0);
-      updateField('amount', totalAmount.toFixed(2));
-    }
+    const totalAmount = updatedItems.reduce((sum, item) => {
+      return sum + (parseFloat(item.total) || 0);
+    }, 0);
+    updateField('amount', totalAmount.toFixed(2));
   };
 
   const validate = (): boolean => {
@@ -813,7 +817,7 @@ export default function TransactionFormContent({
         >
           {/* Scan Receipt with AI - Only show when no data entered yet.
               Transfers have no receipt/items (web parity), so hide it. */}
-          {formData.type !== 'transfer' && !initialData?.id && !formData.receipt && !formData.receipt_path && formData.items.length === 0 && (
+          {formData.type !== 'transfer' && !initialData?.id && !formData.receipt && !formData.receipt_path && !hasMeaningfulItems && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Scan Receipt (Optional)
@@ -862,7 +866,7 @@ export default function TransactionFormContent({
           )}
 
           {/* Processing Overlay - Show when processing receipt with existing data */}
-          {isProcessingReceipt && (formData.receipt || formData.items.length > 0) && (
+          {isProcessingReceipt && (formData.receipt || hasMeaningfulItems) && (
             <View style={styles.section}>
               <Surface style={[styles.processingOverlay, { backgroundColor: colors.primaryContainer }]} elevation={1}>
                 <ActivityIndicator size="small" color={colors.primary} />
@@ -1069,99 +1073,91 @@ export default function TransactionFormContent({
               </Button>
             </View>
 
-            {formData.items.length > 0 ? (
-              <Surface style={[styles.itemsContainer, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
-                {formData.items.map((item, index) => (
-                  <View key={index} style={styles.itemRow}>
-                    <View style={styles.itemInputs}>
+            <Surface style={[styles.itemsContainer, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
+              {formData.items.map((item, index) => (
+                <View key={index} style={styles.itemRow}>
+                  <View style={styles.itemInputs}>
+                    <TextInput
+                      mode="outlined"
+                      label="Item Name"
+                      value={item.name}
+                      onChangeText={(text) => updateItem(index, 'name', text)}
+                      style={styles.itemNameInput}
+                      dense
+                    />
+                    <View style={styles.itemNumberInputs}>
                       <TextInput
                         mode="outlined"
-                        label="Item Name"
-                        value={item.name}
-                        onChangeText={(text) => updateItem(index, 'name', text)}
-                        style={styles.itemNameInput}
+                        label="Qty"
+                        value={item.quantity}
+                        onChangeText={(text) => updateItem(index, 'quantity', text.replace(/[^0-9.]/g, ''))}
+                        keyboardType="decimal-pad"
+                        style={styles.itemQtyInput}
                         dense
                       />
-                      <View style={styles.itemNumberInputs}>
-                        <TextInput
-                          mode="outlined"
-                          label="Qty"
-                          value={item.quantity}
-                          onChangeText={(text) => updateItem(index, 'quantity', text.replace(/[^0-9.]/g, ''))}
-                          keyboardType="decimal-pad"
-                          style={styles.itemQtyInput}
-                          dense
-                        />
-                        <TextInput
-                          mode="outlined"
-                          label="Price"
-                          value={item.price}
-                          onChangeText={(text) => updateItem(index, 'price', text.replace(/[^0-9.]/g, ''))}
-                          keyboardType="decimal-pad"
-                          style={styles.itemPriceInput}
-                          left={<TextInput.Affix text={currencySymbol} />}
-                          dense
-                        />
-                        <Text style={[styles.itemTotal, { color: colors.onSurface }]}>
-                          {currencySymbol}{item.total}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        style={[styles.itemCategoryButton, { borderColor: colors.outline }]}
-                        onPress={() => {
-                          setCategoryPickerTarget(index);
-                          setShowCategoryPicker(true);
-                        }}
-                      >
-                        <MaterialCommunityIcons
-                          name="tag-outline"
-                          size={16}
-                          color={colors.onSurfaceVariant}
-                        />
-                        <Text
-                          style={{
-                            marginLeft: 8,
-                            flex: 1,
-                            fontSize: 13,
-                            color: getItemCategoryLabel(item)
-                              ? colors.onSurface
-                              : colors.onSurfaceVariant,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {getItemCategoryLabel(item) || 'Select category'}
-                        </Text>
-                        <MaterialCommunityIcons
-                          name="chevron-down"
-                          size={16}
-                          color={colors.onSurfaceVariant}
-                        />
-                      </TouchableOpacity>
+                      <TextInput
+                        mode="outlined"
+                        label="Price"
+                        value={item.price}
+                        onChangeText={(text) => updateItem(index, 'price', text.replace(/[^0-9.]/g, ''))}
+                        keyboardType="decimal-pad"
+                        style={styles.itemPriceInput}
+                        left={<TextInput.Affix text={currencySymbol} />}
+                        dense
+                      />
+                      <Text style={[styles.itemTotal, { color: colors.onSurface }]}>
+                        {currencySymbol}{item.total}
+                      </Text>
                     </View>
-                    <IconButton
-                      icon="delete"
-                      size={20}
-                      onPress={() => removeItem(index)}
-                      iconColor={colors.error}
-                    />
+                    <TouchableOpacity
+                      style={[styles.itemCategoryButton, { borderColor: colors.outline }]}
+                      onPress={() => {
+                        setCategoryPickerTarget(index);
+                        setShowCategoryPicker(true);
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="tag-outline"
+                        size={16}
+                        color={colors.onSurfaceVariant}
+                      />
+                      <Text
+                        style={{
+                          marginLeft: 8,
+                          flex: 1,
+                          fontSize: 13,
+                          color: getItemCategoryLabel(item)
+                            ? colors.onSurface
+                            : colors.onSurfaceVariant,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {getItemCategoryLabel(item) || 'Select category'}
+                      </Text>
+                      <MaterialCommunityIcons
+                        name="chevron-down"
+                        size={16}
+                        color={colors.onSurfaceVariant}
+                      />
+                    </TouchableOpacity>
                   </View>
-                ))}
-                <View style={styles.itemsTotalRow}>
-                  <Text variant="titleMedium" style={{ color: colors.onSurface }}>
-                    Total:
-                  </Text>
-                  <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
-                    {currencySymbol}{formData.amount || '0.00'}
-                  </Text>
+                  <IconButton
+                    icon="delete"
+                    size={20}
+                    onPress={() => removeItem(index)}
+                    iconColor={colors.error}
+                  />
                 </View>
-              </Surface>
-            ) : (
-              <Surface style={[styles.emptyItemsContainer, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
-                <Text style={{ color: colors.onSurfaceVariant, textAlign: 'center' }}>
-                  No items added. Click "Add Item" to add items.
+              ))}
+              <View style={styles.itemsTotalRow}>
+                <Text variant="titleMedium" style={{ color: colors.onSurface }}>
+                  Total:
                 </Text>
-              </Surface>
-            )}
+                <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
+                  {currencySymbol}{formData.amount || '0.00'}
+                </Text>
+              </View>
+            </Surface>
             {errors.amount && (
               <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
                 {errors.amount}
@@ -1582,55 +1578,111 @@ export default function TransactionFormContent({
                 </TouchableOpacity>
               </View>
             ) : (
-              filteredCategories.map((category) => (
-                <React.Fragment key={category.id}>
-                  <List.Item
-                    title={category.name}
-                    left={() => (
-                      <View
-                        style={[
-                          styles.categoryIcon,
-                          { backgroundColor: `${category.color || colors.primary}20` },
-                        ]}
-                      >
-                        <MaterialCommunityIcons
-                          name={(category.icon as any) || 'tag'}
-                          size={20}
-                          color={category.color || colors.primary}
-                        />
-                      </View>
-                    )}
-                    right={() =>
-                      pickerSelection.category_id === category.id && !pickerSelection.subcategory_id ? (
-                        <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
-                      ) : null
-                    }
-                    onPress={() => {
-                      applyCategorySelection(category.id, null);
-                      if (!category.subcategories?.length) {
-                        setShowCategoryPicker(false);
-                      }
-                    }}
-                  />
-                  {category.subcategories?.map((sub) => (
+              filteredCategories.map((category) => {
+                const isCategorySelected =
+                  pickerSelection.category_id === category.id &&
+                  !pickerSelection.subcategory_id;
+                const subcategories = category.subcategories ?? [];
+                return (
+                  <View key={category.id} style={styles.categoryOption}>
                     <List.Item
-                      key={sub.id}
-                      title={sub.name}
-                      style={{ paddingLeft: 32 }}
+                      title={category.name}
+                      titleStyle={[
+                        styles.categoryParentTitle,
+                        isCategorySelected && { color: colors.primary },
+                      ]}
+                      style={
+                        isCategorySelected
+                          ? { backgroundColor: `${colors.primary}1F` }
+                          : undefined
+                      }
+                      left={() => (
+                        <View
+                          style={[
+                            styles.categoryIcon,
+                            { backgroundColor: `${category.color || colors.primary}20` },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name={(category.icon as any) || 'tag'}
+                            size={20}
+                            color={category.color || colors.primary}
+                          />
+                        </View>
+                      )}
                       right={() =>
-                        pickerSelection.subcategory_id === sub.id ? (
+                        isCategorySelected ? (
                           <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                         ) : null
                       }
                       onPress={() => {
-                        applyCategorySelection(category.id, sub.id);
-                        setShowCategoryPicker(false);
+                        applyCategorySelection(category.id, null);
+                        if (!subcategories.length) {
+                          setShowCategoryPicker(false);
+                        }
                       }}
                     />
-                  ))}
-                  <Divider />
-                </React.Fragment>
-              ))
+                    {subcategories.length > 0 && (
+                      <View
+                        style={[
+                          styles.subcategoryList,
+                          { borderTopColor: colors.outlineVariant },
+                        ]}
+                      >
+                        {subcategories.map((sub) => {
+                          const isSubSelected = pickerSelection.subcategory_id === sub.id;
+                          return (
+                            <TouchableOpacity
+                              key={sub.id}
+                              style={[
+                                styles.subcategoryRow,
+                                isSubSelected && {
+                                  backgroundColor: `${colors.primary}1F`,
+                                },
+                              ]}
+                              onPress={() => {
+                                applyCategorySelection(category.id, sub.id);
+                                setShowCategoryPicker(false);
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.subcategoryBullet,
+                                  { color: colors.onSurfaceVariant },
+                                ]}
+                              >
+                                ›
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.subcategoryLabel,
+                                  {
+                                    color: isSubSelected
+                                      ? colors.primary
+                                      : colors.onSurface,
+                                  },
+                                  isSubSelected && { fontWeight: '600' },
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {sub.name}
+                              </Text>
+                              {isSubSelected && (
+                                <MaterialCommunityIcons
+                                  name="check"
+                                  size={20}
+                                  color={colors.primary}
+                                />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                    <Divider />
+                  </View>
+                );
+              })
             )}
           </ScrollView>
           <Button
@@ -1876,6 +1928,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 8,
   },
+  // Category picker rows mirror the web dropdown (TransactionManager.css):
+  // bold parent, tinted indented subcategory group with a "›" bullet.
+  categoryOption: {
+    overflow: 'hidden',
+  },
+  categoryParentTitle: {
+    fontWeight: '600',
+  },
+  subcategoryList: {
+    borderTopWidth: 1,
+    backgroundColor: 'rgba(127, 127, 127, 0.06)',
+  },
+  subcategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 13,
+    paddingRight: 16,
+    paddingLeft: 32,
+  },
+  subcategoryBullet: {
+    fontSize: 20,
+    lineHeight: 22,
+    marginRight: 10,
+  },
+  subcategoryLabel: {
+    flex: 1,
+    fontSize: 15,
+  },
   receiptPreview: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2035,11 +2115,6 @@ const styles = StyleSheet.create({
   itemsContainer: {
     borderRadius: 8,
     padding: 12,
-  },
-  emptyItemsContainer: {
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
   },
   itemRow: {
     flexDirection: 'row',
