@@ -126,6 +126,35 @@ export default function TransactionModalScreen() {
     }
   }, [fetchedTransaction, params]);
 
+  // Web parity (TransactionManager.handleTransactionSubmit): the transaction's
+  // `categories` array is the deduped set of (category, subcategory) pairs used
+  // by the item rows, since the form no longer has its own category picker.
+  // Falls back to data.category_id for transfers and chat-prefilled records.
+  const buildCategoriesPayload = (data: TransactionFormData) => {
+    const seen = new Set<string>();
+    const categories: { category_id: number; subcategory_id: number | null }[] = [];
+
+    (data.items || []).forEach((item) => {
+      if (!item.name.trim() || !item.category_id) return;
+      const key = `${item.category_id}|${item.subcategory_id ?? ''}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      categories.push({
+        category_id: item.category_id,
+        subcategory_id: item.subcategory_id ?? null,
+      });
+    });
+
+    if (categories.length === 0 && data.category_id) {
+      categories.push({
+        category_id: data.category_id,
+        subcategory_id: data.subcategory_id ?? null,
+      });
+    }
+
+    return categories;
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: TransactionFormData) => {
       // Convert form data to API format
@@ -143,11 +172,9 @@ export default function TransactionModalScreen() {
       };
 
       // Add categories in the format API expects: [{ category_id, subcategory_id }]
-      if (data.category_id) {
-        payload.categories = [{
-          category_id: data.category_id,
-          subcategory_id: data.subcategory_id || null,
-        }];
+      const categories = buildCategoriesPayload(data);
+      if (categories.length > 0) {
+        payload.categories = categories;
       }
 
       // Add items array if present. Blank rows (the default empty item) are
@@ -217,11 +244,9 @@ export default function TransactionModalScreen() {
       };
 
       // Add categories in the format API expects: [{ category_id, subcategory_id }]
-      if (data.category_id) {
-        payload.categories = [{
-          category_id: data.category_id,
-          subcategory_id: data.subcategory_id || null,
-        }];
+      const categories = buildCategoriesPayload(data);
+      if (categories.length > 0) {
+        payload.categories = categories;
       }
 
       // Add items array if present. Blank rows (the default empty item) are

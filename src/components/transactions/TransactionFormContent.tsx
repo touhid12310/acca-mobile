@@ -60,6 +60,11 @@ const formatAccountType = (accountType?: AccountType): string => {
   return `${category} • ${typeLabel}`;
 };
 
+// Categories are picked per item row, matching the web TransactionManager.
+// Flip to true only if the single transaction-level picker ever comes back —
+// having both on screen is what produced the duplicate category field.
+const SHOW_TRANSACTION_LEVEL_CATEGORY = false;
+
 export type TransactionItemData = {
   id?: number;
   name: string;
@@ -125,17 +130,29 @@ export default function TransactionFormContent({
   // opens with an editable line instead of an empty "no items" state, so a
   // transaction with no saved items is immediately typeable. A pristine row is
   // dropped on save (see the name filter in transaction-modal).
-  const convertApiItemsToFormItems = (apiItems?: any[]): TransactionItemData[] => {
+  // `fallbackCategory` backfills rows that have no category of their own from
+  // the transaction-level one. Records saved before categories moved onto the
+  // item rows (and chat prefills that only carry a single category) would
+  // otherwise open with empty, unsaveable rows.
+  const convertApiItemsToFormItems = (
+    apiItems?: any[],
+    fallbackCategory?: { category_id: number | null; subcategory_id: number | null },
+  ): TransactionItemData[] => {
     if (!apiItems || apiItems.length === 0) return [makeEmptyItem()];
-    return apiItems.map(item => ({
-      id: item.id,
-      name: item.name || '',
-      quantity: item.quantity?.toString() || '1',
-      price: item.price?.toString() || '0',
-      total: item.total?.toString() || '0',
-      category_id: item.category_id ?? null,
-      subcategory_id: item.subcategory_id ?? null,
-    }));
+    return apiItems.map(item => {
+      const ownCategoryId = item.category_id ?? null;
+      return {
+        id: item.id,
+        name: item.name || '',
+        quantity: item.quantity?.toString() || '1',
+        price: item.price?.toString() || '0',
+        total: item.total?.toString() || '0',
+        category_id: ownCategoryId ?? fallbackCategory?.category_id ?? null,
+        subcategory_id: ownCategoryId
+          ? item.subcategory_id ?? null
+          : fallbackCategory?.subcategory_id ?? null,
+      };
+    });
   };
 
   // Initialize with initialData values if available to avoid unnecessary refetches
@@ -153,7 +170,10 @@ export default function TransactionFormContent({
         account_id: initialData.account_id || null,
         to_account_id: initialData.to_account_id || null,
         notes: initialData.notes || '',
-        items: convertApiItemsToFormItems(initialData.items),
+        items: convertApiItemsToFormItems(initialData.items, {
+          category_id: initialData.category_id || null,
+          subcategory_id: initialData.subcategory_id || null,
+        }),
         receipt: null,
         receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
         receipt_type: (initialData as any).receipt_type || 'image',
@@ -321,7 +341,10 @@ export default function TransactionFormContent({
         account_id: initialData.account_id || null,
         to_account_id: initialData.to_account_id || null,
         notes: initialData.notes || '',
-        items: convertApiItemsToFormItems(initialData.items),
+        items: convertApiItemsToFormItems(initialData.items, {
+          category_id: initialData.category_id || null,
+          subcategory_id: initialData.subcategory_id || null,
+        }),
         receipt: null,
         // Preserve receipt fields from initialData
         receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
@@ -348,6 +371,18 @@ export default function TransactionFormContent({
     // Clear category when changing type since different types have different categories
     updateField('category_id', null);
     updateField('subcategory_id', null);
+    // Item categories are type-scoped too. Now that the rows are the only place
+    // a category is picked, leaving stale ids here would submit e.g. an expense
+    // category on an income transaction — the label just renders blank because
+    // the id isn't in the newly fetched list.
+    updateField(
+      'items',
+      formData.items.map((item) => ({
+        ...item,
+        category_id: null,
+        subcategory_id: null,
+      })),
+    );
   };
 
   const handleDateConfirm = (selectedDate: Date) => {
@@ -732,8 +767,22 @@ export default function TransactionFormContent({
       newErrors.amount = 'Please enter a valid amount';
     }
 
-    if (!formData.category_id && formData.type !== 'transfer') {
-      newErrors.category_id = 'Please select a category';
+    // Web parity (TransactionManager.validateTransactionForm): categories are
+    // per item now, so validate the rows instead of a transaction-level field.
+    // Blank rows are ignored here the same way the payload builder drops them.
+    if (formData.type !== 'transfer') {
+      const filledItems = formData.items.filter((item) => item.name.trim() !== '');
+
+      if (filledItems.length === 0) {
+        newErrors.items = 'Add at least one item';
+      }
+
+      formData.items.forEach((item, index) => {
+        if (item.name.trim() === '') return;
+        if (!item.category_id) {
+          newErrors[`item_${index}_category`] = 'Category is required';
+        }
+      });
     }
 
     if (!formData.account_id) {
@@ -754,7 +803,24 @@ export default function TransactionFormContent({
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    await onSubmit(formData);
+
+    // The form no longer asks for a transaction-level category, so derive it
+    // from the first categorised item — same as the web app, which builds the
+    // transaction's categories out of the item rows on submit.
+    const firstCategorised = formData.items.find(
+      (item) => item.name.trim() !== '' && item.category_id,
+    );
+
+    if (formData.type === 'transfer' || !firstCategorised) {
+      await onSubmit(formData);
+      return;
+    }
+
+    await onSubmit({
+      ...formData,
+      category_id: firstCategorised.category_id,
+      subcategory_id: firstCategorised.subcategory_id,
+    });
   };
 
   const getSelectedCategory = () => {
@@ -1110,7 +1176,14 @@ export default function TransactionFormContent({
                       </Text>
                     </View>
                     <TouchableOpacity
-                      style={[styles.itemCategoryButton, { borderColor: colors.outline }]}
+                      style={[
+                        styles.itemCategoryButton,
+                        {
+                          borderColor: errors[`item_${index}_category`]
+                            ? colors.error
+                            : colors.outline,
+                        },
+                      ]}
                       onPress={() => {
                         setCategoryPickerTarget(index);
                         setShowCategoryPicker(true);
@@ -1140,6 +1213,14 @@ export default function TransactionFormContent({
                         color={colors.onSurfaceVariant}
                       />
                     </TouchableOpacity>
+                    {errors[`item_${index}_category`] && (
+                      <Text
+                        variant="bodySmall"
+                        style={{ color: colors.error, marginTop: 4 }}
+                      >
+                        {errors[`item_${index}_category`]}
+                      </Text>
+                    )}
                   </View>
                   <IconButton
                     icon="delete"
@@ -1158,6 +1239,11 @@ export default function TransactionFormContent({
                 </Text>
               </View>
             </Surface>
+            {errors.items && (
+              <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
+                {errors.items}
+              </Text>
+            )}
             {errors.amount && (
               <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
                 {errors.amount}
@@ -1265,8 +1351,14 @@ export default function TransactionFormContent({
             </View>
           </View>
 
-          {/* Category (not for transfers) */}
-          {formData.type !== 'transfer' && (
+          {/* Transaction-level category — RETIRED, kept for back-compat.
+              Web parity: categories live on the item rows only (see
+              TransactionManager's items grid). Rendering both meant a
+              single-item transaction showed the same category twice.
+              The state, the `categoryPickerTarget === 'transaction'` branch and
+              the getters below stay wired because the chat prefill path and
+              older records still populate formData.category_id. */}
+          {SHOW_TRANSACTION_LEVEL_CATEGORY && formData.type !== 'transfer' && (
             <View style={styles.section}>
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Category
@@ -1329,7 +1421,7 @@ export default function TransactionFormContent({
                 >
                   {getSelectedAccount(formData.account_id)?.account_name || 'Select account'}
                 </Text>
-                {getSelectedAccount(formData.account_id) && (
+                {!!formatAccountType(getSelectedAccount(formData.account_id)?.account_type) && (
                   <Text style={{ color: colors.onSurfaceVariant, fontSize: 12, marginTop: 2 }}>
                     {formatAccountType(getSelectedAccount(formData.account_id)?.account_type)}
                   </Text>
@@ -1368,7 +1460,7 @@ export default function TransactionFormContent({
                   >
                     {getSelectedAccount(formData.to_account_id)?.account_name || 'Select destination'}
                   </Text>
-                  {getSelectedAccount(formData.to_account_id) && (
+                  {!!formatAccountType(getSelectedAccount(formData.to_account_id)?.account_type) && (
                     <Text style={{ color: colors.onSurfaceVariant, fontSize: 12, marginTop: 2 }}>
                       {formatAccountType(getSelectedAccount(formData.to_account_id)?.account_type)}
                     </Text>

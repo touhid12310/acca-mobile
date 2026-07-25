@@ -7,6 +7,7 @@ import {
   Modal,
   TextInput,
   Pressable,
+  KeyboardAvoidingView,
 } from "react-native";
 import {
   Text,
@@ -81,6 +82,11 @@ export default function OnboardingScreen() {
         (c.label || "").toLowerCase().includes(q)
     ).slice(0, 60);
   }, [availableCurrencies, currencyQuery]);
+
+  const closeCurrencyModal = () => {
+    setCurrencyModalOpen(false);
+    setCurrencyQuery("");
+  };
 
   const setField = (key: string, value: any) => {
     if (errors[key]) {
@@ -580,47 +586,77 @@ export default function OnboardingScreen() {
         visible={currencyModalOpen}
         animationType="slide"
         transparent
-        onRequestClose={() => setCurrencyModalOpen(false)}
+        statusBarTranslucent
+        onRequestClose={closeCurrencyModal}
       >
-        <Pressable style={styles.modalBackdrop} onPress={() => setCurrencyModalOpen(false)}>
-          <Pressable style={[styles.modalSheet, { backgroundColor: surfaceBg, borderColor: cardBorder }]}>
-            <Text style={[styles.modalTitle, { color: colors.onSurface }]}>Select currency</Text>
-            <TextInput
-              value={currencyQuery}
-              onChangeText={setCurrencyQuery}
-              placeholder="Search currencies"
-              placeholderTextColor={subtle}
-              style={[
-                styles.input,
-                { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
-              ]}
-              autoFocus
-            />
-            <ScrollView style={styles.modalList} keyboardShouldPersistTaps="handled">
-              {filteredCurrencies.map((c) => {
-                const selected = c.code === selectedCurrency;
-                return (
-                  <Pressable
-                    key={c.code}
-                    onPress={() => {
-                      setField("selectedCurrency", c.code);
-                      setCurrencyModalOpen(false);
-                      setCurrencyQuery("");
-                    }}
-                    style={[
-                      styles.modalRow,
-                      selected && { backgroundColor: isDark ? "rgba(99,102,241,0.18)" : "#eef2ff" },
-                    ]}
-                  >
-                    <Text style={[styles.modalRowSymbol, { color: subtle }]}>{c.symbol}</Text>
-                    <Text style={[styles.modalRowCode, { color: colors.onSurface }]}>{c.code}</Text>
-                    <Text style={[styles.modalRowLabel, { color: subtle }]} numberOfLines={1}>{c.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+        {/*
+          The sheet is bottom-anchored, so the soft keyboard sits right on top
+          of it. Android's window-level keyboard handling doesn't reach inside a
+          Modal (it's a separate dialog window, and edge-to-edge makes
+          adjustResize a no-op), so we pad explicitly on BOTH platforms rather
+          than the usual `behavior={Platform.OS === "ios" ? "padding" : undefined}`.
+          The app is also configured with softwareKeyboardLayoutMode "pan", so
+          nothing else is shifting the sheet — no double-shift risk here.
+        */}
+        <KeyboardAvoidingView behavior="padding" style={styles.modalAvoider}>
+          <Pressable style={styles.modalBackdrop} onPress={closeCurrencyModal}>
+            {/* Without an explicit handler this Pressable never claims the
+                touch, so taps on the sheet fall through to the backdrop and
+                close the picker. Same guard accounts.tsx uses. */}
+            <Pressable
+              style={[styles.modalSheet, { backgroundColor: surfaceBg, borderColor: cardBorder }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: colors.onSurface }]}>Select currency</Text>
+              <TextInput
+                value={currencyQuery}
+                onChangeText={setCurrencyQuery}
+                placeholder="Search currencies"
+                placeholderTextColor={subtle}
+                style={[
+                  styles.input,
+                  { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
+                ]}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="search"
+                autoFocus
+              />
+              <ScrollView
+                style={styles.modalList}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+              >
+                {filteredCurrencies.length === 0 ? (
+                  <Text style={[styles.modalEmpty, { color: subtle }]}>
+                    No currency matches "{currencyQuery.trim()}"
+                  </Text>
+                ) : (
+                  filteredCurrencies.map((c) => {
+                    const selected = c.code === selectedCurrency;
+                    return (
+                      <Pressable
+                        key={c.code}
+                        onPress={() => {
+                          setField("selectedCurrency", c.code);
+                          closeCurrencyModal();
+                        }}
+                        style={[
+                          styles.modalRow,
+                          selected && { backgroundColor: isDark ? "rgba(99,102,241,0.18)" : "#eef2ff" },
+                        ]}
+                      >
+                        <Text style={[styles.modalRowSymbol, { color: subtle }]}>{c.symbol}</Text>
+                        <Text style={[styles.modalRowCode, { color: colors.onSurface }]}>{c.code}</Text>
+                        <Text style={[styles.modalRowLabel, { color: subtle }]} numberOfLines={1}>{c.label}</Text>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {submitting && (
@@ -841,6 +877,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   requiredNote: { fontSize: 12, marginTop: 8 },
+  modalAvoider: { flex: 1 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -853,9 +890,13 @@ const styles = StyleSheet.create({
     maxHeight: "70%",
     borderWidth: 1,
     gap: 10,
+    // Lets the sheet compress instead of pushing the search field off-screen
+    // once the keyboard has eaten most of the available height.
+    flexShrink: 1,
   },
   modalTitle: { fontSize: 16, fontWeight: "700" },
-  modalList: { marginTop: 8 },
+  modalList: { marginTop: 8, flexShrink: 1 },
+  modalEmpty: { fontSize: 13, textAlign: "center", paddingVertical: 18 },
   modalRow: {
     flexDirection: "row",
     alignItems: "center",
