@@ -7,16 +7,17 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { ChevronLeft, LifeBuoy, Send } from "lucide-react-native";
+import { Check, ChevronDown, ChevronLeft, LifeBuoy, Send } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useAuth } from "../src/contexts/AuthContext";
 import { notifyToast } from "../src/contexts/NotificationContext";
 import API_CONFIG, { apiRequest } from "../src/config/api";
-import { Button, Input, Chip } from "../src/components/ui";
+import { Button, HeroCard, Input } from "../src/components/ui";
 import { spacing, radius } from "../src/constants/theme";
 
 // Keep in sync with SupportTicket::CATEGORIES on the backend.
@@ -41,9 +42,12 @@ export default function SupportScreen() {
   const { token, user } = useAuth();
 
   const [category, setCategory] = useState<string>("");
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const selectedCategory = CATEGORIES.find((c) => c.key === category);
 
   const handleSubmit = async () => {
     if (!category) {
@@ -113,28 +117,49 @@ export default function SupportScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.heroIcon, { backgroundColor: colors.primary }]}>
-            <LifeBuoy size={26} color="#ffffff" />
-          </View>
-          <Text style={[styles.intro, { color: colors.onSurfaceVariant }]}>
-            Tell us what&apos;s going on and our team will get back to you
-            {user?.email ? ` at ${user.email}` : ""}.
-          </Text>
+          {/* Gradient hero matching the web's .support-hero — icon tile beside
+              the copy, rather than a bare badge stacked above muted text. */}
+          <HeroCard style={styles.hero}>
+            <View style={styles.heroRow}>
+              <View style={styles.heroIcon}>
+                <LifeBuoy size={24} color={colors.primary} strokeWidth={2.4} />
+              </View>
+              <View style={styles.heroText}>
+                <Text style={styles.heroTitle}>We&apos;re here to help</Text>
+                <Text style={styles.heroSubtitle}>
+                  Tell us what&apos;s going on and our team will get back to you
+                  {user?.email ? ` at ${user.email}` : ""}.
+                </Text>
+              </View>
+            </View>
+          </HeroCard>
 
           <Text style={[styles.fieldLabel, { color: colors.onSurface }]}>
             What is this about?
           </Text>
-          <View style={styles.chips}>
-            {CATEGORIES.map((c) => (
-              <Chip
-                key={c.key}
-                label={c.label}
-                selected={category === c.key}
-                onPress={() => setCategory(c.key)}
-                style={{ marginRight: 8, marginBottom: 8 }}
-              />
-            ))}
-          </View>
+          {/* Mirrors the web's <select> (Support.jsx) — 13 topics as a wrapped
+              chip row filled the screen and read as run-together text. */}
+          <Pressable
+            onPress={() => setShowCategoryPicker(true)}
+            style={[
+              styles.selectField,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.outlineVariant,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.selectValue,
+                { color: selectedCategory ? colors.onSurface : colors.onSurfaceVariant },
+              ]}
+              numberOfLines={1}
+            >
+              {selectedCategory ? selectedCategory.label : "Select a topic…"}
+            </Text>
+            <ChevronDown size={20} color={colors.onSurfaceVariant} />
+          </Pressable>
 
           <View style={{ marginTop: spacing.md }}>
             <Input
@@ -174,6 +199,57 @@ export default function SupportScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showCategoryPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCategoryPicker(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowCategoryPicker(false)}
+        >
+          {/* Swallow taps inside the sheet so only the backdrop dismisses. */}
+          <Pressable
+            style={[styles.modalSheet, { backgroundColor: colors.surface }]}
+            onPress={() => {}}
+          >
+            <Text style={[styles.modalTitle, { color: colors.onSurface }]}>
+              What is this about?
+            </Text>
+            <ScrollView bounces={false}>
+              {CATEGORIES.map((c) => {
+                const isSelected = c.key === category;
+                return (
+                  <Pressable
+                    key={c.key}
+                    onPress={() => {
+                      setCategory(c.key);
+                      setShowCategoryPicker(false);
+                    }}
+                    style={[
+                      styles.optionRow,
+                      isSelected && { backgroundColor: `${colors.primary}1F` },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.optionLabel,
+                        { color: isSelected ? colors.primary : colors.onSurface },
+                        isSelected && { fontWeight: "700" },
+                      ]}
+                    >
+                      {c.label}
+                    </Text>
+                    {isSelected && <Check size={20} color={colors.primary} />}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -196,15 +272,68 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 18, fontWeight: "700" },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  hero: {
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  // Solid white on the gradient — a translucent tile left the white icon with
+  // almost no contrast against the light end of the ocean gradient.
   heroIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.md,
   },
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  heroText: { flex: 1, minWidth: 0, gap: 4 },
+  heroTitle: { color: "#ffffff", fontSize: 18, fontWeight: "700" },
+  heroSubtitle: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    lineHeight: 18,
+  },
   fieldLabel: { fontSize: 14, fontWeight: "600", marginBottom: spacing.sm },
-  chips: { flexDirection: "row", flexWrap: "wrap" },
+  selectField: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    height: 52,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  selectValue: { flex: 1, fontSize: 15 },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  modalSheet: {
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    maxHeight: "70%",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+  },
+  optionLabel: { flex: 1, fontSize: 15 },
 });
