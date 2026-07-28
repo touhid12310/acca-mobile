@@ -188,13 +188,12 @@ export default function NotificationSettingsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ paddingHorizontal: spacing.lg }}>
-          <ScreenHeader
-            title="Notifications"
-            subtitle="Choose what you want to hear about"
-            showBack
-          />
-        </View>
+        {/* scrollContent already insets by spacing.lg — see more.tsx. */}
+        <ScreenHeader
+          title="Notifications"
+          subtitle="Choose what you want to hear about"
+          showBack
+        />
         <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.intro}>
           <View
             style={[

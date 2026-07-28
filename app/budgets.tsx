@@ -471,6 +471,7 @@ export default function BudgetsScreen() {
           subtitle="Track planned spending and remaining money"
           showBack
           showBrand={false}
+          inset={false}
         />
 
         {/* Stats Cards */}

@@ -465,6 +465,7 @@ export default function LoansScreen() {
           subtitle="Track lending, borrowing, and payments"
           showBack
           showBrand={false}
+          inset={false}
         />
 
         {/* Stats Section */}

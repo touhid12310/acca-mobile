@@ -128,9 +128,8 @@ export default function SessionsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ paddingHorizontal: spacing.lg }}>
-          <ScreenHeader title="Login activity" subtitle="Active sessions" showBack />
-        </View>
+        {/* scrollContent already insets by spacing.lg — see more.tsx. */}
+        <ScreenHeader title="Login activity" subtitle="Active sessions" showBack />
         <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.infoCard}>
           <View
             style={[

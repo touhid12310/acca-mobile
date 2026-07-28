@@ -1205,9 +1205,8 @@ export default function ReportsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-      <View style={styles.headerWrap}>
-        <ScreenHeader title="Reports" subtitle="Trends and statements" />
-      </View>
+      {/* scrollContent already insets by spacing.lg — see more.tsx. */}
+      <ScreenHeader title="Reports" subtitle="Trends and statements" />
 
       {/* Report type pills */}
       <View style={styles.pillShell}>
@@ -1301,7 +1300,6 @@ function capitalize(s: string) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerWrap: { paddingHorizontal: spacing.lg },
   scrollContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,

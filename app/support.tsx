@@ -11,12 +11,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Check, ChevronDown, ChevronLeft, LifeBuoy, Send } from "lucide-react-native";
+import { Check, ChevronDown, LifeBuoy, Send } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useAuth } from "../src/contexts/AuthContext";
 import { notifyToast } from "../src/contexts/NotificationContext";
 import API_CONFIG, { apiRequest } from "../src/config/api";
+import { BrandedHeader } from "../src/components";
 import { Button, HeroCard, Input } from "../src/components/ui";
 import { spacing, radius } from "../src/constants/theme";
 
@@ -93,20 +94,9 @@ export default function SupportScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={10}
-          style={[styles.backBtn, { backgroundColor: colors.surfaceVariant }]}
-        >
-          <ChevronLeft size={22} color={colors.onSurface} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
-          Contact Support
-        </Text>
-        <View style={{ width: 38 }} />
-      </View>
+      {/* Brand strip + standard page header, same as every other screen —
+          this page used to render a bespoke centered title with no wordmark. */}
+      <BrandedHeader title="Contact Support" subtitle="Help & support" showBack />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -256,21 +246,6 @@ export default function SupportScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTitle: { fontSize: 18, fontWeight: "700" },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
   hero: {
     padding: spacing.lg,

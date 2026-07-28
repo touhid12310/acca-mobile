@@ -19,7 +19,6 @@ import {
   ChevronRight,
   CreditCard,
   Flag,
-  HelpCircle,
   Info,
   LogOut,
   Mail,
@@ -184,12 +183,6 @@ export default function MoreScreen() {
       title: "Support",
       items: [
         {
-          icon: HelpCircle,
-          label: "Help & FAQ",
-          onPress: () => {},
-          tone: "neutral",
-        },
-        {
           icon: Mail,
           label: "Contact Support",
           // Cast: expo-router regenerates typed routes for /support on the next
@@ -232,9 +225,10 @@ export default function MoreScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ paddingHorizontal: spacing.lg }}>
-          <ScreenHeader title="More" subtitle="Settings & tools" />
-        </View>
+        {/* No extra horizontal padding — scrollContent already insets by
+            spacing.lg, and stacking a second one pushed the header right of
+            the cards (Transactions is the reference alignment). */}
+        <ScreenHeader title="More" subtitle="Settings & tools" />
 
         {/* Profile Card */}
         <Pressable onPress={() => router.push("/profile")}>

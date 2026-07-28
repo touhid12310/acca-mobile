@@ -346,6 +346,7 @@ export default function CategoriesScreen() {
         subtitle="Organize income, expenses, assets, and liabilities"
         showBack
         showBrand={false}
+        inset={false}
       />
 
       {/* Stats Section */}

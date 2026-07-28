@@ -298,6 +298,7 @@ export default function GoalsScreen() {
           subtitle="Follow savings targets and progress"
           showBack
           showBrand={false}
+          inset={false}
         />
 
         {/* Stats Section */}

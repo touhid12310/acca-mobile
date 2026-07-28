@@ -231,13 +231,12 @@ export default function AccountsScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ paddingHorizontal: spacing.lg }}>
-          <ScreenHeader
-            title="Accounts"
-            subtitle="Balances & sources"
-            showBack
-          />
-        </View>
+        {/* scrollContent already insets by spacing.lg — see more.tsx. */}
+        <ScreenHeader
+          title="Accounts"
+          subtitle="Balances & sources"
+          showBack
+        />
 
         {/* Total Balance Hero */}
         <HeroCard style={styles.hero}>

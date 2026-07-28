@@ -517,6 +517,7 @@ export default function SchedulesScreen() {
           subtitle="Schedule recurring money movement"
           showBack
           showBrand={false}
+          inset={false}
         />
 
         {/* Stats Section */}

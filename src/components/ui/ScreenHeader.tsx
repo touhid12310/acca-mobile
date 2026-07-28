@@ -12,7 +12,14 @@ import { router } from "expo-router";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
+import { BrandText } from "../common/BrandText";
 
+/**
+ * The one page-header shape. Every screen header in the app renders through
+ * this component (BrandedHeader delegates to it) so eyebrow/title metrics stay
+ * identical across tabs and pushed screens — the Transactions tab is the
+ * reference: eyebrow 12px uppercase, title 22px/800, optional right slot.
+ */
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
@@ -67,7 +74,10 @@ export function ScreenHeader({
             style={[styles.title, { color: colors.onSurface }]}
             numberOfLines={1}
           >
-            {title}
+            {/* No-op for ordinary titles; only recolours the final "E" when the
+                title contains the wordmark. Lives here so BrandedHeader can
+                delegate its title row to this component without losing it. */}
+            <BrandText>{title}</BrandText>
           </Text>
         </View>
       </View>

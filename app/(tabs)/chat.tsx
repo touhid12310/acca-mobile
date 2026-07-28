@@ -1956,21 +1956,13 @@ export default function ChatScreen() {
           </View>
 
           <View style={styles.inputRow}>
-            {/* WhatsApp-style pill: emoji + input + paperclip + camera */}
+            {/* WhatsApp-style pill: input + paperclip + camera */}
             <View
               style={[
                 styles.inputPill,
                 { backgroundColor: colors.surfaceVariant },
               ]}
             >
-              <IconButton
-                icon="emoticon-outline"
-                size={22}
-                onPress={() => {}}
-                iconColor={colors.onSurfaceVariant}
-                style={styles.pillIconButton}
-              />
-
               <RNTextInput
                 ref={inputRef}
                 style={[styles.pillTextInput, { color: colors.onSurface }]}
@@ -2498,6 +2490,9 @@ const styles = StyleSheet.create({
     flex: 1,
     maxHeight: 100,
     paddingHorizontal: 8,
+    // The emoji button used to provide the left inset; without it the text
+    // would start 12px from the pill edge and read as cramped.
+    paddingLeft: 16,
     paddingVertical: 10,
     fontSize: 15,
     backgroundColor: "transparent",

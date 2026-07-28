@@ -464,6 +464,7 @@ export default function ProfileScreen() {
           subtitle="Update account details and security"
           showBack
           showBrand={false}
+          inset={false}
         />
 
         {/* Profile Picture Section */}
