@@ -240,12 +240,17 @@ export const transactionService = {
     );
   },
 
+  // POST /transactions/transfer. Field names must match the backend validator
+  // (`from_account` / `to_account` / `transfer_fee`) — this is a different
+  // shape from the regular create endpoint, exactly like the web app's
+  // transactionAPI.createTransfer.
   createTransfer: async (transferData: {
-    from_account_id: number;
-    to_account_id: number;
+    from_account: number;
+    to_account: number;
     amount: number;
     date: string;
     notes?: string;
+    transfer_fee?: number;
   }): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
     return apiRequest<Transaction>(API_CONFIG.ENDPOINTS.TRANSACTION_TRANSFER, {

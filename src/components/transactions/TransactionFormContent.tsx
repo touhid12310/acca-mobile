@@ -94,6 +94,7 @@ export type TransactionFormData = {
   subcategory_id: number | null;
   account_id: number | null;
   to_account_id: number | null;
+  transfer_fee: string;
   notes: string;
   items: TransactionItemData[];
   receipt?: {
@@ -169,6 +170,9 @@ export default function TransactionFormContent({
         subcategory_id: initialData.subcategory_id || null,
         account_id: initialData.account_id || null,
         to_account_id: initialData.to_account_id || null,
+        transfer_fee: (initialData as any).transfer_fee
+          ? String((initialData as any).transfer_fee)
+          : '',
         notes: initialData.notes || '',
         items: convertApiItemsToFormItems(initialData.items, {
           category_id: initialData.category_id || null,
@@ -191,6 +195,7 @@ export default function TransactionFormContent({
       subcategory_id: null,
       account_id: null,
       to_account_id: null,
+      transfer_fee: '',
       notes: '',
       items: [makeEmptyItem()],
       receipt: null,
@@ -340,6 +345,9 @@ export default function TransactionFormContent({
         subcategory_id: initialData.subcategory_id || null,
         account_id: initialData.account_id || null,
         to_account_id: initialData.to_account_id || null,
+        transfer_fee: (initialData as any).transfer_fee
+          ? String((initialData as any).transfer_fee)
+          : '',
         notes: initialData.notes || '',
         items: convertApiItemsToFormItems(initialData.items, {
           category_id: initialData.category_id || null,
@@ -789,12 +797,36 @@ export default function TransactionFormContent({
       newErrors.account_id = 'Please select an account';
     }
 
-    if (formData.type === 'transfer' && !formData.to_account_id) {
-      newErrors.to_account_id = 'Please select destination account';
-    }
+    if (formData.type === 'transfer') {
+      if (!formData.to_account_id) {
+        newErrors.to_account_id = 'Please select destination account';
+      }
 
-    if (formData.type === 'transfer' && formData.account_id === formData.to_account_id) {
-      newErrors.to_account_id = 'Source and destination must be different';
+      if (formData.account_id === formData.to_account_id) {
+        newErrors.to_account_id = 'Source and destination must be different';
+      }
+
+      // Web parity (validateTransferForm): the fee is optional but never
+      // negative, and the backend rejects a transfer that overdraws the source
+      // account — check it here so the user sees it on the field instead of as
+      // a toast after the round-trip.
+      const fee = parseFloat(formData.transfer_fee);
+      if (formData.transfer_fee !== '' && (Number.isNaN(fee) || fee < 0)) {
+        newErrors.transfer_fee = 'Transfer fee cannot be negative';
+      }
+
+      const fromAccount = getSelectedAccount(formData.account_id);
+      const rawBalance = fromAccount?.current_balance ?? fromAccount?.balance;
+      const amount = parseFloat(formData.amount);
+      // Skipped when the account carries no balance figure, so a missing field
+      // can never block an otherwise valid transfer — the backend still checks.
+      if (rawBalance !== undefined && rawBalance !== null && !Number.isNaN(amount) && !newErrors.amount) {
+        const balance = parseFloat(String(rawBalance));
+        const totalCost = amount + (Number.isNaN(fee) ? 0 : fee);
+        if (!Number.isNaN(balance) && totalCost > balance) {
+          newErrors.amount = 'Insufficient funds in the source account';
+        }
+      }
     }
 
     setErrors(newErrors);
@@ -864,8 +896,12 @@ export default function TransactionFormContent({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
+      {/* Android is configured with softwareKeyboardLayoutMode "pan", so the OS
+          already lifts the screen for the focused input. Adding `padding` on top
+          of that double-counts the keyboard height and leaves a dead gap between
+          the footer and the keyboard — hence `undefined` on Android. */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
       >
         {/* Header */}
@@ -1119,6 +1155,43 @@ export default function TransactionFormContent({
                   {errors.amount}
                 </Text>
               )}
+              {!!getSelectedAccount(formData.account_id) && (
+                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginTop: 4 }}>
+                  Available: {currencySymbol}
+                  {Number(
+                    getSelectedAccount(formData.account_id)?.current_balance ??
+                      getSelectedAccount(formData.account_id)?.balance ??
+                      0,
+                  ).toFixed(2)}
+                </Text>
+              )}
+
+              {/* Transfer fee — only the create endpoint accepts it, so it is
+                  hidden while editing an existing transfer (web sends no fee on
+                  update either). */}
+              {!initialData?.id && (
+                <View style={{ marginTop: 16 }}>
+                  <Text
+                    variant="labelLarge"
+                    style={[styles.label, { color: colors.onSurfaceVariant }]}
+                  >
+                    Transfer Fee (Optional)
+                  </Text>
+                  <TextInput
+                    mode="outlined"
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    value={formData.transfer_fee}
+                    onChangeText={(v) => updateField('transfer_fee', v.replace(/[^0-9.]/g, ''))}
+                    left={<TextInput.Affix text={currencySymbol} />}
+                  />
+                  {errors.transfer_fee && (
+                    <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
+                      {errors.transfer_fee}
+                    </Text>
+                  )}
+                </View>
+              )}
             </View>
           )}
 
@@ -1282,34 +1355,32 @@ export default function TransactionFormContent({
             onConfirm={handleDateConfirm}
           />
 
-          {/* Merchant/Description */}
-          <View style={styles.section}>
+          {/* Merchant/Payee — hidden for transfers. The transfer endpoint only
+              stores notes, so a description field here would silently vanish
+              (the web transfer form has no such field either). */}
+          {formData.type !== 'transfer' && (
+          /* zIndex lifts the whole section above the following ones so the
+             drop-down list paints over them instead of behind. */
+          <View style={[styles.section, { zIndex: 20 }]}>
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-              {formData.type === 'transfer' ? 'Description' : 'Merchant / Payee'}
+              Merchant / Payee
             </Text>
-            <View style={{ position: 'relative' }}>
+            <View style={{ position: 'relative', zIndex: 20 }}>
               <TextInput
                 mode="outlined"
                 value={formData.merchant_name}
                 onChangeText={(text) => {
                   updateField('merchant_name', text);
-                  if (formData.type !== 'transfer') {
-                    setShowMerchantSuggestions(true);
-                  }
+                  setShowMerchantSuggestions(true);
                 }}
-                onFocus={() => {
-                  if (formData.type !== 'transfer') {
-                    setShowMerchantSuggestions(true);
-                  }
-                }}
+                onFocus={() => setShowMerchantSuggestions(true)}
                 onBlur={() => {
                   setTimeout(() => setShowMerchantSuggestions(false), 150);
                 }}
-                placeholder={formData.type === 'transfer' ? 'Transfer description' : 'e.g., Grocery Store'}
+                placeholder="e.g., Grocery Store"
                 autoComplete="off"
               />
               {showMerchantSuggestions &&
-                formData.type !== 'transfer' &&
                 String(formData.merchant_name || '').trim().length > 0 && (
                   <Surface
                     style={[
@@ -1350,6 +1421,7 @@ export default function TransactionFormContent({
                 )}
             </View>
           </View>
+          )}
 
           {/* Transaction-level category — RETIRED, kept for back-compat.
               Web parity: categories live on the item rows only (see
@@ -1504,7 +1576,13 @@ export default function TransactionFormContent({
             disabled={isLoading}
             style={styles.submitButton}
           >
-            {initialData?.id ? 'Update Transaction' : 'Save Transaction'}
+            {formData.type === 'transfer'
+              ? initialData?.id
+                ? 'Update Transfer'
+                : 'Complete Transfer'
+              : initialData?.id
+                ? 'Update Transaction'
+                : 'Save Transaction'}
           </Button>
         </View>
       </KeyboardAvoidingView>
@@ -1882,12 +1960,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   merchantSuggestions: {
+    // Anchored to the BOTTOM EDGE of the input wrapper (`top: '100%'`) so the
+    // list drops downward. `bottom: 0` pins it to the same edge but grows
+    // upward, which painted the list over the input the user is typing in.
     position: 'absolute',
-    top: 'auto' as any,
-    bottom: 0,
+    top: '100%',
     left: 0,
     right: 0,
-    transform: [{ translateY: 0 }],
     marginTop: 4,
     borderRadius: 8,
     borderWidth: 1,

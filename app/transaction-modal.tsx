@@ -74,6 +74,12 @@ export default function TransactionModalScreen() {
         // Account is stored as payment_method in the API
         const accountId = tx.payment_method || tx.account_id;
 
+        // Transfers store the destination in `transfer_to`, which the API may
+        // return either as a bare id or as an eager-loaded account object
+        // (web reads it the same way in TransactionManager).
+        const toAccountId =
+          tx.transfer_to?.id ?? tx.transfer_to ?? tx.to_account?.id ?? tx.to_account_id ?? undefined;
+
         return {
           id: tx.id,
           type: (tx.type?.toLowerCase() as TransactionType) || 'expense',
@@ -83,6 +89,7 @@ export default function TransactionModalScreen() {
           category_id: categoryId,
           subcategory_id: subcategoryId,
           account_id: accountId,
+          to_account_id: toAccountId,
           notes: tx.notes,
           date: tx.date,
           items: tx.items, // Include items from API
@@ -155,8 +162,46 @@ export default function TransactionModalScreen() {
     return categories;
   };
 
+  // The API answers a failed validation with
+  // `{ message: 'Validation failed', errors: { field: ['...'] } }`. Showing only
+  // `message` surfaced a bare "Validation failed" toast with no clue which field
+  // was wrong, so pull the first field message out instead.
+  const extractApiError = (result: any, fallback: string): string => {
+    const body = result?.data;
+    const errors = body?.errors;
+    if (errors && typeof errors === 'object') {
+      const first = Object.values(errors)[0];
+      const message = Array.isArray(first) ? first[0] : first;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+    return body?.message || result?.error || fallback;
+  };
+
+  const toApiDate = (date: TransactionFormData['date']): string =>
+    date instanceof Date ? date.toISOString().split('T')[0] : String(date);
+
   const createMutation = useMutation({
     mutationFn: async (data: TransactionFormData) => {
+      // Transfers go to their own endpoint (POST /transactions/transfer) with a
+      // different payload shape — same split as the web app. Posting them to
+      // /transactions instead fails validation, because that endpoint requires
+      // `merchant_name` and does not understand `to_account_id`.
+      if (data.type === 'transfer') {
+        const result = await transactionService.createTransfer({
+          from_account: Number(data.account_id),
+          to_account: Number(data.to_account_id),
+          amount:
+            typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
+          date: toApiDate(data.date),
+          notes: data.notes || undefined,
+          transfer_fee: data.transfer_fee ? parseFloat(data.transfer_fee) : 0,
+        });
+        if (!result.success) {
+          throw new Error(extractApiError(result, 'Transfer failed'));
+        }
+        return result;
+      }
+
       // Convert form data to API format
       // Note: API expects 'payment_method' instead of 'account_id'
       // API expects 'categories' as array and 'items' as array
@@ -167,7 +212,6 @@ export default function TransactionModalScreen() {
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
         payment_method: data.account_id || undefined,
-        to_account_id: data.to_account_id || undefined,
         notes: data.notes || undefined,
       };
 
@@ -208,18 +252,20 @@ export default function TransactionModalScreen() {
 
       const result = await transactionService.create(payload);
       if (!result.success) {
-        throw new Error(result.error || 'Failed to create transaction');
+        throw new Error(extractApiError(result, 'Failed to create transaction'));
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       if (params.chat_message_id) {
         queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
       }
-      toast.success('Transaction saved');
+      toast.success(
+        variables.type === 'transfer' ? 'Transfer completed' : 'Transaction saved',
+      );
       router.back();
     },
     onError: (error: Error) => {
@@ -229,6 +275,25 @@ export default function TransactionModalScreen() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: TransactionFormData }) => {
+      // Editing a transfer only moves the two accounts / amount / date / notes
+      // (web parity). `type` is deliberately omitted — the update endpoint's
+      // type rule only accepts income|expense|asset|liability, so sending
+      // 'transfer' fails validation. Merchant, items and categories don't apply.
+      if (data.type === 'transfer') {
+        const result = await transactionService.update(id, {
+          payment_method: data.account_id ?? undefined,
+          transfer_to: data.to_account_id ?? undefined,
+          amount:
+            typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
+          date: toApiDate(data.date),
+          notes: data.notes || undefined,
+        } as any);
+        if (!result.success) {
+          throw new Error(extractApiError(result, 'Failed to update transfer'));
+        }
+        return result;
+      }
+
       // Convert form data to API format
       // Note: API expects 'payment_method' instead of 'account_id'
       // API expects 'categories' as array and 'items' as array
@@ -239,7 +304,6 @@ export default function TransactionModalScreen() {
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
         payment_method: data.account_id || undefined,
-        to_account_id: data.to_account_id || undefined,
         notes: data.notes || undefined,
       };
 
@@ -271,16 +335,18 @@ export default function TransactionModalScreen() {
 
       const result = await transactionService.update(id, payload);
       if (!result.success) {
-        throw new Error(result.error || 'Failed to update transaction');
+        throw new Error(extractApiError(result, 'Failed to update transaction'));
       }
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['transaction', params.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      toast.success('Transaction updated');
+      toast.success(
+        variables.data.type === 'transfer' ? 'Transfer updated' : 'Transaction updated',
+      );
       router.back();
     },
     onError: (error: Error) => {
