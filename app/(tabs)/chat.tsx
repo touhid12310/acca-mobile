@@ -79,6 +79,149 @@ try {
   SpeechRecognitionModule = null;
 }
 
+type CategorySelection = {
+  category_id: number;
+  subcategory_id: number | null;
+};
+
+/* Category name matching, ported from the web app
+   (TransactionManager.normalizeCategoryLabel / resolveCategorySelection).
+   The AI answers with category NAMES, not ids, so an exact string compare
+   missed anything with different casing, punctuation or "&" vs "and" — which
+   is why chat prefills used to open with an empty category picker. */
+const normalizeCategoryLabel = (value?: string | null): string => {
+  if (!value || typeof value !== "string") return "";
+  return value
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+};
+
+/** "Food > Groceries", "Food/Groceries", "Food: Groceries" → ["Food", "Groceries"] */
+const splitCategoryPath = (value?: string | null): string[] => {
+  if (!value || typeof value !== "string") return [];
+  return value
+    .split(/>|\/|->|:/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+/**
+ * Resolve a category by id first, then by name (parent > child path, then a
+ * direct parent match, then a subcategory match anywhere).
+ */
+const resolveCategorySelection = (
+  categories: Category[] | undefined,
+  selection: {
+    category_id?: number | null;
+    subcategory_id?: number | null;
+    categoryName?: string | null;
+  },
+): CategorySelection | null => {
+  if (!selection || !Array.isArray(categories) || categories.length === 0) {
+    return null;
+  }
+
+  const { category_id: categoryId, subcategory_id: subcategoryId } = selection;
+
+  if (subcategoryId) {
+    for (const category of categories) {
+      const match = (category.subcategories || []).find(
+        (subcategory) => String(subcategory.id) === String(subcategoryId),
+      );
+      if (match) {
+        return { category_id: category.id, subcategory_id: match.id };
+      }
+    }
+  }
+
+  if (categoryId) {
+    const match = categories.find(
+      (category) => String(category.id) === String(categoryId),
+    );
+    if (match) {
+      return { category_id: match.id, subcategory_id: null };
+    }
+  }
+
+  const categoryName = selection.categoryName;
+  if (!categoryName || typeof categoryName !== "string") return null;
+
+  const pathParts = splitCategoryPath(categoryName);
+  if (pathParts.length >= 2) {
+    const parentKey = normalizeCategoryLabel(pathParts[0]);
+    const childKey = normalizeCategoryLabel(pathParts[1]);
+    for (const category of categories) {
+      if (normalizeCategoryLabel(category.name) !== parentKey) continue;
+      const subMatch = (category.subcategories || []).find(
+        (subcategory) => normalizeCategoryLabel(subcategory.name) === childKey,
+      );
+      if (subMatch) {
+        return { category_id: category.id, subcategory_id: subMatch.id };
+      }
+    }
+  }
+
+  const normalizedName = normalizeCategoryLabel(categoryName);
+  if (!normalizedName) return null;
+
+  const directMatch = categories.find(
+    (category) => normalizeCategoryLabel(category.name) === normalizedName,
+  );
+  if (directMatch) {
+    return { category_id: directMatch.id, subcategory_id: null };
+  }
+
+  for (const category of categories) {
+    const subMatch = (category.subcategories || []).find(
+      (subcategory) => normalizeCategoryLabel(subcategory.name) === normalizedName,
+    );
+    if (subMatch) {
+      return { category_id: category.id, subcategory_id: subMatch.id };
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Resolve the category the AI put on ONE line item ({ category, subcategory }
+ * names, or ids when the backend already matched them). Web parity:
+ * resolveReceiptItemCategory.
+ */
+const resolveItemCategory = (
+  categories: Category[] | undefined,
+  item: any,
+): CategorySelection | null => {
+  const byId = resolveCategorySelection(categories, {
+    category_id: item?.category_id,
+    subcategory_id: item?.subcategory_id,
+  });
+  if (byId) return byId;
+
+  const categoryName =
+    typeof item?.category === "string" ? item.category.trim() : "";
+  const subcategoryName =
+    typeof item?.subcategory === "string" ? item.subcategory.trim() : "";
+
+  if (categoryName && subcategoryName) {
+    const withSub = resolveCategorySelection(categories, {
+      categoryName: `${categoryName} > ${subcategoryName}`,
+    });
+    if (withSub) return withSub;
+  }
+  if (categoryName) {
+    return resolveCategorySelection(categories, { categoryName });
+  }
+  if (subcategoryName) {
+    return resolveCategorySelection(categories, {
+      categoryName: subcategoryName,
+    });
+  }
+  return null;
+};
+
 // Helper to ensure absolute URL for images - converts localhost to CDN URL
 const ensureAbsoluteUrl = (value?: string): string | null => {
   if (!value || typeof value !== "string") return null;
@@ -573,17 +716,40 @@ export default function ChatScreen() {
   // web app). Shared by the single- and merged-candidate save paths.
   const buildCandidateItems = (
     candidate: ExpenseCandidate,
-  ): Array<{ name: string; quantity: number; price: number; total: number }> => {
+  ): Array<{
+    name: string;
+    quantity: number;
+    price: number;
+    total: number;
+    category_id: number | null;
+    subcategory_id: number | null;
+  }> => {
+    // Category the AI assigned to the candidate as a whole — used for rows the
+    // AI did not categorise individually. Without this every row opened with an
+    // empty picker (the form only backfills from the TRANSACTION-level category,
+    // which is candidate #1's when several candidates are merged).
+    const candidateCategory = resolveCategorySelection(categoriesData, {
+      category_id: candidate.category_id,
+      subcategory_id: candidate.subcategory_id,
+      categoryName: candidate.category,
+    });
+
     if (Array.isArray(candidate.items) && candidate.items.length > 0) {
       return candidate.items.map((item, index) => {
         const quantity = item.quantity || 1;
         const price = item.price || 0;
         const total = item.total || quantity * price;
+        // Per-item categories win over the candidate's own — one receipt can
+        // mix Groceries and Household lines (web parity).
+        const itemCategory = resolveItemCategory(categoriesData, item);
+        const resolved = itemCategory ?? candidateCategory;
         return {
           name: item.name || candidate.merchant_name || `Item ${index + 1}`,
           quantity,
           price,
           total,
+          category_id: resolved?.category_id ?? null,
+          subcategory_id: resolved?.subcategory_id ?? null,
         };
       });
     }
@@ -594,6 +760,8 @@ export default function ChatScreen() {
         quantity: 1,
         price: amount,
         total: amount,
+        category_id: candidateCategory?.category_id ?? null,
+        subcategory_id: candidateCategory?.subcategory_id ?? null,
       },
     ];
   };
@@ -609,32 +777,19 @@ export default function ChatScreen() {
     const date = candidate.date || selectedChatDate;
     const notes = candidate.notes || "";
 
-    // Get IDs directly from candidate if available
-    let categoryId = candidate.category_id;
-    let subcategoryId = candidate.subcategory_id;
+    // Resolve the transaction-level category by id, then by name. The old
+    // exact-string compare only matched a top-level name typed verbatim, so
+    // anything like "Food & Dining" vs "Food and Dining", or a
+    // "Parent > Child" path, arrived with no category selected.
+    const resolvedCategory = resolveCategorySelection(categoriesData, {
+      category_id: candidate.category_id,
+      subcategory_id: candidate.subcategory_id,
+      categoryName: candidate.category,
+    });
+    const categoryId = resolvedCategory?.category_id ?? candidate.category_id;
+    const subcategoryId =
+      resolvedCategory?.subcategory_id ?? candidate.subcategory_id;
     let accountId = candidate.payment_method_id;
-
-    // If category_id not provided but category name is, try to match from loaded categories
-    if (!categoryId && candidate.category && categoriesData) {
-      const categoryName = candidate.category.toLowerCase().trim();
-      for (const cat of categoriesData) {
-        if (cat.name.toLowerCase().trim() === categoryName) {
-          categoryId = cat.id;
-          break;
-        }
-        // Also check subcategories
-        if (cat.subcategories) {
-          for (const sub of cat.subcategories) {
-            if (sub.name.toLowerCase().trim() === categoryName) {
-              categoryId = cat.id;
-              subcategoryId = sub.id;
-              break;
-            }
-          }
-        }
-        if (categoryId) break;
-      }
-    }
 
     // If payment_method_id not provided but payment_method name is, try to match from loaded accounts
     if (!accountId && candidate.payment_method && paymentMethodsData) {
