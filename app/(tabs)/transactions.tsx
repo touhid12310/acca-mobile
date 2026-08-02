@@ -253,6 +253,11 @@ export default function TransactionsScreen() {
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      // Deleting a loan payment / budgeted spend rolls the tracker back on the
+      // server, so their cached progress is stale too. Mirrors the web client.
+      queryClient.invalidateQueries({ queryKey: ["loans"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["goals"] });
     },
     onError: (error: Error, id) => {
       setPendingDeleteIds((prev) => {

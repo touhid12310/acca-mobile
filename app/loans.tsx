@@ -64,10 +64,15 @@ const formatApiError = (result: any): string => {
   return errorMsg;
 };
 
+// Must stay in sync with the backend's `in:weeks,months,years` rule and the web
+// modal's term_period <select> — "weeks" was missing here.
 const termPeriodOptions = [
+  { value: "weeks", label: "Weeks" },
   { value: "months", label: "Months" },
   { value: "years", label: "Years" },
 ];
+
+type TermPeriod = "weeks" | "months" | "years";
 
 export default function LoansScreen() {
   const { colors } = useTheme();
@@ -93,7 +98,7 @@ export default function LoansScreen() {
     interest_rate: "",
     next_payment: "",
     term: "",
-    term_period: "years" as "months" | "years",
+    term_period: "years" as TermPeriod,
     start_date: "",
     next_payment_date: "",
     loan_type: "Borrowed" as "Borrowed" | "Lent",
@@ -956,6 +961,8 @@ export default function LoansScreen() {
               Add New Loan
             </Text>
 
+            {/* Field order mirrors the web modal (Loans.jsx): name → amounts →
+                term → dates → type → category/account → notes. */}
             <TextInput
               label="Loan Name *"
               value={formData.loan_name}
@@ -963,6 +970,87 @@ export default function LoansScreen() {
                 setFormData({ ...formData, loan_name: text })
               }
               mode="outlined"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Original Amount *"
+              value={formData.original_amount}
+              onChangeText={(text) =>
+                setFormData({ ...formData, original_amount: text })
+              }
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Interest Rate (%)"
+              value={formData.interest_rate}
+              onChangeText={(text) =>
+                setFormData({ ...formData, interest_rate: text })
+              }
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Next Payment Amount"
+              value={formData.next_payment}
+              onChangeText={(text) =>
+                setFormData({ ...formData, next_payment: text })
+              }
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Term"
+              value={formData.term}
+              onChangeText={(text) => setFormData({ ...formData, term: text })}
+              mode="outlined"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+
+            {/* Full width rather than sharing a row with Term — three periods
+                don't fit legibly in half a phone screen. */}
+            <Text
+              variant="bodySmall"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}
+            >
+              Period
+            </Text>
+            <SegmentedButtons
+              value={formData.term_period}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  term_period: value as TermPeriod,
+                })
+              }
+              buttons={termPeriodOptions}
+              density="small"
+              style={{ marginBottom: 12 }}
+            />
+
+            <DateField
+              label="Start Date *"
+              value={formData.start_date}
+              onChange={(date) =>
+                setFormData({ ...formData, start_date: date })
+              }
+              style={styles.input}
+            />
+
+            <DateField
+              label="Next Payment Date"
+              value={formData.next_payment_date}
+              onChange={(date) =>
+                setFormData({ ...formData, next_payment_date: date })
+              }
               style={styles.input}
             />
 
@@ -1214,96 +1302,13 @@ export default function LoansScreen() {
             )}
 
             <TextInput
-              label="Original Amount *"
-              value={formData.original_amount}
-              onChangeText={(text) =>
-                setFormData({ ...formData, original_amount: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              style={[styles.input, { marginTop: 12 }]}
-            />
-
-            <TextInput
-              label="Interest Rate (%)"
-              value={formData.interest_rate}
-              onChangeText={(text) =>
-                setFormData({ ...formData, interest_rate: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              style={styles.input}
-            />
-
-            <TextInput
-              label="Next Payment Amount"
-              value={formData.next_payment}
-              onChangeText={(text) =>
-                setFormData({ ...formData, next_payment: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              style={styles.input}
-            />
-
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <TextInput
-                label="Term"
-                value={formData.term}
-                onChangeText={(text) =>
-                  setFormData({ ...formData, term: text })
-                }
-                mode="outlined"
-                keyboardType="number-pad"
-                style={[styles.input, { flex: 1 }]}
-              />
-              <View style={{ flex: 1 }}>
-                <Text
-                  variant="bodySmall"
-                  style={{ color: colors.onSurfaceVariant, marginBottom: 4 }}
-                >
-                  Period
-                </Text>
-                <SegmentedButtons
-                  value={formData.term_period}
-                  onValueChange={(value) =>
-                    setFormData({
-                      ...formData,
-                      term_period: value as "months" | "years",
-                    })
-                  }
-                  buttons={termPeriodOptions}
-                  density="small"
-                />
-              </View>
-            </View>
-
-            <DateField
-              label="Start Date *"
-              value={formData.start_date}
-              onChange={(date) =>
-                setFormData({ ...formData, start_date: date })
-              }
-              style={styles.input}
-            />
-
-            <DateField
-              label="Next Payment Date"
-              value={formData.next_payment_date}
-              onChange={(date) =>
-                setFormData({ ...formData, next_payment_date: date })
-              }
-              style={styles.input}
-            />
-
-            <TextInput
               label="Notes"
               value={formData.notes}
               onChangeText={(text) => setFormData({ ...formData, notes: text })}
               mode="outlined"
               multiline
               numberOfLines={3}
-              style={styles.input}
+              style={[styles.input, { marginTop: 12 }]}
             />
 
             <View style={styles.modalButtons}>

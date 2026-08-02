@@ -4,6 +4,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  runOnJS,
   Easing,
 } from "react-native-reanimated";
 import NetInfo from "@react-native-community/netinfo";
@@ -24,26 +25,50 @@ export function OfflineBanner() {
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const isOffline = state.isConnected === false || state.isInternetReachable === false;
+      const isOffline =
+        state.isConnected === false || state.isInternetReachable === false;
       setOffline(isOffline);
     });
     return () => unsubscribe();
   }, []);
 
+  // Mount state has to live in React, not in the shared value. Reading
+  // `opacity.value` during render never subscribed to anything — the banner only
+  // unmounted if some other state change happened to re-render us — and it trips
+  // Reanimated's strict-mode "reading `value` during render" warning.
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    if (offline) {
+      setMounted(true);
+    }
+  }, [offline]);
+
+  useEffect(() => {
+    if (!mounted) return;
+
     translateY.value = withTiming(offline ? 0 : -60, {
       duration: ANIM_MS,
       easing: Easing.out(Easing.cubic),
     });
-    opacity.value = withTiming(offline ? 1 : 0, { duration: ANIM_MS });
-  }, [offline, translateY, opacity]);
+    opacity.value = withTiming(
+      offline ? 1 : 0,
+      { duration: ANIM_MS },
+      (finished) => {
+        // Stay mounted until the exit animation has actually played out.
+        if (finished && !offline) {
+          runOnJS(setMounted)(false);
+        }
+      },
+    );
+  }, [mounted, offline, translateY, opacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateY: translateY.value }],
   }));
 
-  if (!offline && opacity.value === 0) return null;
+  if (!mounted) return null;
 
   return (
     <Animated.View
@@ -55,12 +80,13 @@ export function OfflineBanner() {
       ]}
     >
       <View
-        style={[
-          styles.banner,
-          { backgroundColor: colors.warningContainer },
-        ]}
+        style={[styles.banner, { backgroundColor: colors.warningContainer }]}
       >
-        <WifiOff size={16} color={colors.onWarningContainer} strokeWidth={2.4} />
+        <WifiOff
+          size={16}
+          color={colors.onWarningContainer}
+          strokeWidth={2.4}
+        />
         <Text style={[styles.text, { color: colors.onWarningContainer }]}>
           You are offline — changes will retry when connection returns
         </Text>
