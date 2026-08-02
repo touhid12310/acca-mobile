@@ -1,9 +1,15 @@
 import React from "react";
-import { Image, StyleProp, StyleSheet, View, ViewStyle } from "react-native";
+import { Image, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { router } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { Sparkles } from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { spacing } from "../../constants/theme";
 import { NotificationBell } from "./NotificationBell";
+import { useAuth } from "../../contexts/AuthContext";
+import billingService from "../../services/billingService";
+import { radius } from "../../constants/theme";
 
 const LOGO_LIGHT = require("../../../assets/logo-light.png");
 const LOGO_DARK = require("../../../assets/logo-dark.png");
@@ -26,7 +32,19 @@ export function BrandStrip({
   showNotifications = true,
   style,
 }: BrandStripProps) {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
+  const { isAuthenticated } = useAuth();
+  const billingQuery = useQuery({
+    queryKey: ["billing-overview"],
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const response = await billingService.getOverview();
+      if (!response.success || !response.data) return null;
+      return "data" in response.data ? response.data.data : response.data;
+    },
+  });
+  const isFree = billingQuery.data?.current_plan?.slug === "free";
 
   return (
     <View
@@ -52,7 +70,21 @@ export function BrandStrip({
         style={styles.logo}
         resizeMode="contain"
       />
-      {showNotifications && <NotificationBell />}
+      <View style={styles.actions}>
+        {isFree && (
+          <Pressable
+            onPress={() => router.push("/billing" as never)}
+            style={({ pressed }) => [
+              styles.upgrade,
+              { backgroundColor: colors.primary, opacity: pressed ? 0.78 : 1 },
+            ]}
+          >
+            <Sparkles size={14} color={colors.onPrimary} strokeWidth={2.3} />
+            <Text style={[styles.upgradeText, { color: colors.onPrimary }]}>Upgrade</Text>
+          </Pressable>
+        )}
+        {showNotifications && <NotificationBell />}
+      </View>
     </View>
   );
 }
@@ -70,4 +102,14 @@ const styles = StyleSheet.create({
     height: 24,
     width: 132,
   },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  upgrade: {
+    minHeight: 34,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  upgradeText: { fontSize: 12, fontWeight: "800" },
 });

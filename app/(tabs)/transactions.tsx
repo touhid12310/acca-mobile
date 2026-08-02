@@ -147,9 +147,9 @@ export default function TransactionsScreen() {
   const [statusView, setStatusView] = useState<
     "approved" | "pending_review" | "archived"
   >("approved");
-  const [sourceView, setSourceView] = useState<"all" | "email" | "schedule">(
-    "all",
-  );
+  const [sourceView, setSourceView] = useState<
+    "all" | "email" | "schedule" | "subscription"
+  >("all");
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
   const pendingDeleteTimers = useRef<
     Map<number, ReturnType<typeof setTimeout>>
@@ -445,7 +445,7 @@ export default function TransactionsScreen() {
   });
 
   // Whenever the user switches status (Ledger ↔ Pending ↔ Archived) or source
-  // (All / Email / Schedule), force a fresh fetch so we don't render stale
+  // (All / Email / Schedule / Subscription), force a fresh fetch so we don't render stale
   // cached pages (e.g. user comes back to Pending and the badge says 3 but
   // the cache only has the 2 items from their previous visit).
   useEffect(() => {
@@ -953,7 +953,9 @@ export default function TransactionsScreen() {
         </View>
 
         {/* Drafts mode: compact alias pill matching tanstack design */}
-        {statusView === "pending_review" && inboundAddress && (
+        {statusView === "pending_review" &&
+          inboundAddress &&
+          (sourceView === "all" || sourceView === "email") && (
           <View
             style={[
               styles.aliasCard,
@@ -1012,8 +1014,12 @@ export default function TransactionsScreen() {
         )}
 
         {statusView === "pending_review" && (
-          <View style={styles.sourceTabsRow}>
-            {(["all", "email", "schedule"] as const).map((src) => {
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.sourceTabsRow}
+          >
+            {(["all", "email", "schedule", "subscription"] as const).map((src) => {
               const active = sourceView === src;
               return (
                 <Pressable
@@ -1039,16 +1045,18 @@ export default function TransactionsScreen() {
                       ? "All"
                       : src === "email"
                         ? "Email"
-                        : "Schedule"}
+                        : src === "schedule"
+                          ? "Schedule"
+                          : "Subscription"}
                   </Text>
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         )}
 
         {/* Filter Chips — hidden in pending_review (drafts) view since the
-          relevant filter there is the source pills (All / Email / Schedule). */}
+          relevant filter there is the source pills. */}
         {statusView !== "pending_review" && (
           <View style={styles.filterShell}>
             <ScrollView

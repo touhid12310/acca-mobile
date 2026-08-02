@@ -41,6 +41,7 @@ const ROUTABLE_TYPES: Record<string, string> = {
   low_balance: '/accounts',
   recurring_posted: '/(tabs)/transactions',
   daily_log_nudge: '/transaction-modal',
+  subscription_invoice_due: '/billing',
 };
 
 const routeFromNotificationData = (data: unknown): string | undefined => {
@@ -134,6 +135,7 @@ function RootLayoutNav() {
             gestureEnabled: false,
           }}
         />
+        <Stack.Screen name="billing" options={{ headerShown: false }} />
         </Stack>
         <OfflineBanner />
       </View>

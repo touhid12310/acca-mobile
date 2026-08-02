@@ -34,6 +34,7 @@ import {
   X,
   Check,
   DollarSign,
+  Crown,
 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -89,6 +90,18 @@ export default function MoreScreen() {
   };
 
   const menuSections: MenuSection[] = [
+    {
+      title: "Package",
+      items: [
+        {
+          icon: Crown,
+          label: "Plans & Billing",
+          description: "Current package, invoices and Premium",
+          onPress: () => router.push("/billing" as never),
+          tone: "primary",
+        },
+      ],
+    },
     {
       title: "Finance Management",
       items: [

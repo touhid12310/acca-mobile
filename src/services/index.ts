@@ -11,3 +11,4 @@ export { default as loanService } from './loanService';
 export { default as scheduleService } from './scheduleService';
 export { default as settingsService } from './settingsService';
 export { default as onboardingService } from './onboardingService';
+export { default as billingService } from './billingService';
