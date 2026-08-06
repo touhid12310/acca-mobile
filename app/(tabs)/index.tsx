@@ -58,6 +58,10 @@ import transactionService from "../../src/services/transactionService";
 import budgetService from "../../src/services/budgetService";
 import goalService from "../../src/services/goalService";
 import { formatRelativeTime } from "../../src/utils/date";
+import {
+  getAmountSign,
+  splitTransactionByCategory,
+} from "../../src/utils/transactions";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
 
 export default function DashboardScreen() {
@@ -524,13 +528,10 @@ export default function DashboardScreen() {
       const totals = new Map<string, number>();
       for (const t of rows) {
         if (t.type !== "expense") continue;
-        let categoryName = t.category?.name;
-        if (!categoryName && t.transaction_categories?.length > 0) {
-          categoryName = t.transaction_categories[0].category?.name;
+        for (const share of splitTransactionByCategory(t)) {
+          if (share.amount <= 0) continue;
+          totals.set(share.name, (totals.get(share.name) || 0) + share.amount);
         }
-        categoryName = categoryName || "Uncategorized";
-        const amount = parseFloat(String(t.amount)) || 0;
-        totals.set(categoryName, (totals.get(categoryName) || 0) + amount);
       }
       return Array.from(totals.entries())
         .map(([name, amount]) => ({ name, amount }))
@@ -1331,7 +1332,9 @@ export default function DashboardScreen() {
           <Card variant="elevated" padding={0} radiusSize="xl">
             {stats?.recentTransactions && stats.recentTransactions.length > 0 ? (
               stats.recentTransactions.slice(0, 5).map((t, idx) => {
-                const isIncome = t.type === "income";
+                const sign = getAmountSign(t);
+                const isTransfer = t.type === "transfer";
+                const isCredit = sign === "+";
                 return (
                   <Pressable
                     key={t.id}
@@ -1354,8 +1357,20 @@ export default function DashboardScreen() {
                         ]}
                       >
                         <IconBadge
-                          icon={isIncome ? ArrowDownLeft : ArrowUpRight}
-                          tone={isIncome ? "success" : "danger"}
+                          icon={
+                            isTransfer
+                              ? ArrowLeftRight
+                              : isCredit
+                                ? ArrowDownLeft
+                                : ArrowUpRight
+                          }
+                          tone={
+                            isTransfer
+                              ? "primary"
+                              : isCredit
+                                ? "success"
+                                : "danger"
+                          }
                           size="md"
                         />
                         <View style={styles.txnTextBlock}>
@@ -1378,12 +1393,16 @@ export default function DashboardScreen() {
                           style={[
                             styles.txnAmount,
                             {
-                              color: isIncome ? colors.tertiary : colors.onSurface,
+                              color: isTransfer
+                                ? colors.primary
+                                : isCredit
+                                  ? colors.tertiary
+                                  : colors.onSurface,
                             },
                           ]}
                           numberOfLines={1}
                         >
-                          {isIncome ? "+" : "−"}
+                          {sign}
                           {maskAmount(t.amount)}
                         </Text>
                         <ChevronRight

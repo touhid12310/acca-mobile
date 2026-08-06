@@ -74,6 +74,7 @@ import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
 import settingsService from "../../src/services/settingsService";
 import { formatDate } from "../../src/utils/date";
+import { getAmountSign } from "../../src/utils/transactions";
 import {
   Transaction,
   TransactionType,
@@ -621,6 +622,8 @@ export default function TransactionsScreen() {
         return colors.tertiary;
       case "expense":
         return colors.error;
+      case "transfer":
+        return colors.primary;
       default:
         return colors.onSurface;
     }
@@ -1275,11 +1278,7 @@ export default function TransactionsScreen() {
                         { color: getAmountColor(selectedTransaction.type) },
                       ]}
                     >
-                      {selectedTransaction.type === "expense"
-                        ? "−"
-                        : selectedTransaction.type === "income"
-                          ? "+"
-                          : ""}
+                      {getAmountSign(selectedTransaction)}
                       {formatAmount(
                         parseFloat(String(selectedTransaction.amount)) || 0,
                       )}
@@ -1635,7 +1634,7 @@ function TransactionRow({
               style={[styles.txnAmount, { color: amountColor }]}
               numberOfLines={1}
             >
-              {t.type === "expense" ? "−" : t.type === "income" ? "+" : ""}
+              {getAmountSign(t)}
               {formatAmount(parseFloat(String(t.amount)) || 0)}
             </Text>
           </View>

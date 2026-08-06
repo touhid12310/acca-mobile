@@ -2,7 +2,7 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.2.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -93,7 +93,8 @@
         }
       ],
       "expo-web-browser",
-      "./plugins/withoutMediaPlaybackForegroundService"
+      "./plugins/withoutMediaPlaybackForegroundService",
+      "expo-iap"
     ],
     "experiments": {
       "typedRoutes": true

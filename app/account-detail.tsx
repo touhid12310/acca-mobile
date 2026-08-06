@@ -36,6 +36,7 @@ import accountService from "../src/services/accountService";
 import transactionService from "../src/services/transactionService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
+import { getAmountSign } from "../src/utils/transactions";
 import { Account, Transaction } from "../src/types";
 
 interface ReconcileTransaction {
@@ -937,14 +938,16 @@ export default function AccountDetailScreen() {
                         variant="titleMedium"
                         style={{
                           color:
-                            txType === "income"
+                            txType === "income" || txType === "asset"
                               ? colors.tertiary
-                              : colors.error,
+                              : txType === "transfer"
+                                ? colors.primary
+                                : colors.error,
                           fontWeight: "600",
                         }}
                         numberOfLines={1}
                       >
-                        {txType === "income" ? "+" : "-"}
+                        {getAmountSign(item)}
                         {formatAmount(Number(item.amount) || 0)}
                       </Text>
                     </View>

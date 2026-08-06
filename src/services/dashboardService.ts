@@ -120,6 +120,9 @@ export const dashboardService = {
           merchant_name: t.merchant_name || t.notes || t.description || 'Transaction',
           amount: toNumber(t.amount),
           type: t.type,
+          // Transfer rows encode their direction in the notes prefix
+          // ("Transfer from/to ..."), which the row rendering needs for signs.
+          notes: t.notes || null,
           date: t.date,
           category: t.category?.name || t.transaction_categories?.[0]?.category?.name || null,
         })),

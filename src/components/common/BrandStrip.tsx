@@ -2,17 +2,20 @@ import React from "react";
 import { Image, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
 import { Sparkles } from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
-import { spacing } from "../../constants/theme";
+import { gradients, spacing } from "../../constants/theme";
 import { NotificationBell } from "./NotificationBell";
 import { useAuth } from "../../contexts/AuthContext";
 import billingService from "../../services/billingService";
-import { radius } from "../../constants/theme";
 
 const LOGO_LIGHT = require("../../../assets/logo-light.png");
 const LOGO_DARK = require("../../../assets/logo-dark.png");
+
+/** Pill height; the corner radius is derived from it so it stays a true pill. */
+const UPGRADE_HEIGHT = 32;
 
 type BrandStripProps = {
   /** Hide the hairline divider when the strip sits over a custom header. */
@@ -32,7 +35,7 @@ export function BrandStrip({
   showNotifications = true,
   style,
 }: BrandStripProps) {
-  const { isDark, colors } = useTheme();
+  const { isDark } = useTheme();
   const { isAuthenticated } = useAuth();
   const billingQuery = useQuery({
     queryKey: ["billing-overview"],
@@ -75,12 +78,28 @@ export function BrandStrip({
           <Pressable
             onPress={() => router.push("/billing" as never)}
             style={({ pressed }) => [
-              styles.upgrade,
-              { backgroundColor: colors.primary, opacity: pressed ? 0.78 : 1 },
+              styles.upgradePressable,
+              { opacity: pressed ? 0.82 : 1 },
             ]}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel="Upgrade your plan"
           >
-            <Sparkles size={14} color={colors.onPrimary} strokeWidth={2.3} />
-            <Text style={[styles.upgradeText, { color: colors.onPrimary }]}>Upgrade</Text>
+            {/* The gradient IS the pill — icon and label are its in-flow
+                children. An absolutely-positioned fill behind the label lets
+                the two disagree about geometry on Android; sizing the painted
+                view to its own content removes that failure mode. */}
+            <LinearGradient
+              colors={gradients.primary as [string, string]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.upgrade}
+            >
+              <Sparkles size={13} color="#ffffff" strokeWidth={2.4} />
+              <Text style={styles.upgradeText} numberOfLines={1}>
+                Upgrade
+              </Text>
+            </LinearGradient>
           </Pressable>
         )}
         {showNotifications && <NotificationBell />}
@@ -97,19 +116,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
+    gap: spacing.sm,
   },
   logo: {
     height: 24,
     width: 132,
+    // On narrow screens the wordmark gives up space, never the actions —
+    // otherwise flexbox squeezes the pill narrower than its own label.
+    flexShrink: 1,
   },
-  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  upgrade: {
-    minHeight: 34,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+  actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: spacing.sm,
+    flexShrink: 0,
   },
-  upgradeText: { fontSize: 12, fontWeight: "800" },
+  upgradePressable: {
+    flexShrink: 0,
+    borderRadius: UPGRADE_HEIGHT / 2,
+  },
+  upgrade: {
+    height: UPGRADE_HEIGHT,
+    paddingHorizontal: spacing.md,
+    borderRadius: UPGRADE_HEIGHT / 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  upgradeText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    color: "#ffffff",
+    letterSpacing: 0.2,
+    // Android pads the glyph box, which pushes the label off-centre inside a
+    // fixed-height pill.
+    includeFontPadding: false,
+  },
 });
