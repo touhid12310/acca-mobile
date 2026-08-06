@@ -560,6 +560,7 @@ export default function AccountDetailScreen() {
 
   const accountBalance =
     Number(account.current_balance) || Number(account.balance) || 0;
+  const openingBalance = Number(account.opening_balance ?? 0) || 0;
 
   return (
     <SafeAreaView
@@ -591,6 +592,9 @@ export default function AccountDetailScreen() {
             <Text style={styles.balanceLabelHero}>Current Balance</Text>
             <Text style={styles.balanceValueHero}>
               {formatAmount(accountBalance)}
+            </Text>
+            <Text style={styles.openingLabelHero} numberOfLines={1}>
+              Opening {formatAmount(openingBalance)}
             </Text>
           </View>
         </View>
@@ -1596,6 +1600,12 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "800",
     letterSpacing: -0.5,
+  },
+  openingLabelHero: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 11.5,
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   tabs: {
     flexDirection: "row",

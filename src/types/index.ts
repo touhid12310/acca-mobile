@@ -178,6 +178,8 @@ export interface Account {
   account_type: AccountType;
   balance: number;
   current_balance?: number | string;
+  /** What the account started with; current_balance is this plus the ledger. */
+  opening_balance?: number | string;
   type?: string;
   currency?: string;
   is_default?: boolean;

@@ -287,6 +287,8 @@ export default function AccountsScreen() {
               const balance = parseFloat(
                 String(account.current_balance ?? account.balance ?? 0),
               );
+              const openingBalance =
+                parseFloat(String(account.opening_balance ?? 0)) || 0;
               const Icon = getAccountIcon(type);
               const positive = balance >= 0;
 
@@ -353,6 +355,15 @@ export default function AccountsScreen() {
                         ]}
                       >
                         {formatAmount(balance)}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.openingValue,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        Opening {formatAmount(openingBalance)}
                       </Text>
                     </View>
                     <ChevronRight
@@ -652,6 +663,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     letterSpacing: -0.2,
+  },
+  openingValue: {
+    fontSize: 10.5,
+    fontWeight: "600",
+    opacity: 0.85,
   },
   fab: {
     position: "absolute",
