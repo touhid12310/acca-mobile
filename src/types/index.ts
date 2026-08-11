@@ -310,6 +310,9 @@ export interface ChatMessageMetadata {
   receipt_name?: string;
   receipt_mime?: string;
   detection_source?: string;
+  // Set locally (never by the API) on the assistant bubble that stands in
+  // for a blocked Premium reply, so it renders an Upgrade CTA.
+  upgrade_required?: boolean;
 }
 
 export interface StructuredTable {

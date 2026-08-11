@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   StyleSheet,
@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Sparkles } from "lucide-react-native";
+import { Crown, Sparkles } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
@@ -66,6 +66,19 @@ type SpeechRecognitionModuleType = {
     locale: string;
   }) => Promise<unknown>;
 };
+
+/**
+ * Pull the most useful message out of a failed apiRequest/chatService result.
+ * The Laravel body lands in `data`, the transport error in `error`.
+ */
+const apiErrorMessage = (
+  result: { data?: unknown; error?: string; message?: string } | undefined,
+  fallback: string,
+): string =>
+  (result?.data as { message?: string } | undefined)?.message ||
+  result?.message ||
+  result?.error ||
+  fallback;
 
 let SpeechRecognitionModule: SpeechRecognitionModuleType | null = null;
 
@@ -521,6 +534,9 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     DEFAULT_WELCOME_MESSAGE,
   ]);
+  // Kept out of `messages` on purpose: a history refetch replaces that array
+  // wholesale, which would blow the notice away moments after it appears.
+  const [upgradeNotice, setUpgradeNotice] = useState<ChatMessage | null>(null);
   const [inputText, setInputText] = useState("");
   const [selectedFile, setSelectedFile] = useState<{
     uri: string;
@@ -930,6 +946,11 @@ export default function ChatScreen() {
     enabled: !!token,
   });
 
+  // A notice belongs to the day it was raised on.
+  useEffect(() => {
+    setUpgradeNotice(null);
+  }, [selectedChatDate]);
+
   // Update messages when history loads
   useEffect(() => {
     if (!messagesData) {
@@ -1023,6 +1044,12 @@ export default function ChatScreen() {
           ]);
         }
       }
+      if (!result.success) {
+        // Nothing was persisted, and refetching here would drop the user's own
+        // optimistic bubble — leaving the upgrade notice floating on its own.
+        return;
+      }
+
       queryClient.invalidateQueries({
         queryKey: [
           "chat",
@@ -1033,6 +1060,13 @@ export default function ChatScreen() {
     },
   });
 
+  // The upgrade notice rides at the end of the thread but lives outside
+  // `messages` so a history refetch cannot drop it.
+  const threadMessages = useMemo(
+    () => (upgradeNotice ? [...messages, upgradeNotice] : messages),
+    [messages, upgradeNotice],
+  );
+
   // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -1042,7 +1076,7 @@ export default function ChatScreen() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, scrollToBottom]);
+  }, [threadMessages, scrollToBottom]);
 
   useEffect(() => {
     if (!isSending) {
@@ -1059,6 +1093,39 @@ export default function ChatScreen() {
 
     return () => clearInterval(intervalId);
   }, [isSending, sendingHasFile]);
+
+  // AI chat is Premium-only, so a free user's send comes back 402
+  // (SUBSCRIPTION_REQUIRED) and a spent allowance comes back 429 — both used to
+  // resolve quietly and leave the thread with no reply at all. Answer in the
+  // thread instead, with an assistant bubble that carries an Upgrade CTA.
+  const appendUpgradeNotice = useCallback(
+    (result: { status?: number; data?: unknown } | undefined): boolean => {
+      const payload = (result?.data ?? {}) as { code?: string; message?: string };
+      const quotaReached =
+        result?.status === 429 || payload.code === "SUBSCRIPTION_QUOTA_REACHED";
+      const needsUpgrade =
+        result?.status === 402 || payload.code === "SUBSCRIPTION_REQUIRED";
+
+      if (!needsUpgrade && !quotaReached) {
+        return false;
+      }
+
+      setUpgradeNotice({
+        id: `upgrade-${Date.now()}`,
+        is_user: false,
+        message:
+          payload.message ||
+          (quotaReached
+            ? "You have used up your AI allowance for this period. Upgrade your package to keep going."
+            : "AI chat is part of Premium. Upgrade your package to chat with your books."),
+        created_at: `${selectedChatDate}T${new Date().toTimeString().slice(0, 8)}`,
+        metadata: { upgrade_required: true },
+      });
+
+      return true;
+    },
+    [selectedChatDate],
+  );
 
   // Handle sending message
   const handleSend = async () => {
@@ -1082,6 +1149,7 @@ export default function ChatScreen() {
 
     setInputText("");
     setSelectedFile(null);
+    setUpgradeNotice(null);
 
     // Add optimistic user message with file info
     const tempUserMessage: ChatMessage = {
@@ -1096,11 +1164,22 @@ export default function ChatScreen() {
     setMessages((prev) => [...prev, tempUserMessage]);
 
     try {
-      await sendMessageMutation.mutateAsync({
+      const result = await sendMessageMutation.mutateAsync({
         message: messageText || undefined,
         file: file || undefined,
         chatDate: selectedChatDate,
       });
+
+      // chatService never throws — it resolves with success:false — so a
+      // rejected send used to leave the user staring at their own message with
+      // no reply at all. Surface it instead.
+      if (!result.success) {
+        if (!appendUpgradeNotice(result)) {
+          notifyToast.error(
+            apiErrorMessage(result, "Failed to send message. Please try again."),
+          );
+        }
+      }
     } catch (error) {
       notifyToast.error("Failed to send message. Please try again.");
     } finally {
@@ -1864,6 +1943,22 @@ export default function ChatScreen() {
               </View>
             )}
 
+          {/* Upgrade CTA — stands in for the reply a free / out-of-allowance
+              user cannot get, so the path to Premium is one tap away. */}
+          {!isUser && message.metadata?.upgrade_required && (
+            <View style={styles.candidateActions}>
+              <Button
+                mode="contained"
+                compact
+                icon={({ size }) => <Crown size={size} color="#ffffff" />}
+                onPress={() => router.push("/billing")}
+                style={styles.previewButton}
+              >
+                Upgrade to Premium
+              </Button>
+            </View>
+          )}
+
         </View>
 
         {/* User avatar — prefer the saved profile picture, fall back to the
@@ -1962,7 +2057,7 @@ export default function ChatScreen() {
         ) : (
           <FlatList
             ref={flatListRef}
-            data={messages}
+            data={threadMessages}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderMessage}
             contentContainerStyle={styles.messagesList}

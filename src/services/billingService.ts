@@ -100,7 +100,7 @@ const billingService = {
       method: 'POST',
       body: { plan_slug: planSlug, coupon_code: couponCode },
     }),
-  checkout: (invoiceUuid: string, returnUrl: string) =>
+  checkout: (invoiceUuid: string, returnUrl?: string | null) =>
     apiRequest<{
       payment_uuid?: string;
       redirect_url: string | null;
@@ -108,8 +108,12 @@ const billingService = {
     }>(`/billing/invoices/${invoiceUuid}/checkout`, {
       method: 'POST',
       body: {
-        channel: Platform.OS === 'ios' ? 'ios' : 'android',
-        return_url: returnUrl,
+        // `expo start --web` runs this same screen in a browser, where the
+        // return URL is an http one and the EPS transaction type is the web
+        // one -- reporting it as android made the backend reject the return
+        // URL and blocked checkout entirely.
+        channel: Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web',
+        return_url: Platform.OS === 'web' ? null : returnUrl ?? null,
       },
     }),
   verifyPayment: (paymentUuid: string) =>
