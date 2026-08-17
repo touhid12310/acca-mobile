@@ -10,6 +10,7 @@ export interface User {
   profile_picture_url?: string;
   two_factor_enabled?: boolean;
   currency?: string;
+  has_password?: boolean;
   onboarding_completed_at?: string | null;
   profile_type?: string | null;
   financial_month_start_day?: number | null;

@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal as RNModal,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
   TextInput,
@@ -41,6 +42,7 @@ import transactionService from '../../services/transactionService';
 import { buildFileUrl } from '../../config/api';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
 import { formatDate } from '../../utils/date';
+import { compatibleImagePickerOptions, uploadFileFromAsset } from '../../utils/uploads';
 
 // Helper to categorize account type as Asset or Liability
 const ASSET_ACCOUNT_TYPES: AccountType[] = ['checking', 'savings', 'cash', 'investment'];
@@ -222,6 +224,7 @@ export default function TransactionFormContent({
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<CameraType>('back');
+  const cameraInsets = useSafeAreaInsets();
 
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -559,18 +562,10 @@ export default function TransactionFormContent({
 
   // Handle receipt selection for AI processing
   const handleScanReceipt = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync(compatibleImagePickerOptions);
 
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      const file = {
-        uri: asset.uri,
-        type: asset.mimeType || 'image/jpeg',
-        name: asset.fileName || 'receipt.jpg',
-      };
+      const file = uploadFileFromAsset(result.assets[0], 'receipt.jpg');
 
       // Store the receipt for display
       updateField('receipt', file);
@@ -1601,13 +1596,13 @@ export default function TransactionFormContent({
           />
 
           <TouchableOpacity
-            style={styles.cameraCloseButton}
+            style={[styles.cameraCloseButton, { top: cameraInsets.top + 12 }]}
             onPress={() => setCameraVisible(false)}
           >
             <MaterialCommunityIcons name="close" size={28} color="#fff" />
           </TouchableOpacity>
 
-          <View style={styles.cameraBottomBar}>
+          <View style={[styles.cameraBottomBar, { bottom: Math.max(cameraInsets.bottom, 20) + 12 }]}>
             <TouchableOpacity
               style={styles.cameraActionButton}
               onPress={async () => {

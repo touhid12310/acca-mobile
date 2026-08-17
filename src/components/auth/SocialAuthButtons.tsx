@@ -5,6 +5,7 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
@@ -54,26 +55,25 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
 
-  // Temporarily Google-only. Restore Microsoft / Apple here when ready.
-  const buttons: Array<{
-    key: SocialProvider;
-    label: string;
-    icon: React.ReactNode;
-    background: string;
-    border: string;
-    color: string;
-  }> = [
-    {
-      key: 'google',
-      label: 'Continue with Google',
-      icon: <GoogleSvg />,
-      // Explicit colors so the pill stays defined regardless of theme.
-      // Theme outline can be too faint to show on the surface.
-      background: isDark ? '#1e293b' : '#ffffff',
-      border: isDark ? '#334155' : '#e2e8f0',
-      color: isDark ? '#f1f5f9' : '#0f172a',
-    },
-  ];
+  // Apple must lead on iOS when Google is also offered (App Store 4.8).
+  // Android stays Google-only — Sign in with Apple is not required there.
+  const googleButton = {
+    key: 'google' as SocialProvider,
+    label: 'Continue with Google',
+    icon: <GoogleSvg />,
+    background: isDark ? '#1e293b' : '#ffffff',
+    border: isDark ? '#334155' : '#e2e8f0',
+    color: isDark ? '#f1f5f9' : '#0f172a',
+  };
+  const appleButton = {
+    key: 'apple' as SocialProvider,
+    label: 'Continue with Apple',
+    icon: <AppleSvg color={isDark ? '#0f172a' : '#ffffff'} />,
+    background: isDark ? '#ffffff' : '#000000',
+    border: isDark ? '#ffffff' : '#000000',
+    color: isDark ? '#0f172a' : '#ffffff',
+  };
+  const buttons = Platform.OS === 'ios' ? [appleButton, googleButton] : [googleButton];
 
   return (
     <View style={styles.wrapper}>

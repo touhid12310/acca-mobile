@@ -28,11 +28,15 @@ import { notifyToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
+import {
+  compatibleImagePickerOptions,
+  uploadFileFromAsset,
+} from "../src/utils/uploads";
 import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const { user, checkAuthStatus } = useAuth();
+  const { user, checkAuthStatus, logout } = useAuth();
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -160,18 +164,22 @@ export default function ProfileScreen() {
       notifyToast.error("Type DELETE in the confirmation field.");
       return;
     }
-    if (!deleteAccountPassword) {
+    const needsPassword = user?.has_password !== false;
+    if (needsPassword && !deleteAccountPassword) {
       notifyToast.error("Enter your password to confirm.");
       return;
     }
     if (isDeletingAccount) return;
     setIsDeletingAccount(true);
     try {
-      const result = await authService.deleteAccount(deleteAccountPassword);
+      const result = await authService.deleteAccount(
+        user?.has_password === false ? null : deleteAccountPassword,
+      );
       if (result.success) {
         notifyToast.success("Your account has been permanently removed.", {
           title: "Account deleted",
         });
+        await logout(false);
         router.replace("/(auth)/login");
       } else {
         notifyToast.error(
@@ -240,31 +248,30 @@ export default function ProfileScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      ...compatibleImagePickerOptions,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      uploadProfilePicture(result.assets[0].uri);
+      uploadProfilePicture(uploadFileFromAsset(result.assets[0], "profile.jpg"));
     }
   };
 
-  const uploadProfilePicture = async (imageUri: string) => {
+  const uploadProfilePicture = async (file: {
+    uri: string;
+    name: string;
+    type: string;
+  }) => {
     setIsUploadingPicture(true);
     try {
       const token = await getAuthToken();
       const formData = new FormData();
 
-      const filename = imageUri.split("/").pop() || "profile.jpg";
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : "image/jpeg";
-
       formData.append("profile_picture", {
-        uri: imageUri,
-        name: filename,
-        type,
+        uri: file.uri,
+        name: file.name,
+        type: file.type,
       } as any);
 
       const response = await fetch(buildApiUrl("/profile/picture"), {
@@ -417,14 +424,17 @@ export default function ProfileScreen() {
   };
 
   const handleDisableTwoFactor = async () => {
-    if (!disablePassword) {
+    const needsPassword = user?.has_password !== false;
+    if (needsPassword && !disablePassword) {
       notifyToast.error("Please enter your password");
       return;
     }
 
     setIs2FALoading(true);
     try {
-      const result = await authService.disableTwoFactor(disablePassword);
+      const result = await authService.disableTwoFactor(
+        needsPassword ? disablePassword : undefined,
+      );
       if (result.success) {
         notifyToast.success("Two-factor authentication disabled");
         setTwoFactorModalVisible(false);
@@ -917,9 +927,12 @@ export default function ProfileScreen() {
                 variant="bodyMedium"
                 style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
               >
-                Enter your password to disable two-factor authentication.
+                {user?.has_password === false
+                  ? "This will turn off two-factor authentication on your account."
+                  : "Enter your password to disable two-factor authentication."}
               </Text>
 
+              {user?.has_password !== false && (
               <TextInput
                 label="Password"
                 value={disablePassword}
@@ -928,6 +941,7 @@ export default function ProfileScreen() {
                 secureTextEntry
                 style={styles.input}
               />
+              )}
 
               <View style={styles.modalButtons}>
                 <Button
@@ -1169,6 +1183,7 @@ export default function ProfileScreen() {
             This permanently deletes your account, every transaction, every
             report, and all linked devices. This action cannot be undone.
           </Text>
+          {user?.has_password !== false && (
           <TextInput
             mode="outlined"
             label="Current password"
@@ -1177,6 +1192,7 @@ export default function ProfileScreen() {
             secureTextEntry
             style={{ marginBottom: 12 }}
           />
+          )}
           <TextInput
             mode="outlined"
             label="Type DELETE to confirm"
@@ -1202,7 +1218,7 @@ export default function ProfileScreen() {
               disabled={
                 isDeletingAccount ||
                 deleteAccountConfirm !== "DELETE" ||
-                !deleteAccountPassword
+                (user?.has_password !== false && !deleteAccountPassword)
               }
               style={{ marginLeft: 8 }}
             >

@@ -61,10 +61,12 @@ yarn-error.log*
 # Expo
 .expo/
 
-# Google Play service account key (NEVER commit — grants Play Console upload access)
+# Google Play / Firebase service account keys (NEVER commit)
 google-play-service-account.json
 *service-account*.json
 accounte-449ab-firebase-adminsdk-fbsvc-883b50969a.json
+accounte-496009-*.json
+*-firebase-adminsdk-*.json
 
 # OS generated files
 .DS_Store

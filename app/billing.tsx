@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -234,12 +234,25 @@ export default function BillingScreen() {
               <Card variant="outlined" style={styles.couponCard}>
                 <View style={styles.currentTitle}>
                   <ShieldCheck size={20} color={colors.primary} />
-                  <Text style={[styles.eyebrow, { color: colors.primary }]}>GOOGLE PLAY</Text>
+                  <Text style={[styles.eyebrow, { color: colors.primary }]}>
+                    {play.store === "app_store" ? "APP STORE" : "GOOGLE PLAY"}
+                  </Text>
                 </View>
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
-                  Subscriptions on Android are billed by Google Play and renew automatically. Manage or
-                  cancel from the Play Store. Discount codes are redeemed through Play, not here.
+                  {play.store === "app_store"
+                    ? "Subscriptions on iPhone are billed by Apple and renew automatically. Manage or cancel from Settings → Apple ID → Subscriptions."
+                    : "Subscriptions on Android are billed by Google Play and renew automatically. Manage or cancel from the Play Store. Discount codes are redeemed through Play, not here."}
                 </Text>
+                {play.expoGoBlocked && (
+                  <Text style={[styles.muted, { color: colors.warning }]}>
+                    In-app purchases need a development or store build. Expo Go cannot open the store checkout.
+                  </Text>
+                )}
+                {!play.connected && !play.expoGoBlocked && (
+                  <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
+                    Connecting to the store…
+                  </Text>
+                )}
                 <Button
                   label="Restore purchases"
                   variant="secondary"
@@ -250,7 +263,20 @@ export default function BillingScreen() {
               </Card>
             )}
 
-            {!play.available && (
+            {Platform.OS === "ios" && !play.available && (
+              <Card variant="outlined" style={styles.couponCard}>
+                <View style={styles.currentTitle}>
+                  <ShieldCheck size={20} color={colors.primary} />
+                  <Text style={[styles.eyebrow, { color: colors.primary }]}>APP STORE</Text>
+                </View>
+                <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
+                  Paid upgrades on iPhone go through the App Store. They will appear here once the
+                  subscription products are configured. Free trials still start in the app.
+                </Text>
+              </Card>
+            )}
+
+            {!play.available && Platform.OS !== "ios" && (
             <Card variant="elevated" style={styles.couponCard}>
               <View style={styles.currentTitle}>
                 <BadgePercent size={20} color={colors.primary} />
@@ -368,12 +394,20 @@ export default function BillingScreen() {
                     <Button label={`Start ${plan.trial_days}-day free trial`} fullWidth loading={trialMutation.isPending} onPress={() => trialMutation.mutate(plan)} />
                   ) : premium && play.available ? (
                     <Button
-                      label={play.displayPriceFor(plan.slug) ? `Subscribe · ${play.displayPriceFor(plan.slug)}` : "Subscribe with Google Play"}
+                      label={
+                        play.displayPriceFor(plan.slug)
+                          ? `Subscribe · ${play.displayPriceFor(plan.slug)}`
+                          : play.store === "app_store"
+                            ? "Subscribe with Apple"
+                            : "Subscribe with Google Play"
+                      }
                       fullWidth
                       loading={play.purchasing === plan.slug}
-                      disabled={!play.connected}
+                      disabled={play.expoGoBlocked}
                       onPress={() => play.purchase(plan.slug)}
                     />
+                  ) : premium && Platform.OS === "ios" ? (
+                    <Button label="Available via the App Store" fullWidth disabled />
                   ) : premium ? (
                     <Button label={planCoupon?.covers_full_amount ? "Redeem coupon & activate" : "Create invoice & pay"} fullWidth loading={busy === plan.slug} onPress={() => buyPlan(plan)} />
                   ) : null}
@@ -383,7 +417,7 @@ export default function BillingScreen() {
 
             <Card variant="elevated" style={styles.invoiceCard}>
               <View style={styles.invoiceHeading}><View><Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>RENEWAL CENTER</Text><Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Invoices</Text></View><FileText size={23} color={colors.primary} /></View>
-              {overview?.invoices?.length ? overview.invoices.map((invoice) => <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}><View style={styles.flex}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{invoice.plan?.name} · {new Date(invoice.created_at).toLocaleDateString()}{Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}</Text></View><View style={styles.invoiceRight}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>{invoice.status === "pending" ? <Button label={busy === invoice.uuid ? "Opening…" : "Pay"} size="sm" loading={busy === invoice.uuid} onPress={() => checkout(invoice)} /> : <Text style={{ color: invoice.status === "paid" ? colors.tertiary : colors.onSurfaceVariant, textTransform: "capitalize", fontWeight: "700" }}>{invoice.status}</Text>}</View></View>) : <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No invoices yet. Monthly renewal invoices will appear here.</Text>}
+              {overview?.invoices?.length ? overview.invoices.map((invoice) => <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}><View style={styles.flex}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{invoice.plan?.name} · {new Date(invoice.created_at).toLocaleDateString()}{Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}</Text></View><View style={styles.invoiceRight}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>{invoice.status === "pending" && Platform.OS !== "ios" ? <Button label={busy === invoice.uuid ? "Opening…" : "Pay"} size="sm" loading={busy === invoice.uuid} onPress={() => checkout(invoice)} /> : <Text style={{ color: invoice.status === "paid" ? colors.tertiary : colors.onSurfaceVariant, textTransform: "capitalize", fontWeight: "700" }}>{invoice.status}</Text>}</View></View>) : <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No invoices yet. Monthly renewal invoices will appear here.</Text>}
             </Card>
           </>
         )}

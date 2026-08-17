@@ -48,13 +48,16 @@ export type CouponPreview = {
   covers_full_amount: boolean;
 };
 
-/** Maps an AccountE plan onto the Play Console subscription it is sold as. */
-export type GooglePlayProduct = {
+/** Maps an AccountE plan onto a store subscription product. */
+export type StoreProduct = {
   plan_slug: string;
   plan_name: string;
   product_id: string;
-  base_plan_id: string | null;
+  base_plan_id?: string | null;
 };
+
+/** @deprecated Use StoreProduct */
+export type GooglePlayProduct = StoreProduct;
 
 /** A publicly listed coupon, already priced against one plan. */
 export type CouponOffer = CouponPreview & {
@@ -72,8 +75,9 @@ export type BillingOverview = {
     grace_ends_at?: string | null;
     in_grace_period: boolean;
     can_start_trial: boolean;
-    billing_provider: 'eps' | 'google_play';
+    billing_provider: 'eps' | 'google_play' | 'app_store';
     managed_by_google_play: boolean;
+    managed_by_app_store?: boolean;
   };
   usage: {
     used: number;
@@ -122,7 +126,7 @@ const billingService = {
   // Google Play in-app subscriptions (Android only). Play takes the payment;
   // the backend only verifies the purchase token and grants entitlement.
   getGooglePlayProducts: () =>
-    apiRequest<{ enabled: boolean; products: GooglePlayProduct[] }>('/billing/google-play/products'),
+    apiRequest<{ enabled: boolean; products: StoreProduct[] }>('/billing/google-play/products'),
   redeemGooglePlayPurchase: (productId: string, purchaseToken: string) =>
     apiRequest<BillingOverview>('/billing/google-play/redeem', {
       method: 'POST',
@@ -130,6 +134,16 @@ const billingService = {
     }),
   restoreGooglePlayPurchases: () =>
     apiRequest<BillingOverview>('/billing/google-play/restore', { method: 'POST' }),
+
+  getAppStoreProducts: () =>
+    apiRequest<{ enabled: boolean; products: StoreProduct[] }>('/billing/app-store/products'),
+  redeemAppStorePurchase: (productId: string, transactionJws: string) =>
+    apiRequest<BillingOverview>('/billing/app-store/redeem', {
+      method: 'POST',
+      body: { product_id: productId, transaction_jws: transactionJws },
+    }),
+  restoreAppStorePurchases: () =>
+    apiRequest<BillingOverview>('/billing/app-store/restore', { method: 'POST' }),
 };
 
 export default billingService;

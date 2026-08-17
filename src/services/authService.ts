@@ -158,11 +158,11 @@ export const authService = {
     });
   },
 
-  disableTwoFactor: async (password: string): Promise<ApiResponse<void>> => {
+  disableTwoFactor: async (password?: string): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
     return apiRequest<void>('/two-factor/disable', {
       method: 'POST',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(password ? { password } : {}),
       token,
     });
   },
@@ -255,11 +255,14 @@ export const authService = {
     data: { success: false, message: 'Linked-identity listing is no longer available.', data: { identities: [] } } as any,
   }),
 
-  deleteAccount: async (password: string): Promise<ApiResponse<void>> => {
+  deleteAccount: async (password?: string | null): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
     return apiRequest<void>('/account', {
       method: 'DELETE',
-      body: JSON.stringify({ password, confirm: 'DELETE' }),
+      body: JSON.stringify({
+        confirm: 'DELETE',
+        ...(password ? { password } : {}),
+      }),
       token,
     });
   },

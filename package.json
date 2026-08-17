@@ -1,6 +1,6 @@
 {
   "name": "accounte-expo",
-  "version": "1.5.0",
+  "version": "1.7.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -13,7 +13,10 @@
     "build:android:apk": "eas build --platform android --profile preview",
     "build:android:aab": "eas build --platform android --profile production",
     "build:android:apk:local": "eas build --platform android --profile preview --local",
-    "build:android:aab:local": "eas build --platform android --profile production --local"
+    "build:android:aab:local": "eas build --platform android --profile production --local",
+    "build:ios": "eas build --platform ios --profile production",
+    "build:ios:preview": "eas build --platform ios --profile preview",
+    "submit:ios": "eas submit --platform ios --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -23,6 +26,7 @@
     "@tanstack/react-query": "^5.51.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.36",
+    "expo-apple-authentication": "~8.0.8",
     "expo-asset": "~12.0.13",
     "expo-audio": "^1.1.1",
     "expo-auth-session": "~7.0.11",

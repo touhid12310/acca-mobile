@@ -34,6 +34,10 @@ import { useCurrency } from "../../src/contexts/CurrencyContext";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { notifyToast } from "../../src/contexts/NotificationContext";
 import { BrandedHeader, BrandText } from "../../src/components";
+import {
+  compatibleImagePickerOptions,
+  uploadFileFromAsset,
+} from "../../src/utils/uploads";
 import chatService from "../../src/services/chatService";
 import categoryService from "../../src/services/categoryService";
 import accountService from "../../src/services/accountService";
@@ -1198,18 +1202,14 @@ export default function ChatScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync(
+      compatibleImagePickerOptions,
+    );
 
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setSelectedFile({
-        uri: asset.uri,
-        name: asset.fileName || `image-${Date.now()}.jpg`,
-        type: asset.mimeType || "image/jpeg",
-      });
+      setSelectedFile(
+        uploadFileFromAsset(result.assets[0], `image-${Date.now()}.jpg`),
+      );
     }
   };
 
@@ -1228,12 +1228,9 @@ export default function ChatScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      setSelectedFile({
-        uri: asset.uri,
-        name: asset.fileName || `photo-${Date.now()}.jpg`,
-        type: asset.mimeType || "image/jpeg",
-      });
+      setSelectedFile(
+        uploadFileFromAsset(result.assets[0], `photo-${Date.now()}.jpg`),
+      );
     }
   };
 

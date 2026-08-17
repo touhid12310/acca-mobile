@@ -8,6 +8,7 @@ import {
   Text,
   Modal,
   TextInput,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -35,6 +36,7 @@ import {
   Check,
   DollarSign,
   Crown,
+  FileText,
 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -204,11 +206,25 @@ export default function MoreScreen() {
           tone: "neutral",
         },
         {
+          icon: FileText,
+          label: "Privacy Policy",
+          description: "How we handle your data",
+          onPress: () => Linking.openURL("https://accounte.com/privacy"),
+          tone: "neutral",
+        },
+        {
+          icon: FileText,
+          label: "Terms of Use",
+          description: "The rules for using AccountE",
+          onPress: () => Linking.openURL("https://accounte.com/terms"),
+          tone: "neutral",
+        },
+        {
           icon: Info,
           label: "About",
           // Read from app.json (Constants.expoConfig.version) so it always
           // reflects the shipped version — no more hardcoded string to update.
-          description: `Version ${Constants.expoConfig?.version ?? "1.5.0"}`,
+          description: `Version ${Constants.expoConfig?.version ?? "1.7.0"}`,
           onPress: () => {},
           tone: "neutral",
         },

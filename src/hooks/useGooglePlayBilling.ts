@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { useQuery } from '@tanstack/react-query';
 import { useIAP, ErrorCode } from 'expo-iap';
 import type { Purchase, ProductSubscription } from 'expo-iap';
 
-import billingService, { GooglePlayProduct } from '../services/billingService';
+import billingService, { StoreProduct } from '../services/billingService';
 
 type Options = {
   /** Called after the backend has verified a purchase and granted Premium. */
@@ -17,74 +18,101 @@ const unwrap = <T,>(value: T | { data: T } | undefined): T | undefined => {
   return typeof value === 'object' && 'data' in value ? (value as { data: T }).data : (value as T);
 };
 
+const isExpoGo = Constants.appOwnership === 'expo';
+
+const purchaseTokenOf = (purchase: Purchase): string | undefined =>
+  purchase.purchaseToken ||
+  (purchase as { purchaseTokenAndroid?: string | null }).purchaseTokenAndroid ||
+  undefined;
+
+const offerTokenOf = (offer: {
+  offerTokenAndroid?: string | null;
+  offerToken?: string | null;
+}): string | undefined => offer.offerTokenAndroid || offer.offerToken || undefined;
+
+const apiError = (response: { message?: string; error?: string; data?: unknown }, fallback: string) => {
+  const data = response.data as { message?: string } | undefined;
+  return response.message || response.error || data?.message || fallback;
+};
+
 /**
- * Google Play subscription purchasing for the Android app.
+ * Native store subscriptions: Google Play on Android, App Store on iOS.
  *
- * Play Store policy requires digital subscriptions to be sold through Play
- * Billing on Android, so this replaces the EPS redirect on that platform.
- * The purchase token is always verified server-side before Premium is granted
- * — the client's claim of a successful purchase is never trusted on its own.
+ * Play / StoreKit policy requires digital subscriptions to be sold through
+ * the platform store, so this replaces the EPS redirect on those platforms.
+ * The purchase is always verified server-side before Premium is granted.
  *
- * Inert on iOS and web: `available` stays false and nothing else runs.
+ * Inert on web: `available` stays false and nothing else runs.
  */
 export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options = {}) {
   const isAndroid = Platform.OS === 'android';
+  const isIos = Platform.OS === 'ios';
+  const isNativeStore = isAndroid || isIos;
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
-  // Play can re-deliver a purchase across app launches; redeeming the same
-  // token twice in one session is wasted work.
   const redeemedTokens = useRef<Set<string>>(new Set());
 
   const productsQuery = useQuery({
-    queryKey: ['google-play-products'],
-    enabled: isAndroid,
+    queryKey: ['store-products', Platform.OS],
+    enabled: isNativeStore,
     queryFn: async () => {
-      const response = await billingService.getGooglePlayProducts();
-      if (!response.success) return { enabled: false, products: [] as GooglePlayProduct[] };
-      return unwrap(response.data) || { enabled: false, products: [] as GooglePlayProduct[] };
+      const response = isAndroid
+        ? await billingService.getGooglePlayProducts()
+        : await billingService.getAppStoreProducts();
+      if (!response.success) return { enabled: false, products: [] as StoreProduct[] };
+      return unwrap(response.data) || { enabled: false, products: [] as StoreProduct[] };
     },
   });
 
   const catalogue = useMemo(() => productsQuery.data?.products || [], [productsQuery.data]);
-  const enabled = Boolean(isAndroid && productsQuery.data?.enabled && catalogue.length > 0);
+  const backendEnabled = Boolean(isNativeStore && productsQuery.data?.enabled && catalogue.length > 0);
+  const backendEnabledRef = useRef(backendEnabled);
+  backendEnabledRef.current = backendEnabled;
 
   const redeem = useCallback(
     async (purchase: Purchase) => {
-      const purchaseToken = purchase.purchaseToken;
-      if (!purchaseToken) {
-        onError?.('Google Play did not return a purchase token.');
+      const token = purchaseTokenOf(purchase);
+      if (!token) {
+        onError?.(
+          isIos
+            ? 'The App Store did not return a transaction to verify.'
+            : 'Google Play did not return a purchase token.',
+        );
         return false;
       }
-      if (redeemedTokens.current.has(purchaseToken)) return true;
+      if (redeemedTokens.current.has(token)) return true;
 
-      const response = await billingService.redeemGooglePlayPurchase(purchase.productId, purchaseToken);
+      const response = isIos
+        ? await billingService.redeemAppStorePurchase(purchase.productId, token)
+        : await billingService.redeemGooglePlayPurchase(purchase.productId, token);
+
       if (!response.success) {
-        onError?.(response.message || 'Could not verify the purchase with our servers.');
+        onError?.(apiError(response, 'Could not verify the purchase with our servers.'));
         return false;
       }
 
-      redeemedTokens.current.add(purchaseToken);
+      redeemedTokens.current.add(token);
       await onEntitlementGranted?.();
       return true;
     },
-    [onEntitlementGranted, onError],
+    [isIos, onEntitlementGranted, onError],
   );
 
   const {
     connected,
+    products,
     subscriptions,
     fetchProducts,
     requestPurchase,
     finishTransaction,
     getAvailablePurchases,
     availablePurchases,
+    reconnect,
   } = useIAP({
     onPurchaseSuccess: async (purchase) => {
+      if (!backendEnabledRef.current) return;
       try {
         const verified = await redeem(purchase);
-        // Only finish once the server has granted entitlement. Finishing a
-        // purchase we failed to verify would leave the user paying for
-        // nothing with no way for Play to redeliver it.
         if (verified) {
           await finishTransaction({ purchase, isConsumable: false });
         }
@@ -95,46 +123,121 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
       }
     },
     onPurchaseError: (error) => {
+      if (!backendEnabledRef.current) return;
       setPurchasing(null);
-      // A user backing out of the Play sheet is not an error worth surfacing.
       if (error?.code !== ErrorCode.UserCancelled) {
-        onError?.(error?.message || 'The Play Store could not complete the purchase.');
+        onError?.(
+          error?.message ||
+            (isIos
+              ? 'The App Store could not complete the purchase.'
+              : 'The Play Store could not complete the purchase.'),
+        );
       }
     },
-    onError: (error) => onError?.(error.message),
+    onError: (error) => {
+      if (!backendEnabledRef.current) return;
+      onError?.(error.message);
+    },
   });
 
   useEffect(() => {
-    if (!enabled || !connected) return;
+    if (!backendEnabled || connected || isExpoGo) return;
+    const timer = setTimeout(() => {
+      reconnect().catch(() => undefined);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [backendEnabled, connected, reconnect]);
+
+  useEffect(() => {
+    if (!backendEnabled || !connected) return;
     fetchProducts({ skus: catalogue.map((item) => item.product_id), type: 'subs' }).catch(() => {
-      onError?.('Could not load subscription pricing from the Play Store.');
+      onError?.(
+        isIos
+          ? 'Could not load subscription pricing from the App Store.'
+          : 'Could not load subscription pricing from the Play Store.',
+      );
     });
-    // `fetchProducts` and `onError` are stable enough that re-running on their
-    // identity would refetch the catalogue on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, connected, catalogue]);
+  }, [backendEnabled, connected, catalogue]);
+
+  const storeCatalog = useMemo(
+    () => [...subscriptions, ...products] as ProductSubscription[],
+    [subscriptions, products],
+  );
+
+  const findStoreProduct = useCallback(
+    (productId: string) =>
+      storeCatalog.find((item) => item.id === productId || (item as { productId?: string }).productId === productId),
+    [storeCatalog],
+  );
 
   const purchase = useCallback(
     async (planSlug: string) => {
-      const mapping = catalogue.find((item) => item.plan_slug === planSlug);
-      if (!mapping) {
-        onError?.('This plan is not available on the Play Store.');
+      if (isExpoGo) {
+        onError?.(
+          'In-app purchases need a development or store build. Expo Go cannot talk to the Play Store or App Store.',
+        );
         return;
       }
 
-      const product = subscriptions.find((item) => item.id === mapping.product_id) as
-        | ProductSubscription
-        | undefined;
+      const mapping = catalogue.find((item) => item.plan_slug === planSlug);
+      if (!mapping) {
+        onError?.(
+          isIos
+            ? 'This plan is not available on the App Store yet.'
+            : 'This plan is not available on the Play Store.',
+        );
+        return;
+      }
 
-      // Play requires the offer token of the base plan being bought; without it
-      // the billing sheet cannot open.
-      const offers = (product as { subscriptionOffers?: { basePlanIdAndroid?: string | null; offerTokenAndroid?: string | null }[] })
-        ?.subscriptionOffers;
+      if (!connected) {
+        const recovered = await reconnect().catch(() => false);
+        if (!recovered) {
+          onError?.(
+            isIos
+              ? 'Could not connect to the App Store. Try again on a real device.'
+              : 'Could not connect to the Play Store. Use a device with Google Play (not an emulator without Play services).',
+          );
+          return;
+        }
+      }
+
+      if (isIos) {
+        setPurchasing(planSlug);
+        try {
+          await requestPurchase({
+            type: 'subs',
+            request: {
+              apple: { sku: mapping.product_id },
+            },
+          });
+        } catch (error) {
+          setPurchasing(null);
+          onError?.(error instanceof Error ? error.message : 'Could not open the App Store.');
+        }
+        return;
+      }
+
+      const product = findStoreProduct(mapping.product_id);
+      const offers = (
+        product as {
+          subscriptionOffers?: {
+            basePlanIdAndroid?: string | null;
+            offerTokenAndroid?: string | null;
+            offerToken?: string | null;
+          }[];
+        }
+      )?.subscriptionOffers;
       const offer =
         offers?.find((candidate) => candidate.basePlanIdAndroid === mapping.base_plan_id) || offers?.[0];
+      const offerToken = offer ? offerTokenOf(offer) : undefined;
 
-      if (!offer?.offerTokenAndroid) {
-        onError?.('The Play Store has no active offer for this subscription yet.');
+      if (!offerToken) {
+        onError?.(
+          storeCatalog.length === 0
+            ? `Play Store has no listing for "${mapping.product_id}". Check the Play product ID on this plan and that the app is on an internal/testing track.`
+            : 'The Play Store has no active offer for this subscription yet.',
+        );
         return;
       }
 
@@ -145,7 +248,7 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
           request: {
             google: {
               skus: [mapping.product_id],
-              subscriptionOffers: [{ sku: mapping.product_id, offerToken: offer.offerTokenAndroid }],
+              subscriptionOffers: [{ sku: mapping.product_id, offerToken }],
             },
           },
         });
@@ -154,52 +257,59 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
         onError?.(error instanceof Error ? error.message : 'Could not open the Play Store.');
       }
     },
-    [catalogue, subscriptions, requestPurchase, onError],
+    [
+      catalogue,
+      connected,
+      findStoreProduct,
+      isIos,
+      onError,
+      reconnect,
+      requestPurchase,
+      storeCatalog.length,
+    ],
   );
 
-  /**
-   * Re-link purchases this Google account already owns — after a reinstall, a
-   * device change, or a dropped verification call.
-   */
   const restore = useCallback(async () => {
-    if (!enabled) return;
+    if (!backendEnabled) return;
     setRestoring(true);
     try {
       await getAvailablePurchases();
-      // Also ask the backend to re-read anything it already knows about, which
-      // covers a renewal whose notification never arrived.
-      await billingService.restoreGooglePlayPurchases();
+      if (isIos) {
+        await billingService.restoreAppStorePurchases();
+      } else {
+        await billingService.restoreGooglePlayPurchases();
+      }
       await onEntitlementGranted?.();
     } catch (error) {
       onError?.(error instanceof Error ? error.message : 'Could not restore purchases.');
     } finally {
       setRestoring(false);
     }
-  }, [enabled, getAvailablePurchases, onEntitlementGranted, onError]);
+  }, [backendEnabled, getAvailablePurchases, isIos, onEntitlementGranted, onError]);
 
-  // Purchases surfaced by a restore still need server-side verification.
   useEffect(() => {
-    if (!enabled || availablePurchases.length === 0) return;
+    if (!backendEnabled || availablePurchases.length === 0) return;
     availablePurchases.forEach((item) => {
-      if (item.purchaseToken && !redeemedTokens.current.has(item.purchaseToken)) {
+      const token = purchaseTokenOf(item);
+      if (token && !redeemedTokens.current.has(token)) {
         redeem(item).catch(() => undefined);
       }
     });
-  }, [enabled, availablePurchases, redeem]);
+  }, [backendEnabled, availablePurchases, redeem]);
 
   return {
-    /** True only when Android, configured in admin, and products exist. */
-    available: enabled,
+    /** True when this platform's store is configured in admin and products exist. */
+    available: backendEnabled,
+    store: isIos ? 'app_store' : isAndroid ? 'google_play' : null,
     connected,
     purchasing,
     restoring,
+    expoGoBlocked: isExpoGo && backendEnabled,
     purchase,
     restore,
-    /** Play-formatted price, e.g. "৳299.00/month". */
     displayPriceFor: (planSlug: string): string | null => {
       const mapping = catalogue.find((item) => item.plan_slug === planSlug);
-      const product = subscriptions.find((item) => item.id === mapping?.product_id);
-      return product?.displayPrice ?? null;
+      return findStoreProduct(mapping?.product_id || '')?.displayPrice ?? null;
     },
   };
 }

@@ -216,14 +216,17 @@ export default function TransactionForm({
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
     });
 
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
+      const name = (asset.fileName || 'receipt.jpg').replace(/\.(heic|heif)$/i, '.jpg');
       updateField('receipt', {
         uri: asset.uri,
-        type: asset.mimeType || 'image/jpeg',
-        name: asset.fileName || 'receipt.jpg',
+        type: asset.mimeType === 'image/heic' || asset.mimeType === 'image/heif' ? 'image/jpeg' : asset.mimeType || 'image/jpeg',
+        name,
       });
     }
   };

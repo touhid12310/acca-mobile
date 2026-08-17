@@ -34,7 +34,13 @@ export const requestPushPermission = async (): Promise<boolean> => {
   if (!Device.isDevice) return false;
   const existing = await Notifications.getPermissionsAsync();
   if (existing.status === "granted") return true;
-  const requested = await Notifications.requestPermissionsAsync();
+  const requested = await Notifications.requestPermissionsAsync({
+    ios: {
+      allowAlert: true,
+      allowBadge: true,
+      allowSound: true,
+    },
+  });
   return requested.status === "granted";
 };
 

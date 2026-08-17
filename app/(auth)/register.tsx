@@ -22,11 +22,13 @@ import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
 import authService from "../../src/services/authService";
 import { SocialProvider } from "../../src/services/socialAuthService";
 import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
+import { startAppleAuth } from "../../src/services/appleAuth";
+import socialAuthService from "../../src/services/socialAuthService";
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const { register, loginWithToken } = useAuth();
   const { colors } = useTheme();
 
   const [name, setName] = useState("");
@@ -65,13 +67,38 @@ export default function RegisterScreen() {
     if (socialProvider) return;
     setErrors({});
 
-    if (provider !== "google") {
-      setErrors({ general: "Only Google sign-up is wired up so far." });
-      return;
-    }
-
     setSocialProvider(provider);
     try {
+      if (provider === "apple") {
+        const result = await startAppleAuth();
+        if (result.type === "success") {
+          const exchanged = await socialAuthService.exchangeApple({
+            identityToken: result.identityToken,
+            appleUser: result.appleUser,
+            fullName: result.fullName,
+          });
+          if (exchanged.requiresTwoFactor && exchanged.pendingToken) {
+            router.push({
+              pathname: "/auth/callback",
+              params: { pending_token: exchanged.pendingToken },
+            });
+          } else if (exchanged.success && exchanged.accessToken) {
+            await loginWithToken(exchanged.accessToken, exchanged.user);
+            router.replace("/(tabs)");
+          } else {
+            setErrors({ general: exchanged.message || "Apple sign-up failed" });
+          }
+        } else if (result.type === "error") {
+          setErrors({ general: result.message || "Apple sign-up failed" });
+        }
+        return;
+      }
+
+      if (provider !== "google") {
+        setErrors({ general: "Only Google and Apple sign-up are available." });
+        return;
+      }
+
       const result = await startGoogleBrowserAuth("signup");
       if (result.type === "success" && result.code) {
         router.push({
@@ -81,9 +108,8 @@ export default function RegisterScreen() {
       } else if (result.type === "error") {
         setErrors({ general: result.message || "Google sign-up failed" });
       }
-      // 'cancel' — user closed the browser; nothing to show.
     } catch (err: any) {
-      setErrors({ general: err?.message || "Could not open Google sign-in" });
+      setErrors({ general: err?.message || "Could not start social sign-up" });
     } finally {
       setSocialProvider(null);
     }

@@ -148,6 +148,55 @@ const socialAuthService = {
    * Backend verifies it via Google's tokeninfo endpoint and issues Sanctum
    * (or returns the 2FA challenge).
    */
+  async exchangeApple(payload: {
+    identityToken: string;
+    appleUser?: string;
+    fullName?: string;
+  }): Promise<ExchangeResult> {
+    const response = await apiRequest(`/auth/social/apple`, {
+      method: 'POST',
+      body: JSON.stringify({
+        identity_token: payload.identityToken,
+        apple_user: payload.appleUser,
+        full_name: payload.fullName,
+        client: 'mobile',
+        timezone: detectTimeZone(),
+      }),
+    });
+
+    const body = response.data as Record<string, unknown> | undefined;
+    const apiSuccess = readField<boolean>(body, 'success');
+    const message = readField<string>(body, 'message');
+    const requiresPasswordLogin = readField<boolean>(body, 'requires_password_login');
+    const requires2faTop = readField<boolean>(body, 'requires_two_factor');
+    const inner = readField<Record<string, unknown>>(body, 'data');
+    const accessToken = readField<string>(inner, 'access_token');
+    const user = readField<User>(inner, 'user') ?? null;
+    const requires2faInner = readField<boolean>(inner, 'requires_two_factor');
+    const pendingToken = readField<string>(inner, 'pending_token');
+
+    if (requires2faTop || requires2faInner) {
+      return {
+        success: false,
+        status: response.status,
+        message: message || 'Two-factor authentication code required',
+        requiresTwoFactor: true,
+        pendingToken,
+      };
+    }
+
+    if (response.success && apiSuccess && accessToken) {
+      return { success: true, accessToken, user, message, status: response.status };
+    }
+
+    return {
+      success: false,
+      status: response.status,
+      message: message || response.error || 'Sign-in failed',
+      requiresPasswordLogin: !!requiresPasswordLogin,
+    };
+  },
+
   async exchangeIdToken(
     idToken: string,
     platform: 'ios' | 'android' | 'web' = 'ios',

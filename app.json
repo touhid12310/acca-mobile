@@ -2,7 +2,7 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.5.0",
+    "version": "1.7.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -15,12 +15,19 @@
     },
     "ios": {
       "supportsTablet": true,
+      "requireFullScreen": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.accounte.finance",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Allow AccountE to access your microphone for voice transcription.",
         "NSCameraUsageDescription": "AccountE needs access to your camera to capture receipts.",
         "NSPhotoLibraryUsageDescription": "AccountE needs access to your photos to upload receipts.",
         "NSSpeechRecognitionUsageDescription": "Allow AccountE to use speech recognition for live transcription.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "UIRequiresFullScreen": true,
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -28,6 +35,9 @@
             ]
           }
         ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -54,12 +64,20 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
           "color": "#3b82f6",
           "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "AccountE needs access to your camera to capture receipts.",
+          "recordAudioAndroid": false
         }
       ],
       [
@@ -82,7 +100,11 @@
         {
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/logo-dark.png",
+            "backgroundColor": "#0b1830"
+          }
         }
       ],
       [
