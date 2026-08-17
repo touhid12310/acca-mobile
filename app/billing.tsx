@@ -403,7 +403,7 @@ export default function BillingScreen() {
                       }
                       fullWidth
                       loading={play.purchasing === plan.slug}
-                      disabled={play.expoGoBlocked}
+                      disabled={play.expoGoBlocked || !play.connected || !play.displayPriceFor(plan.slug)}
                       onPress={() => play.purchase(plan.slug)}
                     />
                   ) : premium && Platform.OS === "ios" ? (

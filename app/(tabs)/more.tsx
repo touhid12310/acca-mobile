@@ -40,6 +40,7 @@ import {
 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
+import { notifyToast } from "../../src/contexts/NotificationContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
 import {
@@ -209,14 +210,20 @@ export default function MoreScreen() {
           icon: FileText,
           label: "Privacy Policy",
           description: "How we handle your data",
-          onPress: () => Linking.openURL("https://accounte.com/privacy"),
+          onPress: () =>
+            Linking.openURL("https://accounte.com/privacy").catch(() =>
+              notifyToast.error("Could not open the Privacy Policy link."),
+            ),
           tone: "neutral",
         },
         {
           icon: FileText,
           label: "Terms of Use",
           description: "The rules for using AccountE",
-          onPress: () => Linking.openURL("https://accounte.com/terms"),
+          onPress: () =>
+            Linking.openURL("https://accounte.com/terms").catch(() =>
+              notifyToast.error("Could not open the Terms of Use link."),
+            ),
           tone: "neutral",
         },
         {
@@ -224,7 +231,7 @@ export default function MoreScreen() {
           label: "About",
           // Read from app.json (Constants.expoConfig.version) so it always
           // reflects the shipped version — no more hardcoded string to update.
-          description: `Version ${Constants.expoConfig?.version ?? "1.7.0"}`,
+          description: `Version ${Constants.expoConfig?.version ?? "1.7.1"}`,
           onPress: () => {},
           tone: "neutral",
         },

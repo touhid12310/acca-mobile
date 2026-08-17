@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery } from '@tanstack/react-query';
-import { useIAP, ErrorCode } from 'expo-iap';
+import { useIAP, ErrorCode, fetchProducts as fetchStoreProducts } from 'expo-iap';
 import type { Purchase, ProductSubscription } from 'expo-iap';
 
 import billingService, { StoreProduct } from '../services/billingService';
@@ -30,6 +30,9 @@ const offerTokenOf = (offer: {
   offerToken?: string | null;
 }): string | undefined => offer.offerTokenAndroid || offer.offerToken || undefined;
 
+const matchesProductId = (item: { id?: string; productId?: string }, productId: string) =>
+  item.id === productId || item.productId === productId;
+
 const apiError = (response: { message?: string; error?: string; data?: unknown }, fallback: string) => {
   const data = response.data as { message?: string } | undefined;
   return response.message || response.error || data?.message || fallback;
@@ -51,6 +54,10 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const redeemedTokens = useRef<Set<string>>(new Set());
+  // Store events can arrive before `productsQuery` resolves. Hold them here
+  // instead of dropping them, and drain once the backend catalogue is known.
+  const pendingPurchases = useRef<Purchase[]>([]);
+  const processPurchaseRef = useRef<((purchase: Purchase) => Promise<void>) | null>(null);
 
   const productsQuery = useQuery({
     queryKey: ['store-products', Platform.OS],
@@ -110,17 +117,14 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
     reconnect,
   } = useIAP({
     onPurchaseSuccess: async (purchase) => {
-      if (!backendEnabledRef.current) return;
-      try {
-        const verified = await redeem(purchase);
-        if (verified) {
-          await finishTransaction({ purchase, isConsumable: false });
+      if (!backendEnabledRef.current) {
+        const token = purchaseTokenOf(purchase);
+        if (!pendingPurchases.current.some((queued) => purchaseTokenOf(queued) === token)) {
+          pendingPurchases.current.push(purchase);
         }
-      } catch (error) {
-        onError?.(error instanceof Error ? error.message : 'Could not complete the purchase.');
-      } finally {
-        setPurchasing(null);
+        return;
       }
+      await processPurchaseRef.current?.(purchase);
     },
     onPurchaseError: (error) => {
       if (!backendEnabledRef.current) return;
@@ -139,6 +143,31 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
       onError?.(error.message);
     },
   });
+
+  const processPurchase = useCallback(
+    async (purchase: Purchase) => {
+      try {
+        const verified = await redeem(purchase);
+        if (verified) {
+          await finishTransaction({ purchase, isConsumable: false });
+        }
+      } catch (error) {
+        onError?.(error instanceof Error ? error.message : 'Could not complete the purchase.');
+      } finally {
+        setPurchasing(null);
+      }
+    },
+    [redeem, finishTransaction, onError],
+  );
+  processPurchaseRef.current = processPurchase;
+
+  // Drain anything that landed while the products query was still in flight.
+  useEffect(() => {
+    if (!backendEnabled || pendingPurchases.current.length === 0) return;
+    pendingPurchases.current.splice(0).forEach((purchase) => {
+      processPurchase(purchase).catch(() => undefined);
+    });
+  }, [backendEnabled, processPurchase]);
 
   useEffect(() => {
     if (!backendEnabled || connected || isExpoGo) return;
@@ -167,7 +196,7 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
 
   const findStoreProduct = useCallback(
     (productId: string) =>
-      storeCatalog.find((item) => item.id === productId || (item as { productId?: string }).productId === productId),
+      storeCatalog.find((item) => matchesProductId(item as { id?: string; productId?: string }, productId)),
     [storeCatalog],
   );
 
@@ -218,7 +247,20 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
         return;
       }
 
-      const product = findStoreProduct(mapping.product_id);
+      // The catalogue effect only runs on the render *after* `connected` flips,
+      // so straight off a reconnect this closure still sees an empty catalogue.
+      // Fetch on demand rather than reporting a bogus configuration error.
+      let product = findStoreProduct(mapping.product_id);
+      if (!product) {
+        const fetched = await fetchStoreProducts({
+          skus: catalogue.map((item) => item.product_id),
+          type: 'subs',
+        }).catch(() => []);
+        product = (fetched as ProductSubscription[]).find((item) =>
+          matchesProductId(item as { id?: string; productId?: string }, mapping.product_id),
+        );
+      }
+
       const offers = (
         product as {
           subscriptionOffers?: {
@@ -234,7 +276,7 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
 
       if (!offerToken) {
         onError?.(
-          storeCatalog.length === 0
+          !product
             ? `Play Store has no listing for "${mapping.product_id}". Check the Play product ID on this plan and that the app is on an internal/testing track.`
             : 'The Play Store has no active offer for this subscription yet.',
         );
@@ -265,7 +307,6 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
       onError,
       reconnect,
       requestPurchase,
-      storeCatalog.length,
     ],
   );
 

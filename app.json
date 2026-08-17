@@ -2,7 +2,7 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.7.0",
+    "version": "1.7.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -35,9 +35,6 @@
             ]
           }
         ]
-      },
-      "entitlements": {
-        "aps-environment": "production"
       }
     },
     "android": {
