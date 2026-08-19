@@ -231,7 +231,7 @@ export default function MoreScreen() {
           label: "About",
           // Read from app.json (Constants.expoConfig.version) so it always
           // reflects the shipped version — no more hardcoded string to update.
-          description: `Version ${Constants.expoConfig?.version ?? "1.7.1"}`,
+          description: `Version ${Constants.expoConfig?.version ?? "1.7.5"}`,
           onPress: () => {},
           tone: "neutral",
         },
