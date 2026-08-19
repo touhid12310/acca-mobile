@@ -74,10 +74,6 @@ export default function LoginScreen() {
       setErrors({ general: "Enter your email first" });
       return;
     }
-    if (magicRequiresTwoFactor && magicTwoFactorCode.length !== 6) {
-      setErrors({ general: "Enter the 6-digit code from your authenticator app" });
-      return;
-    }
     if (isMagicAuthLoading) return;
     setIsMagicAuthLoading(true);
     setErrors({});
@@ -103,6 +99,10 @@ export default function LoginScreen() {
       setErrors({ general: "Enter the code from your email" });
       return;
     }
+    if (magicRequiresTwoFactor && magicTwoFactorCode.length !== 6) {
+      setErrors({ general: "Enter the 6-digit code from your authenticator app" });
+      return;
+    }
     if (isMagicAuthLoading) return;
     setIsMagicAuthLoading(true);
     setErrors({});
@@ -119,7 +119,9 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       } else if (data?.requires_two_factor) {
         setMagicRequiresTwoFactor(true);
-        setErrors({});
+        setErrors({
+          general: "Enter your authenticator code to finish signing in",
+        });
       } else {
         setErrors({
           general: data?.message || "Invalid or expired code",
