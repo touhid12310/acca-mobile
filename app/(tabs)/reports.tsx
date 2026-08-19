@@ -45,6 +45,7 @@ import { BrandStrip } from "../../src/components";
 import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
 import { radius, shadow, spacing } from "../../src/constants/theme";
+import { toDateInputValue } from "../../src/utils/date";
 
 type ReportType = "summary" | "category" | "networth" | "income" | "balance";
 type CategoryTypeFilter = "all" | "income" | "expense" | "asset" | "liability";
@@ -243,8 +244,8 @@ export default function ReportsScreen() {
     ],
     queryFn: async () => {
       const result = await reportService.getIncomeStatement({
-        start_date: incomeStartDate.toISOString().split("T")[0],
-        end_date: incomeEndDate.toISOString().split("T")[0],
+        start_date: toDateInputValue(incomeStartDate),
+        end_date: toDateInputValue(incomeEndDate),
       });
       if (result.success && result.data) {
         const responseData = result.data as any;
@@ -264,7 +265,7 @@ export default function ReportsScreen() {
     queryKey: ["reports", "balance-sheet", balanceSheetDate.toISOString()],
     queryFn: async () => {
       const result = await reportService.getBalanceSheet({
-        as_of_date: balanceSheetDate.toISOString().split("T")[0],
+        as_of_date: toDateInputValue(balanceSheetDate),
       });
       if (result.success && result.data) {
         const responseData = result.data as any;

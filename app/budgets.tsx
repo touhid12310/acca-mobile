@@ -39,6 +39,7 @@ import { ConfirmDialog } from "../src/components/ui";
 import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
+import { todayDateInputValue } from "../src/utils/date";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
@@ -86,7 +87,7 @@ export default function BudgetsScreen() {
     name: "",
     budgeted_amount: "",
     period: "monthly" as "monthly" | "weekly" | "quarterly" | "yearly",
-    start_date: new Date().toISOString().split("T")[0], // Today's date
+    start_date: todayDateInputValue(),
     notes: "",
   });
   const [selectedCategories, setSelectedCategories] = useState<
@@ -156,7 +157,7 @@ export default function BudgetsScreen() {
         name: data.name,
         budgeted_amount: parseFloat(data.budgeted_amount) || 0,
         period: data.period,
-        start_date: data.start_date || new Date().toISOString().split("T")[0],
+        start_date: data.start_date || todayDateInputValue(),
         notes: data.notes || "",
         categories: data.categories.map((cat) => ({
           category_id: cat.categoryId,
@@ -188,7 +189,7 @@ export default function BudgetsScreen() {
         name: data.name,
         budgeted_amount: parseFloat(data.budgeted_amount) || 0,
         period: data.period,
-        start_date: data.start_date || new Date().toISOString().split("T")[0],
+        start_date: data.start_date || todayDateInputValue(),
         notes: data.notes || "",
         categories: data.categories.map((cat) => ({
           category_id: cat.categoryId,
@@ -231,7 +232,7 @@ export default function BudgetsScreen() {
         period: budget.period || "monthly",
         start_date: (budget as any).start_date
           ? (budget as any).start_date.split("T")[0] // Handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:mm:ss' formats
-          : new Date().toISOString().split("T")[0],
+          : todayDateInputValue(),
         notes: (budget as any).notes || "",
       });
       // Set selected categories from budget
@@ -253,7 +254,7 @@ export default function BudgetsScreen() {
         name: "",
         budgeted_amount: "",
         period: "monthly",
-        start_date: new Date().toISOString().split("T")[0],
+        start_date: todayDateInputValue(),
         notes: "",
       });
       setSelectedCategories([]);

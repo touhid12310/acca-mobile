@@ -11,6 +11,7 @@ import TransactionFormContent, {
 } from '../src/components/transactions/TransactionFormContent';
 import transactionService from '../src/services/transactionService';
 import { Transaction, TransactionType } from '../src/types';
+import { toDateInputValue } from '../src/utils/date';
 
 export default function TransactionModalScreen() {
   const { colors } = useTheme();
@@ -72,13 +73,16 @@ export default function TransactionModalScreen() {
         }
 
         // Account is stored as payment_method in the API
-        const accountId = tx.payment_method || tx.account_id;
+        const paymentAccountId = tx.payment_method?.id ?? tx.payment_method ?? tx.account_id;
 
         // Transfers store the destination in `transfer_to`, which the API may
         // return either as a bare id or as an eager-loaded account object
         // (web reads it the same way in TransactionManager).
-        const toAccountId =
+        const pairedAccountId =
           tx.transfer_to?.id ?? tx.transfer_to ?? tx.to_account?.id ?? tx.to_account_id ?? undefined;
+        const isCreditLeg = tx.type === 'transfer' && tx.balance_direction === 'credit';
+        const accountId = isCreditLeg ? pairedAccountId : paymentAccountId;
+        const toAccountId = isCreditLeg ? paymentAccountId : pairedAccountId;
 
         return {
           id: tx.id,
@@ -119,7 +123,7 @@ export default function TransactionModalScreen() {
           subcategory_id: params.subcategory_id ? parseInt(params.subcategory_id) : undefined,
           account_id: params.account_id ? parseInt(params.account_id) : undefined,
           notes: params.notes || undefined,
-          date: params.date || new Date().toISOString(),
+          date: params.date || toDateInputValue(new Date()),
           items: parsedItems,
           receipt_path: params.receipt_uri || undefined, // Pass as receipt_path for display
           receipt_type: params.receipt_type || 'image',
@@ -178,7 +182,7 @@ export default function TransactionModalScreen() {
   };
 
   const toApiDate = (date: TransactionFormData['date']): string =>
-    date instanceof Date ? date.toISOString().split('T')[0] : String(date);
+    date instanceof Date ? toDateInputValue(date) : String(date);
 
   const createMutation = useMutation({
     mutationFn: async (data: TransactionFormData) => {
@@ -208,7 +212,7 @@ export default function TransactionModalScreen() {
       const payload: any = {
         type: data.type,
         amount: typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
-        date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : data.date,
+        date: data.date instanceof Date ? toDateInputValue(data.date) : data.date,
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
         payment_method: data.account_id || undefined,
@@ -300,7 +304,7 @@ export default function TransactionModalScreen() {
       const payload: any = {
         type: data.type,
         amount: typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)),
-        date: data.date instanceof Date ? data.date.toISOString().split('T')[0] : data.date,
+        date: data.date instanceof Date ? toDateInputValue(data.date) : data.date,
         merchant_name: data.merchant_name || undefined,
         description: data.description || undefined,
         payment_method: data.account_id || undefined,

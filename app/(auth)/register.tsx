@@ -100,10 +100,10 @@ export default function RegisterScreen() {
       }
 
       const result = await startGoogleBrowserAuth("signup");
-      if (result.type === "success" && result.code) {
+      if (result.type === "success" && result.code && result.state) {
         router.push({
           pathname: "/auth/callback",
-          params: { code: result.code },
+          params: { code: result.code, state: result.state },
         });
       } else if (result.type === "error") {
         setErrors({ general: result.message || "Google sign-up failed" });

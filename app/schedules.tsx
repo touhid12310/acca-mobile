@@ -35,6 +35,8 @@ import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import scheduleService from "../src/services/scheduleService";
+import accountService from "../src/services/accountService";
+import { todayDateInputValue, toDateInputValue as localDateInputValue } from "../src/utils/date";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Schedule } from "../src/types";
@@ -92,10 +94,11 @@ export default function SchedulesScreen() {
     amount: "",
     type: "expense" as "income" | "expense",
     frequency: "Monthly" as string,
-    next_due_date: new Date().toISOString().split("T")[0],
+    next_due_date: todayDateInputValue(),
     notes: "",
     category_id: "",
     subcategory_id: "",
+    account_id: "",
   });
   const isEditing = editingId !== null;
 
@@ -146,6 +149,14 @@ export default function SchedulesScreen() {
     },
   });
 
+  const { data: accounts = [] } = useQuery({
+    queryKey: ["accounts", "schedule-picker"],
+    queryFn: async () => {
+      const result = await accountService.getAll();
+      return result.success ? unwrap(result.data) : [];
+    },
+  });
+
   const viewCategories = Array.isArray(categories) ? categories : [];
   const typedCategories = useMemo(
     () => viewCategories.filter((c: any) => c?.type === formData.type),
@@ -185,12 +196,13 @@ export default function SchedulesScreen() {
         type: data.type,
         frequency: data.frequency,
         next_due_date:
-          data.next_due_date || new Date().toISOString().split("T")[0],
+          data.next_due_date || todayDateInputValue(),
         notes: data.notes,
         category_id: data.category_id ? parseInt(data.category_id) : undefined,
         subcategory_id: data.subcategory_id
           ? parseInt(data.subcategory_id)
           : undefined,
+        account_id: data.account_id ? parseInt(data.account_id) : undefined,
         status: "scheduled",
       } as any);
       if (!result.success) throw new Error(formatApiError(result));
@@ -226,12 +238,13 @@ export default function SchedulesScreen() {
         type: data.type,
         frequency: data.frequency,
         next_due_date:
-          data.next_due_date || new Date().toISOString().split("T")[0],
+          data.next_due_date || todayDateInputValue(),
         notes: data.notes,
         category_id: data.category_id ? parseInt(data.category_id) : null,
         subcategory_id: data.subcategory_id
           ? parseInt(data.subcategory_id)
           : null,
+        account_id: data.account_id ? parseInt(data.account_id) : null,
       } as any);
       if (!result.success) throw new Error(formatApiError(result));
       return result;
@@ -296,10 +309,11 @@ export default function SchedulesScreen() {
       amount: "",
       type: "expense",
       frequency: "Monthly",
-      next_due_date: new Date().toISOString().split("T")[0],
+      next_due_date: todayDateInputValue(),
       notes: "",
       category_id: "",
       subcategory_id: "",
+      account_id: "",
     });
     setShowCategoryPicker(false);
     setModalVisible(true);
@@ -334,13 +348,13 @@ export default function SchedulesScreen() {
   };
 
   const toDateInputValue = (value?: string) => {
-    if (!value) return new Date().toISOString().split("T")[0];
+    if (!value) return todayDateInputValue();
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
       return value;
     }
     const date = new Date(value);
-    if (isNaN(date.getTime())) return new Date().toISOString().split("T")[0];
-    return date.toISOString().split("T")[0];
+    if (isNaN(date.getTime())) return todayDateInputValue();
+    return localDateInputValue(date);
   };
 
   const handleEditPress = () => {
@@ -364,6 +378,7 @@ export default function SchedulesScreen() {
       subcategory_id: schedule.subcategory_id
         ? String(schedule.subcategory_id)
         : "",
+      account_id: schedule.account_id ? String(schedule.account_id) : "",
     });
     setShowCategoryPicker(false);
     setTimeout(() => setModalVisible(true), 200);
@@ -865,6 +880,38 @@ export default function SchedulesScreen() {
                     }}
                   >
                     {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+            >
+              Account
+            </Text>
+            <View style={styles.frequencyButtons}>
+              {(accounts as any[]).map((account: any) => (
+                <TouchableOpacity
+                  key={account.id}
+                  style={[
+                    styles.frequencyButton,
+                    {
+                      backgroundColor:
+                        String(formData.account_id) === String(account.id)
+                          ? colors.primaryContainer
+                          : colors.surfaceVariant,
+                      borderColor:
+                        String(formData.account_id) === String(account.id)
+                          ? colors.primary
+                          : "transparent",
+                    },
+                  ]}
+                  onPress={() => setFormData({ ...formData, account_id: String(account.id) })}
+                >
+                  <Text numberOfLines={1} style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                    {account.account_name}
                   </Text>
                 </TouchableOpacity>
               ))}

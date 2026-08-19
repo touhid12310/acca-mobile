@@ -2,19 +2,16 @@ import API_CONFIG, { apiRequest, getAuthToken } from '../config/api';
 import { ApiResponse } from '../types';
 import transactionService from './transactionService';
 import accountService from './accountService';
+import { toDateInputValue } from '../utils/date';
 
 // Helper to get current month date range
 const getMonthRange = (offset = 0) => {
   const now = new Date();
-  const startDate = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1)
-  );
-  const endDate = new Date(
-    Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, 0)
-  );
+  const startDate = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+  const endDate = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
   return {
-    start: startDate.toISOString().split('T')[0],
-    end: endDate.toISOString().split('T')[0],
+    start: toDateInputValue(startDate),
+    end: toDateInputValue(endDate),
   };
 };
 
@@ -120,8 +117,8 @@ export const dashboardService = {
           merchant_name: t.merchant_name || t.notes || t.description || 'Transaction',
           amount: toNumber(t.amount),
           type: t.type,
-          // Transfer rows encode their direction in the notes prefix
-          // ("Transfer from/to ..."), which the row rendering needs for signs.
+          balance_direction: t.balance_direction ?? null,
+          transfer_pair_id: t.transfer_pair_id ?? null,
           notes: t.notes || null,
           date: t.date,
           category: t.category?.name || t.transaction_categories?.[0]?.category?.name || null,

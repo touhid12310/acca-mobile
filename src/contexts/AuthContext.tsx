@@ -9,6 +9,7 @@ import React, {
   ReactNode,
 } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { getAuthToken, saveAuthToken, removeAuthToken } from '../config/api';
 import authService from '../services/authService';
@@ -369,18 +370,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       sessionCheckInterval.current = null;
     }
 
-    removeAuthToken();
-    queryClient.clear();
-    setToken(null);
-    setUser(null);
-    setIsAuthenticated(false);
-    setSessionExpired(true);
+    const expiredToken = token;
 
-    notifyToast.warning(message, {
-      title: 'Session expired',
-      duration: 6000,
-    });
-  }, [queryClient]);
+    void (async () => {
+      queryClient.clear();
+      setToken(null);
+      setUser(null);
+      setIsAuthenticated(false);
+      setSessionExpired(true);
+      router.replace('/(auth)/login');
+      await removeAuthToken();
+
+      if (expiredToken) {
+        try {
+          await pushService.unregisterDevice(expiredToken);
+        } catch {
+          // Remote revocation already cascades the session-bound device row.
+        }
+      }
+
+      notifyToast.warning(message, {
+        title: 'Session expired',
+        duration: 6000,
+      });
+    })();
+  }, [queryClient, token]);
 
   // Validate session with the server
   const validateSession = useCallback(async (): Promise<boolean> => {

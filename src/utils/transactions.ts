@@ -4,18 +4,15 @@ export type TransferDirection = "in" | "out" | null;
 
 /**
  * Direction of a transfer leg relative to the account it sits on.
- * The backend writes two rows per transfer and encodes direction in the notes
- * prefix ("Transfer from X ..." credits this account, "Transfer to X ..."
- * debits it) — AccountBalanceService derives balances from the same prefix,
- * so display must follow the identical rule to match the header balance.
+ * The backend writes two rows per transfer with an immutable signed ledger
+ * direction. User-editable notes are never used to infer money movement.
  */
 export function getTransferDirection(
-  t: Pick<Transaction, "type" | "notes">,
+  t: Pick<Transaction, "type" | "balance_direction">,
 ): TransferDirection {
   if (t.type !== "transfer") return null;
-  const notes = (t.notes || "").trim().toLowerCase();
-  if (notes.startsWith("transfer from")) return "in";
-  if (notes.startsWith("transfer to")) return "out";
+  if (t.balance_direction === "credit") return "in";
+  if (t.balance_direction === "debit") return "out";
   return null;
 }
 
@@ -102,7 +99,7 @@ export function splitTransactionByCategory(t: {
  * transfers follow their notes-encoded direction.
  */
 export function getAmountSign(
-  t: Pick<Transaction, "type" | "notes">,
+  t: Pick<Transaction, "type" | "balance_direction">,
 ): "+" | "−" | "" {
   switch (t.type) {
     case "income":

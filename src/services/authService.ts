@@ -210,10 +210,16 @@ export const authService = {
   verifyMagicLink: async (
     email: string,
     code: string,
+    twoFactorCode?: string,
   ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
     return apiRequest<{ access_token: string; user: User }>('/auth/magic/verify', {
       method: 'POST',
-      body: JSON.stringify({ email, code, timezone: detectTimeZone() }),
+      body: JSON.stringify({
+        email,
+        code,
+        timezone: detectTimeZone(),
+        two_factor_code: twoFactorCode,
+      }),
     });
   },
 

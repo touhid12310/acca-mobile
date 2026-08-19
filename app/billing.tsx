@@ -82,6 +82,12 @@ export default function BillingScreen() {
       toast.success("Purchase verified. Premium is active.");
       await refresh();
     },
+    onRestoreCompleted: async (active) => {
+      toast[active ? "success" : "info"](
+        active ? "Purchases restored. Premium is active." : "No active store subscription was found.",
+      );
+      await refresh();
+    },
     onError: (message) => toast.error(message),
   });
 

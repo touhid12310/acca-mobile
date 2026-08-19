@@ -1,4 +1,5 @@
 import { apiRequest } from '../config/api';
+import * as SecureStore from 'expo-secure-store';
 import { detectTimeZone } from '../utils/timezone';
 import { User } from '../types';
 
@@ -51,6 +52,7 @@ const readField = <T = unknown>(obj: unknown, key: string): T | undefined => {
 // Dedup in-flight exchange calls so the inline WebBrowser handler and the
 // auth/callback.tsx deep-link handler don't both POST the same one-time code.
 const inFlightExchanges = new Map<string, Promise<ExchangeResult>>();
+const OAUTH_STATE_KEY = 'social_oauth_state';
 
 const socialAuthService = {
   async getAuthorizationUrl(
@@ -72,6 +74,15 @@ const socialAuthService = {
     const url = readField<string>(inner, 'url');
 
     if (response.success && apiSuccess && url) {
+      const state = new URL(url).searchParams.get('state');
+      if (!state) {
+        return {
+          success: false,
+          status: response.status,
+          message: 'Social sign-in state was not generated',
+        };
+      }
+      await SecureStore.setItemAsync(OAUTH_STATE_KEY, state);
       return { success: true, url, status: response.status };
     }
 
@@ -82,15 +93,27 @@ const socialAuthService = {
     };
   },
 
-  async exchange(code: string): Promise<ExchangeResult> {
-    const existing = inFlightExchanges.get(code);
+  async exchange(code: string, state: string): Promise<ExchangeResult> {
+    const exchangeKey = `${code}:${state}`;
+    const existing = inFlightExchanges.get(exchangeKey);
     if (existing) return existing;
 
     const promise = (async (): Promise<ExchangeResult> => {
+      const expectedState = await SecureStore.getItemAsync(OAUTH_STATE_KEY);
+      if (!expectedState || expectedState !== state) {
+        return {
+          success: false,
+          status: 401,
+          message: 'Social sign-in state is invalid or expired. Please try again.',
+        };
+      }
+      await SecureStore.deleteItemAsync(OAUTH_STATE_KEY);
+
       const response = await apiRequest(`/auth/social/exchange`, {
         method: 'POST',
         body: JSON.stringify({
           code,
+          state,
           client: 'mobile',
           timezone: detectTimeZone(),
         }),
@@ -138,7 +161,7 @@ const socialAuthService = {
       };
     })();
 
-    inFlightExchanges.set(code, promise);
+    inFlightExchanges.set(exchangeKey, promise);
     return promise;
   },
 

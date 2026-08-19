@@ -16,11 +16,10 @@ import socialAuthService from '../../src/services/socialAuthService';
 // Codes already processed in this app session — prevents double-exchange if
 // the inline WebBrowser.openAuthSessionAsync() handler in (auth)/login.tsx
 // catches the redirect AND the deep link also fires the same callback.
-const processedCodes = new Set<string>();
-
 export default function AuthCallback() {
   const params = useLocalSearchParams<{
     code?: string;
+    state?: string;
     error?: string;
     error_description?: string;
     // Set by the inline WebBrowser handler in (auth)/login.tsx when the
@@ -45,6 +44,7 @@ export default function AuthCallback() {
     ran.current = true;
 
     const codeParam = typeof params.code === 'string' ? params.code : undefined;
+    const stateParam = typeof params.state === 'string' ? params.state : undefined;
     const error = typeof params.error === 'string' ? params.error : undefined;
     const errorDescription =
       typeof params.error_description === 'string'
@@ -70,21 +70,15 @@ export default function AuthCallback() {
       return;
     }
 
-    if (!codeParam) {
+    if (!codeParam || !stateParam) {
       finishWithError('Missing authorization code');
       return;
     }
 
-    if (processedCodes.has(codeParam)) {
-      // Inline handler already exchanged this code. The other path will
-      // navigate to /(tabs) shortly — just sit on the loader.
-      return;
-    }
-    processedCodes.add(codeParam);
-
+    // Duplicate callback exchanges are coalesced by socialAuthService.
     (async () => {
       try {
-        const result = await socialAuthService.exchange(codeParam);
+        const result = await socialAuthService.exchange(codeParam, stateParam);
 
         if (result.requiresTwoFactor && result.pendingToken) {
           setPendingToken(result.pendingToken);
@@ -101,7 +95,7 @@ export default function AuthCallback() {
         if (result.requiresPasswordLogin) {
           finishWithError(
             result.message ||
-              'An account already exists. Sign in with your password first to link.',
+              'An account already exists. Sign in with its existing method before linking social sign-in.',
           );
           return;
         }
@@ -112,6 +106,7 @@ export default function AuthCallback() {
     })();
   }, [
     params.code,
+    params.state,
     params.error,
     params.error_description,
     params.pending_token,

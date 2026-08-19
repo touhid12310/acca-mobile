@@ -64,12 +64,18 @@ export default function LoginScreen() {
   const [magicAuthStep, setMagicAuthStep] = useState<"idle" | "email" | "code">("idle");
   const [magicAuthEmail, setMagicAuthEmail] = useState("");
   const [magicAuthCode, setMagicAuthCode] = useState("");
+  const [magicTwoFactorCode, setMagicTwoFactorCode] = useState("");
+  const [magicRequiresTwoFactor, setMagicRequiresTwoFactor] = useState(false);
   const [isMagicAuthLoading, setIsMagicAuthLoading] = useState(false);
 
   const handleMagicAuthStart = async () => {
     const trimmed = magicAuthEmail.trim();
     if (!trimmed) {
       setErrors({ general: "Enter your email first" });
+      return;
+    }
+    if (magicRequiresTwoFactor && magicTwoFactorCode.length !== 6) {
+      setErrors({ general: "Enter the 6-digit code from your authenticator app" });
       return;
     }
     if (isMagicAuthLoading) return;
@@ -101,12 +107,19 @@ export default function LoginScreen() {
     setIsMagicAuthLoading(true);
     setErrors({});
     try {
-      const result = await authService.verifyMagicLink(magicAuthEmail.trim(), trimmed);
+      const result = await authService.verifyMagicLink(
+        magicAuthEmail.trim(),
+        trimmed,
+        magicRequiresTwoFactor ? magicTwoFactorCode : undefined,
+      );
       const data = result.data as any;
       const payload = data?.data || data;
       if (result.success && payload?.access_token) {
         await loginWithToken(payload.access_token, payload.user);
         router.replace("/(tabs)");
+      } else if (data?.requires_two_factor) {
+        setMagicRequiresTwoFactor(true);
+        setErrors({});
       } else {
         setErrors({
           general: data?.message || "Invalid or expired code",
@@ -158,10 +171,10 @@ export default function LoginScreen() {
       }
 
       const result = await startGoogleBrowserAuth("login");
-      if (result.type === "success" && result.code) {
+      if (result.type === "success" && result.code && result.state) {
         router.push({
           pathname: "/auth/callback",
-          params: { code: result.code },
+          params: { code: result.code, state: result.state },
         });
       } else if (result.type === "error") {
         setErrors({ general: result.message || "Google sign-in failed" });
@@ -370,6 +383,17 @@ export default function LoginScreen() {
                   maxLength={10}
                   icon={ShieldCheck}
                 />
+                {magicRequiresTwoFactor && (
+                  <Input
+                    label="Authenticator code"
+                    placeholder="000000"
+                    value={magicTwoFactorCode}
+                    onChangeText={(t) => setMagicTwoFactorCode(t.replace(/\D/g, "").slice(0, 6))}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    icon={ShieldCheck}
+                  />
+                )}
                 <Button
                   label={isMagicAuthLoading ? "Verifying..." : "Sign in"}
                   onPress={handleMagicAuthVerify}

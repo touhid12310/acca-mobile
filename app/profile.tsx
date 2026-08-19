@@ -51,15 +51,6 @@ export default function ProfileScreen() {
     null,
   );
 
-  // Password form state
-  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    current_password: "",
-    password: "",
-    password_confirmation: "",
-  });
-  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
-
   // 2FA state
   const [twoFactorModalVisible, setTwoFactorModalVisible] = useState(false);
   const [twoFactorStatus, setTwoFactorStatus] = useState({
@@ -73,12 +64,9 @@ export default function ProfileScreen() {
   const [showVerifyStep, setShowVerifyStep] = useState(false);
   const [is2FALoading, setIs2FALoading] = useState(false);
 
-  // WorkOS account features
+  // Account verification and deletion
   const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [verifyEmailModalVisible, setVerifyEmailModalVisible] = useState(false);
-  const [verifyEmailCode, setVerifyEmailCode] = useState("");
   const [isSendingVerification, setIsSendingVerification] = useState(false);
-  const [isVerifyingEmail, setIsVerifyingEmail] = useState(false);
   const [deleteAccountModalVisible, setDeleteAccountModalVisible] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
   const [deleteAccountConfirm, setDeleteAccountConfirm] = useState("");
@@ -128,34 +116,6 @@ export default function ProfileScreen() {
       notifyToast.error("Could not send verification link");
     } finally {
       setIsSendingVerification(false);
-    }
-  };
-
-  const handleVerifyEmail = async () => {
-    const trimmed = verifyEmailCode.trim();
-    if (!trimmed) {
-      notifyToast.error("Please enter the verification code");
-      return;
-    }
-    if (isVerifyingEmail) return;
-    setIsVerifyingEmail(true);
-    try {
-      const result = await authService.verifyEmail(trimmed);
-      if (result.success) {
-        notifyToast.success("Your email has been verified.", { title: "Verified" });
-        setVerifyEmailModalVisible(false);
-        setVerifyEmailCode("");
-        setIsEmailVerified(true);
-        await checkAuthStatus?.();
-      } else {
-        notifyToast.error(
-          (result.data as any)?.message || "Invalid or expired code",
-        );
-      }
-    } catch {
-      notifyToast.error("Could not verify code");
-    } finally {
-      setIsVerifyingEmail(false);
     }
   };
 
@@ -221,7 +181,11 @@ export default function ProfileScreen() {
 
     setIsProfileSaving(true);
     try {
-      const result = await authService.updateProfile(profileForm);
+      const result = await authService.updateProfile({
+        name: profileForm.name,
+        mobile: profileForm.mobile,
+        timezone: profileForm.timezone,
+      });
       if (result.success) {
         setActiveTimeZone(profileForm.timezone);
         notifyToast.success("Profile updated successfully");
@@ -336,47 +300,6 @@ export default function ProfileScreen() {
         },
       ],
     );
-  };
-
-  const handleChangePassword = async () => {
-    if (
-      !passwordForm.current_password ||
-      !passwordForm.password ||
-      !passwordForm.password_confirmation
-    ) {
-      notifyToast.error("All fields are required");
-      return;
-    }
-
-    if (passwordForm.password.length < 8) {
-      notifyToast.error("New password must be at least 8 characters");
-      return;
-    }
-
-    if (passwordForm.password !== passwordForm.password_confirmation) {
-      notifyToast.error("Passwords do not match");
-      return;
-    }
-
-    setIsPasswordSaving(true);
-    try {
-      const result = await authService.changePassword(passwordForm);
-      if (result.success) {
-        notifyToast.success("Password changed successfully");
-        setPasswordModalVisible(false);
-        setPasswordForm({
-          current_password: "",
-          password: "",
-          password_confirmation: "",
-        });
-      } else {
-        notifyToast.error(result.error || "Failed to change password");
-      }
-    } catch (error) {
-      notifyToast.error("An error occurred while changing password");
-    } finally {
-      setIsPasswordSaving(false);
-    }
   };
 
   const handleSetupTwoFactor = async () => {
@@ -578,9 +501,7 @@ export default function ProfileScreen() {
           <TextInput
             label="Email Address"
             value={profileForm.email}
-            onChangeText={(text) =>
-              setProfileForm({ ...profileForm, email: text })
-            }
+            editable={false}
             mode="outlined"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -642,40 +563,6 @@ export default function ProfileScreen() {
           >
             Security
           </Text>
-
-          <TouchableOpacity
-            style={[styles.securityItem, { borderColor: colors.outline }]}
-            onPress={() => setPasswordModalVisible(true)}
-          >
-            <View
-              style={[
-                styles.securityIcon,
-                { backgroundColor: `${colors.primary}15` },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="lock"
-                size={24}
-                color={colors.primary}
-              />
-            </View>
-            <View style={styles.securityContent}>
-              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
-                Change Password
-              </Text>
-              <Text
-                variant="bodySmall"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                Update your account password
-              </Text>
-            </View>
-            <MaterialCommunityIcons
-              name="chevron-right"
-              size={24}
-              color={colors.onSurfaceVariant}
-            />
-          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.securityItem, { borderColor: colors.outline }]}
@@ -770,8 +657,8 @@ export default function ProfileScreen() {
                 {isEmailVerified
                   ? "Verified"
                   : isSendingVerification
-                    ? "Sending code…"
-                    : "Tap to send verification code"}
+                    ? "Sending link…"
+                    : "Tap to send verification link"}
               </Text>
             </View>
             {isSendingVerification ? (
@@ -834,71 +721,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Surface>
       </ScrollView>
-
-      {/* Change Password Modal */}
-      <Portal>
-        <Modal
-          visible={passwordModalVisible}
-          onDismiss={() => setPasswordModalVisible(false)}
-          contentContainerStyle={[
-            styles.modal,
-            { backgroundColor: colors.surface },
-          ]}
-        >
-          <Text
-            variant="titleLarge"
-            style={{ color: colors.onSurface, marginBottom: 16 }}
-          >
-            Change Password
-          </Text>
-
-          <TextInput
-            label="Current Password"
-            value={passwordForm.current_password}
-            onChangeText={(text) =>
-              setPasswordForm({ ...passwordForm, current_password: text })
-            }
-            mode="outlined"
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <TextInput
-            label="New Password"
-            value={passwordForm.password}
-            onChangeText={(text) =>
-              setPasswordForm({ ...passwordForm, password: text })
-            }
-            mode="outlined"
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <TextInput
-            label="Confirm New Password"
-            value={passwordForm.password_confirmation}
-            onChangeText={(text) =>
-              setPasswordForm({ ...passwordForm, password_confirmation: text })
-            }
-            mode="outlined"
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={() => setPasswordModalVisible(false)}>
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleChangePassword}
-              loading={isPasswordSaving}
-            >
-              Change Password
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
 
       {/* Two-Factor Modal */}
       <Portal>
@@ -1094,67 +916,6 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
-        </Modal>
-      </Portal>
-
-      {/* Email Verification Modal */}
-      <Portal>
-        <Modal
-          visible={verifyEmailModalVisible}
-          onDismiss={() => setVerifyEmailModalVisible(false)}
-          contentContainerStyle={[
-            styles.modal,
-            { backgroundColor: colors.surface },
-          ]}
-        >
-          <Text
-            variant="titleLarge"
-            style={{ color: colors.onSurface, marginBottom: 8 }}
-          >
-            Verify your email
-          </Text>
-          <Text
-            variant="bodyMedium"
-            style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
-          >
-            We emailed a verification code to {user?.email}. Enter it below.
-          </Text>
-          <TextInput
-            mode="outlined"
-            label="Verification code"
-            value={verifyEmailCode}
-            onChangeText={(t) => setVerifyEmailCode(t.replace(/\s+/g, ""))}
-            keyboardType="number-pad"
-            style={{ marginBottom: 16 }}
-            maxLength={10}
-            autoFocus
-          />
-          <View style={styles.modalButtons}>
-            <Button
-              mode="text"
-              onPress={() => setVerifyEmailModalVisible(false)}
-              disabled={isVerifyingEmail}
-            >
-              Cancel
-            </Button>
-            <Button
-              mode="outlined"
-              onPress={handleSendVerificationEmail}
-              disabled={isSendingVerification || isVerifyingEmail}
-              style={{ marginLeft: 8 }}
-            >
-              {isSendingVerification ? "Resending…" : "Resend"}
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleVerifyEmail}
-              loading={isVerifyingEmail}
-              disabled={isVerifyingEmail}
-              style={{ marginLeft: 8 }}
-            >
-              Verify
-            </Button>
-          </View>
         </Modal>
       </Portal>
 

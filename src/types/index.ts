@@ -105,6 +105,8 @@ export interface Transaction {
   to_account_id?: number;
   payment_method?: number; // API uses this for account
   transfer_to?: number;
+  balance_direction?: "credit" | "debit" | null;
+  transfer_pair_id?: string | null;
   notes?: string;
   receipt_path?: string;
   receipt_file?: string;
@@ -283,6 +285,8 @@ export interface Schedule {
   auto_pay?: boolean;
   category_id?: number;
   subcategory_id?: number;
+  account_id?: number;
+  account?: Account;
   category?: Category;
   subcategory?: Subcategory;
   reminder_days?: number;

@@ -41,6 +41,7 @@ import accountService from "../src/services/accountService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Loan } from "../src/types";
+import { todayDateInputValue } from "../src/utils/date";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
@@ -110,7 +111,7 @@ export default function LoansScreen() {
   const [paymentData, setPaymentData] = useState({
     payment_amount: "",
     account_id: "",
-    payment_date: new Date().toISOString().split("T")[0],
+    payment_date: todayDateInputValue(),
     next_payment: "",
     next_payment_date: "",
     notes: "",
@@ -177,7 +178,7 @@ export default function LoansScreen() {
         next_payment: parseFloat(data.next_payment) || 0,
         term: parseInt(data.term) || 0,
         term_period: data.term_period,
-        start_date: data.start_date || new Date().toISOString().split("T")[0],
+        start_date: data.start_date || todayDateInputValue(),
         next_payment_date: data.next_payment_date || undefined,
         loan_type: data.loan_type,
         account_id: parseInt(data.account_id) || undefined,
@@ -208,7 +209,7 @@ export default function LoansScreen() {
         payment_amount: parseFloat(data.payment_amount) || 0,
         account_id: parseInt(data.account_id) || undefined,
         payment_date:
-          data.payment_date || new Date().toISOString().split("T")[0],
+          data.payment_date || todayDateInputValue(),
         next_payment: data.next_payment
           ? parseFloat(data.next_payment)
           : undefined,
@@ -249,7 +250,7 @@ export default function LoansScreen() {
       next_payment: "",
       term: "",
       term_period: "years",
-      start_date: new Date().toISOString().split("T")[0],
+      start_date: todayDateInputValue(),
       next_payment_date: "",
       loan_type: "Borrowed",
       account_id: defaultAccountId,
@@ -274,7 +275,7 @@ export default function LoansScreen() {
     setPaymentData({
       payment_amount: String(loan.next_payment || ""),
       account_id: defaultAccountId,
-      payment_date: new Date().toISOString().split("T")[0],
+      payment_date: todayDateInputValue(),
       next_payment: "",
       next_payment_date: "",
       notes: "",

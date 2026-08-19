@@ -1,12 +1,12 @@
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
-import * as Crypto from "expo-crypto";
 
 import socialAuthService from "./socialAuthService";
 
 export interface GoogleBrowserAuthResult {
   type: "success" | "cancel" | "error";
   code?: string;
+  state?: string;
   message?: string;
 }
 
@@ -29,14 +29,9 @@ const RETURN_URL = "accounte://auth/callback";
 export async function startGoogleBrowserAuth(
   intent: "login" | "signup",
 ): Promise<GoogleBrowserAuthResult> {
-  // `mobile-` prefix tells the web /auth/callback page to bounce the code
-  // back into the app instead of exchanging it itself.
-  const state = `mobile-${Crypto.randomUUID()}`;
-
   const urlResult = await socialAuthService.getAuthorizationUrl({
     provider: "google",
     intent,
-    state,
   });
   if (!urlResult.success || !urlResult.url) {
     return { type: "error", message: urlResult.message };
@@ -52,20 +47,21 @@ export async function startGoogleBrowserAuth(
 
   const { queryParams } = Linking.parse(result.url);
   const code = typeof queryParams?.code === "string" ? queryParams.code : undefined;
+  const state = typeof queryParams?.state === "string" ? queryParams.state : undefined;
   const error = typeof queryParams?.error === "string" ? queryParams.error : undefined;
   const errorDescription =
     typeof queryParams?.error_description === "string"
       ? queryParams.error_description
       : undefined;
 
-  if (error || !code) {
+  if (error || !code || !state) {
     return {
       type: "error",
       message: errorDescription || error || "Google sign-in failed",
     };
   }
 
-  return { type: "success", code };
+  return { type: "success", code, state };
 }
 
 export default { startGoogleBrowserAuth };

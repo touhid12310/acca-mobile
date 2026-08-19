@@ -142,8 +142,11 @@ const billingService = {
       method: 'POST',
       body: { product_id: productId, transaction_jws: transactionJws },
     }),
-  restoreAppStorePurchases: () =>
-    apiRequest<BillingOverview>('/billing/app-store/restore', { method: 'POST' }),
+  restoreAppStorePurchases: (transactionJwss: string[]) =>
+    apiRequest<BillingOverview>('/billing/app-store/restore', {
+      method: 'POST',
+      body: { transaction_jwss: transactionJwss },
+    }),
 };
 
 export default billingService;

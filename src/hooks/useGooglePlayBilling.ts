@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery } from '@tanstack/react-query';
-import { useIAP, ErrorCode, fetchProducts as fetchStoreProducts } from 'expo-iap';
+import {
+  useIAP,
+  ErrorCode,
+  fetchProducts as fetchStoreProducts,
+  getAvailablePurchases as fetchAvailablePurchases,
+} from 'expo-iap';
 import type { Purchase, ProductSubscription } from 'expo-iap';
 
 import billingService, { StoreProduct } from '../services/billingService';
@@ -10,6 +15,7 @@ import billingService, { StoreProduct } from '../services/billingService';
 type Options = {
   /** Called after the backend has verified a purchase and granted Premium. */
   onEntitlementGranted?: () => void | Promise<void>;
+  onRestoreCompleted?: (active: boolean) => void | Promise<void>;
   onError?: (message: string) => void;
 };
 
@@ -47,13 +53,18 @@ const apiError = (response: { message?: string; error?: string; data?: unknown }
  *
  * Inert on web: `available` stays false and nothing else runs.
  */
-export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options = {}) {
+export function useGooglePlayBilling({
+  onEntitlementGranted,
+  onRestoreCompleted,
+  onError,
+}: Options = {}) {
   const isAndroid = Platform.OS === 'android';
   const isIos = Platform.OS === 'ios';
   const isNativeStore = isAndroid || isIos;
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const redeemedTokens = useRef<Set<string>>(new Set());
+  const finishedTokens = useRef<Set<string>>(new Set());
   // Store events can arrive before `productsQuery` resolves. Hold them here
   // instead of dropping them, and drain once the backend catalogue is known.
   const pendingPurchases = useRef<Purchase[]>([]);
@@ -150,6 +161,8 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
         const verified = await redeem(purchase);
         if (verified) {
           await finishTransaction({ purchase, isConsumable: false });
+          const token = purchaseTokenOf(purchase);
+          if (token) finishedTokens.current.add(token);
         }
       } catch (error) {
         onError?.(error instanceof Error ? error.message : 'Could not complete the purchase.');
@@ -314,29 +327,45 @@ export function useGooglePlayBilling({ onEntitlementGranted, onError }: Options 
     if (!backendEnabled) return;
     setRestoring(true);
     try {
-      await getAvailablePurchases();
+      let response;
       if (isIos) {
-        await billingService.restoreAppStorePurchases();
+        // Query StoreKit now and send that authoritative set to the backend.
+        // Replaying locally cached server rows cannot observe refunds/revokes.
+        const purchases = await fetchAvailablePurchases({
+          onlyIncludeActiveItemsIOS: true,
+        });
+        const transactionJwss = purchases
+          .map(purchaseTokenOf)
+          .filter((value): value is string => Boolean(value));
+        response = await billingService.restoreAppStorePurchases(transactionJwss);
       } else {
-        await billingService.restoreGooglePlayPurchases();
+        await getAvailablePurchases();
+        response = await billingService.restoreGooglePlayPurchases();
       }
-      await onEntitlementGranted?.();
+
+      if (!response.success) {
+        throw new Error(apiError(response, 'Could not restore purchases.'));
+      }
+
+      const overview = unwrap(response.data);
+      const active = overview?.subscription?.status === 'active';
+      await onRestoreCompleted?.(active);
     } catch (error) {
       onError?.(error instanceof Error ? error.message : 'Could not restore purchases.');
     } finally {
       setRestoring(false);
     }
-  }, [backendEnabled, getAvailablePurchases, isIos, onEntitlementGranted, onError]);
+  }, [backendEnabled, getAvailablePurchases, isIos, onError, onRestoreCompleted]);
 
   useEffect(() => {
     if (!backendEnabled || availablePurchases.length === 0) return;
     availablePurchases.forEach((item) => {
       const token = purchaseTokenOf(item);
-      if (token && !redeemedTokens.current.has(token)) {
-        redeem(item).catch(() => undefined);
+      if (token && !finishedTokens.current.has(token)) {
+        processPurchase(item).catch(() => undefined);
       }
     });
-  }, [backendEnabled, availablePurchases, redeem]);
+  }, [backendEnabled, availablePurchases, processPurchase]);
 
   return {
     /** True when this platform's store is configured in admin and products exist. */

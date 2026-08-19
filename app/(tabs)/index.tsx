@@ -57,7 +57,7 @@ import dashboardService, {
 import transactionService from "../../src/services/transactionService";
 import budgetService from "../../src/services/budgetService";
 import goalService from "../../src/services/goalService";
-import { formatRelativeTime } from "../../src/utils/date";
+import { formatRelativeTime, toDateInputValue } from "../../src/utils/date";
 import {
   getAmountSign,
   splitTransactionByCategory,
@@ -106,7 +106,7 @@ export default function DashboardScreen() {
     computePeriodRange("this_month"),
   );
 
-  const toApiDate = (d: Date) => d.toISOString().split("T")[0];
+  const toApiDate = (d: Date) => toDateInputValue(d);
 
   // Fetch period-specific transactions to compute income/expense totals
   const { data: periodTotals } = useQuery<{
