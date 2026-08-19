@@ -95,12 +95,26 @@ export function splitTransactionByCategory(t: {
 
 /**
  * "+" when the row increases its account's balance, "−" when it decreases it.
- * Mirrors AccountBalanceService: income/asset credit, expense/liability debit,
- * transfers follow their notes-encoded direction.
+ *
+ * Mirrors AccountBalanceService::calculateAccountBalance(), which checks
+ * balance_direction BEFORE type:
+ *
+ *   WHEN balance_direction = 'credit' THEN  amount
+ *   WHEN balance_direction = 'debit'  THEN -amount
+ *   WHEN type IN ('income','asset')   THEN  amount
+ *   WHEN type IN ('expense','liability') THEN -amount
+ *   ELSE 0
+ *
+ * Switching on `type` first got loan rows backwards: "Loan Received" is stored
+ * as type=liability with balance_direction=credit, so it rendered as money
+ * leaving the account while the balance it feeds went up.
  */
 export function getAmountSign(
   t: Pick<Transaction, "type" | "balance_direction">,
 ): "+" | "−" | "" {
+  if (t.balance_direction === "credit") return "+";
+  if (t.balance_direction === "debit") return "−";
+
   switch (t.type) {
     case "income":
     case "asset":
@@ -108,13 +122,9 @@ export function getAmountSign(
     case "expense":
     case "liability":
       return "−";
-    case "transfer": {
-      const direction = getTransferDirection(t);
-      if (direction === "in") return "+";
-      if (direction === "out") return "−";
-      return "";
-    }
     default:
+      // Legacy transfer with no backfilled direction: the server scores it 0,
+      // so there is no honest sign to show.
       return "";
   }
 }
