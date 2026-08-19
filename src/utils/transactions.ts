@@ -99,10 +99,10 @@ export function splitTransactionByCategory(t: {
  * Mirrors AccountBalanceService::calculateAccountBalance(), which checks
  * balance_direction BEFORE type:
  *
- *   WHEN balance_direction = 'credit' THEN  amount
- *   WHEN balance_direction = 'debit'  THEN -amount
- *   WHEN type IN ('income','asset')   THEN  amount
- *   WHEN type IN ('expense','liability') THEN -amount
+ *   WHEN balance_direction = 'credit'    THEN  amount
+ *   WHEN balance_direction = 'debit'     THEN -amount
+ *   WHEN type IN ('income','liability')  THEN  amount
+ *   WHEN type IN ('expense','asset')     THEN -amount
  *   ELSE 0
  *
  * Switching on `type` first got loan rows backwards: "Loan Received" is stored
@@ -117,10 +117,12 @@ export function getAmountSign(
 
   switch (t.type) {
     case "income":
-    case "asset":
+    case "liability":
+      // Taking on a debt brings cash in, the same way income does.
       return "+";
     case "expense":
-    case "liability":
+    case "asset":
+      // Acquiring an asset spends cash, the same way an expense does.
       return "−";
     default:
       // Legacy transfer with no backfilled direction: the server scores it 0,
