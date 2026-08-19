@@ -42,6 +42,23 @@ export const reportService = {
     });
   },
 
+  getNetWorth: async (params: {
+    as_of_date?: string;
+  } = {}): Promise<ApiResponse<{ as_of_date: string; net_worth: number }>> => {
+    const token = await getAuthToken();
+    const queryParams = new URLSearchParams();
+    if (params.as_of_date) queryParams.append('as_of_date', params.as_of_date);
+    const query = queryParams.toString();
+    const endpoint = query
+      ? `${API_CONFIG.ENDPOINTS.REPORTS_NET_WORTH}?${query}`
+      : API_CONFIG.ENDPOINTS.REPORTS_NET_WORTH;
+
+    return apiRequest(endpoint, {
+      method: 'GET',
+      token,
+    });
+  },
+
   getNetWorthTimeline: async (months: number = 6): Promise<ApiResponse<NetWorthData[]>> => {
     const token = await getAuthToken();
     return apiRequest<NetWorthData[]>(

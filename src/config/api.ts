@@ -85,6 +85,7 @@ const API_CONFIG = {
     REPORTS: '/reports',
     REPORTS_MONTHLY_SUMMARY: '/reports/monthly-summary',
     REPORTS_CATEGORY_BREAKDOWN: '/reports/category-breakdown',
+    REPORTS_NET_WORTH: '/reports/net-worth',
     REPORTS_NET_WORTH_TIMELINE: '/reports/net-worth-timeline',
     REPORTS_SUMMARY_STATS: '/reports/summary-stats',
     REPORTS_INCOME_STATEMENT: '/reports/income-statement',

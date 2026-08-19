@@ -2,6 +2,7 @@ import API_CONFIG, { apiRequest, getAuthToken } from '../config/api';
 import { ApiResponse } from '../types';
 import transactionService from './transactionService';
 import accountService from './accountService';
+import reportService from './reportService';
 import { toDateInputValue } from '../utils/date';
 
 // Helper to get current month date range
@@ -65,12 +66,14 @@ export const dashboardService = {
 
     try {
       const { start, end } = getMonthRange(0);
+      const today = toDateInputValue(new Date());
 
       // Fetch all data in parallel
-      const [accountsRes, monthlyTransactionsRes, recentTransactionsRes] = await Promise.allSettled([
+      const [accountsRes, monthlyTransactionsRes, recentTransactionsRes, netWorthRes] = await Promise.allSettled([
         accountService.getAll(),
-        transactionService.getAll({ start_date: start, end_date: end, per_page: 100 }),
+        transactionService.getAll({ start_date: start, end_date: end, per_page: 1 }),
         transactionService.getAll({ per_page: 10 }),
+        reportService.getNetWorth({ as_of_date: today }),
       ]);
 
       // Process accounts
@@ -78,22 +81,12 @@ export const dashboardService = {
         ? normalizeArrayResponse(accountsRes.value)
         : [];
 
-      // Process monthly transactions and calculate stats
-      const monthlyTransactions = monthlyTransactionsRes.status === 'fulfilled'
-        ? normalizePaginatedResponse(monthlyTransactionsRes.value)
-        : [];
-
-      // Calculate monthly income and expenses from transactions
-      let monthlyIncome = 0;
-      let monthlyExpenses = 0;
-      monthlyTransactions.forEach((t: any) => {
-        const amount = toNumber(t.amount);
-        if (t.type === 'income') {
-          monthlyIncome += amount;
-        } else if (t.type === 'expense') {
-          monthlyExpenses += amount;
-        }
-      });
+      // Use the server's full-set stats block, not the paginated row array.
+      const monthlyPayload: any =
+        monthlyTransactionsRes.status === 'fulfilled' ? monthlyTransactionsRes.value?.data : null;
+      const monthlyStats = monthlyPayload?.stats ?? {};
+      const monthlyIncome = toNumber(monthlyStats.total_income);
+      const monthlyExpenses = toNumber(monthlyStats.total_expenses);
 
       // Process recent transactions
       const recentTransactionsData = recentTransactionsRes.status === 'fulfilled'
