@@ -3,6 +3,7 @@ import { ApiResponse } from '../types';
 import transactionService from './transactionService';
 import accountService from './accountService';
 import reportService from './reportService';
+import budgetService from './budgetService';
 import { toDateInputValue } from '../utils/date';
 
 // Helper to get current month date range
@@ -69,11 +70,12 @@ export const dashboardService = {
       const today = toDateInputValue(new Date());
 
       // Fetch all data in parallel
-      const [accountsRes, monthlyTransactionsRes, recentTransactionsRes, netWorthRes] = await Promise.allSettled([
+      const [accountsRes, monthlyTransactionsRes, recentTransactionsRes, netWorthRes, budgetsSummaryRes] = await Promise.allSettled([
         accountService.getAll(),
         transactionService.getAll({ start_date: start, end_date: end, per_page: 1 }),
         transactionService.getAll({ per_page: 10 }),
         reportService.getNetWorth({ as_of_date: today }),
+        budgetService.getSummary(),
       ]);
 
       // Process accounts
@@ -104,6 +106,23 @@ export const dashboardService = {
       const serverNetWorth =
         netWorthPayload?.data?.net_worth ?? netWorthPayload?.net_worth;
 
+      const summaryPayload: any =
+        budgetsSummaryRes.status === 'fulfilled' ? budgetsSummaryRes.value?.data : null;
+      const summaryBlock = summaryPayload?.data ?? summaryPayload ?? null;
+      const totalBudgeted = toNumber(summaryBlock?.total_budgeted);
+      const totalSpent = toNumber(summaryBlock?.total_spent);
+      const remaining = toNumber(
+        summaryBlock?.total_remaining ?? summaryBlock?.remaining ?? totalBudgeted - totalSpent,
+      );
+      const budgetSummary =
+        budgetsSummaryRes.status === 'fulfilled' && summaryBlock
+          ? {
+              total_budgeted: totalBudgeted,
+              total_spent: totalSpent,
+              remaining,
+            }
+          : null;
+
       const dashboardData: DashboardData = {
         totalBalance,
         monthlyIncome,
@@ -124,7 +143,7 @@ export const dashboardService = {
           date: t.date,
           category: t.category?.name || t.transaction_categories?.[0]?.category?.name || null,
         })),
-        budgetSummary: null,
+        budgetSummary,
       };
 
       return { success: true, data: dashboardData };

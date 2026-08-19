@@ -51,6 +51,14 @@ export default function ProfileScreen() {
     null,
   );
 
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    password: "",
+    password_confirmation: "",
+  });
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
+
   // 2FA state
   const [twoFactorModalVisible, setTwoFactorModalVisible] = useState(false);
   const [twoFactorStatus, setTwoFactorStatus] = useState({
@@ -116,6 +124,44 @@ export default function ProfileScreen() {
       notifyToast.error("Could not send verification link");
     } finally {
       setIsSendingVerification(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (
+      !passwordForm.current_password ||
+      !passwordForm.password ||
+      !passwordForm.password_confirmation
+    ) {
+      notifyToast.error("All fields are required");
+      return;
+    }
+    if (passwordForm.password.length < 8) {
+      notifyToast.error("New password must be at least 8 characters");
+      return;
+    }
+    if (passwordForm.password !== passwordForm.password_confirmation) {
+      notifyToast.error("Passwords do not match");
+      return;
+    }
+    setIsPasswordSaving(true);
+    try {
+      const result = await authService.changePassword(passwordForm);
+      if (result.success) {
+        notifyToast.success("Password changed successfully");
+        setPasswordModalVisible(false);
+        setPasswordForm({
+          current_password: "",
+          password: "",
+          password_confirmation: "",
+        });
+      } else {
+        notifyToast.error(result.error || (result.data as any)?.message || "Failed to change password");
+      }
+    } catch {
+      notifyToast.error("An error occurred while changing password");
+    } finally {
+      setIsPasswordSaving(false);
     }
   };
 
@@ -564,6 +610,42 @@ export default function ProfileScreen() {
             Security
           </Text>
 
+          {user?.has_password !== false && (
+          <TouchableOpacity
+            style={[styles.securityItem, { borderColor: colors.outline }]}
+            onPress={() => setPasswordModalVisible(true)}
+          >
+            <View
+              style={[
+                styles.securityIcon,
+                { backgroundColor: `${colors.primary}15` },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="lock"
+                size={24}
+                color={colors.primary}
+              />
+            </View>
+            <View style={styles.securityContent}>
+              <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                Change Password
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                Update your account password
+              </Text>
+            </View>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={24}
+              color={colors.onSurfaceVariant}
+            />
+          </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.securityItem, { borderColor: colors.outline }]}
             onPress={() => {
@@ -721,6 +803,67 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Surface>
       </ScrollView>
+
+      <Portal>
+        <Modal
+          visible={passwordModalVisible}
+          onDismiss={() => setPasswordModalVisible(false)}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <Text
+            variant="titleLarge"
+            style={{ color: colors.onSurface, marginBottom: 16 }}
+          >
+            Change Password
+          </Text>
+          <TextInput
+            label="Current Password"
+            value={passwordForm.current_password}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, current_password: text })
+            }
+            mode="outlined"
+            secureTextEntry
+            style={styles.input}
+          />
+          <TextInput
+            label="New Password"
+            value={passwordForm.password}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, password: text })
+            }
+            mode="outlined"
+            secureTextEntry
+            style={styles.input}
+          />
+          <TextInput
+            label="Confirm New Password"
+            value={passwordForm.password_confirmation}
+            onChangeText={(text) =>
+              setPasswordForm({ ...passwordForm, password_confirmation: text })
+            }
+            mode="outlined"
+            secureTextEntry
+            style={styles.input}
+          />
+          <View style={styles.modalButtons}>
+            <Button mode="text" onPress={() => setPasswordModalVisible(false)}>
+              Cancel
+            </Button>
+            <Button
+              mode="contained"
+              onPress={handleChangePassword}
+              loading={isPasswordSaving}
+              disabled={isPasswordSaving}
+            >
+              Save
+            </Button>
+          </View>
+        </Modal>
+      </Portal>
 
       {/* Two-Factor Modal */}
       <Portal>
