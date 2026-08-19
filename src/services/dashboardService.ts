@@ -99,11 +99,19 @@ export const dashboardService = {
         0
       );
 
+      const netWorthPayload: any =
+        netWorthRes.status === 'fulfilled' ? netWorthRes.value?.data : null;
+      const serverNetWorth =
+        netWorthPayload?.data?.net_worth ?? netWorthPayload?.net_worth;
+
       const dashboardData: DashboardData = {
         totalBalance,
         monthlyIncome,
         monthlyExpenses,
-        netWorth: totalBalance,
+        netWorth:
+          serverNetWorth !== undefined && serverNetWorth !== null
+            ? toNumber(serverNetWorth)
+            : totalBalance,
         accounts: accountsData.slice(0, 5),
         recentTransactions: recentTransactionsData.slice(0, 6).map((t: any) => ({
           id: t.id,

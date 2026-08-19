@@ -123,23 +123,14 @@ export default function DashboardScreen() {
       const result = await transactionService.getAll({
         start_date: toApiDate(period.start),
         end_date: toApiDate(period.end),
-        per_page: 1000,
+        per_page: 1,
       });
-      let rows: any[] = [];
-      if (result.success && result.data) {
-        const payload: any = result.data;
-        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
-        else if (Array.isArray(payload?.data)) rows = payload.data;
-        else if (Array.isArray(payload)) rows = payload;
-      }
-      let income = 0;
-      let expenses = 0;
-      for (const t of rows) {
-        const amount = parseFloat(String(t.amount)) || 0;
-        if (t.type === "income") income += amount;
-        else if (t.type === "expense") expenses += amount;
-      }
-      return { income, expenses };
+      const payload: any = result.data;
+      const stats = payload?.stats ?? payload?.data?.stats;
+      return {
+        income: parseFloat(String(stats?.total_income ?? 0)) || 0,
+        expenses: parseFloat(String(stats?.total_expenses ?? 0)) || 0,
+      };
     },
   });
 
@@ -173,23 +164,14 @@ export default function DashboardScreen() {
       const result = await transactionService.getAll({
         start_date: toApiDate(lastMonthRange.start),
         end_date: toApiDate(lastMonthRange.end),
-        per_page: 1000,
+        per_page: 1,
       });
-      let rows: any[] = [];
-      if (result.success && result.data) {
-        const payload: any = result.data;
-        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
-        else if (Array.isArray(payload?.data)) rows = payload.data;
-        else if (Array.isArray(payload)) rows = payload;
-      }
-      let income = 0;
-      let expenses = 0;
-      for (const t of rows) {
-        const amount = parseFloat(String(t.amount)) || 0;
-        if (t.type === "income") income += amount;
-        else if (t.type === "expense") expenses += amount;
-      }
-      return { income, expenses };
+      const payload: any = result.data;
+      const stats = payload?.stats ?? payload?.data?.stats;
+      return {
+        income: parseFloat(String(stats?.total_income ?? 0)) || 0,
+        expenses: parseFloat(String(stats?.total_expenses ?? 0)) || 0,
+      };
     },
   });
 
