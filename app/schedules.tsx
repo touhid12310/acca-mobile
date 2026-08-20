@@ -371,7 +371,9 @@ export default function SchedulesScreen() {
       type: (String(schedule.type || "expense").toLowerCase() === "income"
         ? "income"
         : "expense") as "income" | "expense",
-      frequency: schedule.frequency || "Monthly",
+      frequency: schedule.frequency
+        ? `${String(schedule.frequency).charAt(0).toUpperCase()}${String(schedule.frequency).slice(1).toLowerCase()}`
+        : "Monthly",
       next_due_date: toDateInputValue(schedule.next_due_date),
       notes: schedule.notes || "",
       category_id: schedule.category_id ? String(schedule.category_id) : "",

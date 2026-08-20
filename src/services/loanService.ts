@@ -56,6 +56,8 @@ export const loanService = {
     id: number,
     paymentData: {
       payment_amount: number;
+      principal_paid?: number;
+      interest_paid?: number;
       account_id?: number;
       payment_date: string;
       next_payment?: number;

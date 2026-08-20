@@ -220,12 +220,14 @@ export default function NotificationSettingsScreen() {
           </View>
         ) : (
           <View style={{ gap: spacing.md }}>
+            {/* Percentages mirror BudgetAlertService::WARN_THRESHOLD /
+                LIMIT_THRESHOLD on the backend — keep in sync. */}
             {renderRow(
               "budget_alerts",
               AlertTriangle,
               "Budget Alerts",
-              "Pings you when a budget hits 80% or 100%.",
-              "At 80% and 100% thresholds",
+              "Pings you when a budget hits 75% or 100%.",
+              "At 75% and 100% thresholds",
             )}
 
             {renderRow(

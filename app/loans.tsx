@@ -110,6 +110,8 @@ export default function LoansScreen() {
 
   const [paymentData, setPaymentData] = useState({
     payment_amount: "",
+    principal_paid: "",
+    interest_paid: "0",
     account_id: "",
     payment_date: todayDateInputValue(),
     next_payment: "",
@@ -207,6 +209,12 @@ export default function LoansScreen() {
     }) => {
       const payload = {
         payment_amount: parseFloat(data.payment_amount) || 0,
+        principal_paid: data.principal_paid
+          ? parseFloat(data.principal_paid)
+          : undefined,
+        interest_paid: data.interest_paid
+          ? parseFloat(data.interest_paid)
+          : 0,
         account_id: parseInt(data.account_id) || undefined,
         payment_date:
           data.payment_date || todayDateInputValue(),
@@ -274,6 +282,8 @@ export default function LoansScreen() {
     setSelectedLoan(loan);
     setPaymentData({
       payment_amount: String(loan.next_payment || ""),
+      principal_paid: "",
+      interest_paid: "0",
       account_id: defaultAccountId,
       payment_date: todayDateInputValue(),
       next_payment: "",
@@ -316,12 +326,23 @@ export default function LoansScreen() {
   const handleMakePayment = () => {
     if (!selectedLoan) return;
     const amount = parseFloat(paymentData.payment_amount);
+    const interest = paymentData.interest_paid
+      ? parseFloat(paymentData.interest_paid)
+      : 0;
+    const principal = paymentData.principal_paid
+      ? parseFloat(paymentData.principal_paid)
+      : amount - interest;
     if (!amount || amount <= 0) {
       notifyToast.error("Please enter a valid payment amount");
       return;
     }
-    if (amount > parseFloat(String(selectedLoan.remaining_balance ?? 0))) {
-      notifyToast.error("Payment amount exceeds remaining balance");
+    if (
+      !Number.isFinite(principal) || principal < 0 ||
+      !Number.isFinite(interest) || interest < 0 ||
+      Math.abs(principal + interest - amount) > 0.009 ||
+      principal > parseFloat(String(selectedLoan.remaining_balance ?? 0))
+    ) {
+      notifyToast.error("Principal plus interest must equal the payment, and principal cannot exceed the remaining balance");
       return;
     }
     if (!paymentData.account_id) {
@@ -1411,6 +1432,29 @@ export default function LoansScreen() {
               value={paymentData.payment_amount}
               onChangeText={(text) =>
                 setPaymentData({ ...paymentData, payment_amount: text })
+              }
+              mode="outlined"
+              keyboardType="decimal-pad"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Principal"
+              value={paymentData.principal_paid}
+              onChangeText={(text) =>
+                setPaymentData({ ...paymentData, principal_paid: text })
+              }
+              mode="outlined"
+              keyboardType="decimal-pad"
+              placeholder="Defaults to payment minus interest"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Interest"
+              value={paymentData.interest_paid}
+              onChangeText={(text) =>
+                setPaymentData({ ...paymentData, interest_paid: text })
               }
               mode="outlined"
               keyboardType="decimal-pad"

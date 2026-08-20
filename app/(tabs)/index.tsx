@@ -316,17 +316,13 @@ export default function DashboardScreen() {
       toApiDate(cashFlowRange.end),
     ],
     queryFn: async () => {
-      const result = await transactionService.getAll({
+      const result = await transactionService.getAllPages({
         start_date: toApiDate(cashFlowRange.start),
         end_date: toApiDate(cashFlowRange.end),
-        per_page: 5000,
       });
       let rows: any[] = [];
       if (result.success && result.data) {
-        const payload: any = result.data;
-        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
-        else if (Array.isArray(payload?.data)) rows = payload.data;
-        else if (Array.isArray(payload)) rows = payload;
+        if (Array.isArray(result.data)) rows = result.data;
       }
 
       const MONTHS = [
@@ -494,18 +490,14 @@ export default function DashboardScreen() {
       toApiDate(breakdownRange.end),
     ],
     queryFn: async () => {
-      const result = await transactionService.getAll({
+      const result = await transactionService.getAllPages({
         start_date: toApiDate(breakdownRange.start),
         end_date: toApiDate(breakdownRange.end),
         type: "expense",
-        per_page: 2000,
       });
       let rows: any[] = [];
       if (result.success && result.data) {
-        const payload: any = result.data;
-        if (Array.isArray(payload?.data?.data)) rows = payload.data.data;
-        else if (Array.isArray(payload?.data)) rows = payload.data;
-        else if (Array.isArray(payload)) rows = payload;
+        if (Array.isArray(result.data)) rows = result.data;
       }
       const totals = new Map<string, number>();
       for (const t of rows) {

@@ -337,20 +337,32 @@ export default function AccountDetailScreen() {
         let matched = 0;
         let unmatched = 0;
 
+        const remainingExisting = [...existingTx];
         const matchedData = bankTransactions.map((bankTx) => {
-          const match = existingTx.find((accTx: Transaction) => {
+          const matchIndex = remainingExisting.findIndex((accTx: Transaction) => {
             const bankDate = bankTx.date?.split("T")[0];
             const accDate = (accTx.date || "").split("T")[0];
             const amountMatch =
-              Math.abs(Number(accTx.amount) - bankTx.amount) < 0.01;
+              Math.abs(Math.abs(Number(accTx.amount)) - Math.abs(bankTx.amount)) < 0.01;
             const dateMatch = bankDate === accDate;
             const merchantMatch =
               bankTx.merchant_name?.toLowerCase() ===
               accTx.merchant_name?.toLowerCase();
-            return dateMatch && amountMatch && merchantMatch;
+            const directionFor = (tx: any) => {
+              if (tx.balance_direction) return tx.balance_direction;
+              if (tx.type === "income" || tx.type === "liability") return "credit";
+              if (tx.type === "expense" || tx.type === "asset") return "debit";
+              return null;
+            };
+            const bankDirection = directionFor(bankTx);
+            const accountDirection = directionFor(accTx);
+            const directionMatch =
+              !bankDirection || !accountDirection || bankDirection === accountDirection;
+            return dateMatch && amountMatch && merchantMatch && directionMatch;
           });
 
-          if (match) {
+          if (matchIndex !== -1) {
+            const match = remainingExisting.splice(matchIndex, 1)[0];
             matched++;
             return { ...bankTx, isMatched: true, matchedData: match };
           } else {

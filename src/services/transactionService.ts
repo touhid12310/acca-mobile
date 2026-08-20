@@ -44,6 +44,32 @@ export const transactionService = {
     });
   },
 
+  getAllPages: async (
+    filters: TransactionFilters = {},
+  ): Promise<ApiResponse<Transaction[]>> => {
+    const rows: Transaction[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      const response = await transactionService.getAll({
+        ...filters,
+        page,
+        per_page: 1000,
+      });
+      if (!response.success) return response as unknown as ApiResponse<Transaction[]>;
+
+      const envelope: any = response.data;
+      const paginator: any = envelope?.data?.data ? envelope.data : envelope;
+      const pageRows = Array.isArray(paginator?.data) ? paginator.data : [];
+      rows.push(...pageRows);
+      lastPage = Number(paginator?.last_page || 1);
+      page += 1;
+    } while (page <= lastPage);
+
+    return { success: true, data: rows } as ApiResponse<Transaction[]>;
+  },
+
   getById: async (id: number): Promise<ApiResponse<Transaction>> => {
     const token = await getAuthToken();
     return apiRequest<Transaction>(
