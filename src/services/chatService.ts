@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import API_CONFIG, { apiRequest, buildApiUrl, getAuthToken } from '../config/api';
 import { ChatMessage, ExpenseCandidate, Category, Account, ApiResponse } from '../types';
 
@@ -66,6 +68,10 @@ export const chatService = {
     }
 
     const formData = new FormData();
+
+    // Lets the assistant answer "how do I…" with the mobile tabs rather than
+    // the web sidebar. See resolveClientPlatform() on the backend.
+    formData.append('platform', Platform.OS);
 
     if (message) {
       formData.append('message', message);
