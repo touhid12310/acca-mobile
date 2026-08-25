@@ -12,7 +12,7 @@ import { Link, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as WebBrowser from "expo-web-browser";
-import { Lock, Mail, UserPlus, User2 } from "lucide-react-native";
+import { Lock, Mail, Smartphone, UserPlus, User2 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
@@ -33,6 +33,7 @@ export default function RegisterScreen() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [mobile, setMobile] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -123,6 +124,9 @@ export default function RegisterScreen() {
     if (!email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(email))
       newErrors.email = "Please enter a valid email";
+    if (!mobile.trim()) newErrors.mobile = "Mobile number is required";
+    else if (!/^\+?[0-9][0-9\s\-()]{6,19}$/.test(mobile.trim()))
+      newErrors.mobile = "Please enter a valid mobile number";
     if (!password) newErrors.password = "Password is required";
     else if (password.length < 8)
       newErrors.password = "Password must be at least 8 characters";
@@ -142,6 +146,7 @@ export default function RegisterScreen() {
       const result = await register(
         name.trim(),
         email.trim(),
+        mobile.trim(),
         password,
         confirmPassword,
       );
@@ -238,6 +243,20 @@ export default function RegisterScreen() {
               autoComplete="email"
               icon={Mail}
               error={errors.email}
+            />
+            <Input
+              label="Mobile number"
+              placeholder="+8801XXXXXXXXX"
+              value={mobile}
+              onChangeText={(t) => {
+                setMobile(t);
+                if (errors.mobile) setErrors((p) => ({ ...p, mobile: "" }));
+              }}
+              keyboardType="phone-pad"
+              autoCapitalize="none"
+              autoComplete="tel"
+              icon={Smartphone}
+              error={errors.mobile}
             />
             <Input
               label="Password"

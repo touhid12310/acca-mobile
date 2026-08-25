@@ -55,6 +55,7 @@ interface AuthContextType {
   register: (
     name: string,
     email: string,
+    mobile: string,
     password: string,
     confirmPassword: string
   ) => Promise<{
@@ -262,6 +263,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const register = useCallback(async (
     name: string,
     email: string,
+    mobile: string,
     password: string,
     confirmPassword: string
   ) => {
@@ -269,6 +271,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const result = await authService.register(
         name,
         email,
+        mobile,
         password,
         confirmPassword
       );

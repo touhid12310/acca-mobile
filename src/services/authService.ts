@@ -32,6 +32,7 @@ export const authService = {
   register: async (
     name: string,
     email: string,
+    mobile: string,
     password: string,
     confirmPassword: string
   ): Promise<ApiResponse<RegisterResponse>> => {
@@ -40,6 +41,7 @@ export const authService = {
       body: JSON.stringify({
         name,
         email,
+        mobile,
         password,
         confirm_password: confirmPassword,
         timezone: detectTimeZone(),
