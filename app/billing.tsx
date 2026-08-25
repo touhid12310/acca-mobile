@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -12,7 +12,7 @@ import { BrandStrip } from "../src/components";
 import { Button, Card, ScreenHeader } from "../src/components/ui";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
-import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice } from "../src/services/billingService";
+import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice, BillingCycle } from "../src/services/billingService";
 import { useGooglePlayBilling } from "../src/hooks/useGooglePlayBilling";
 import { radius, spacing, typography } from "../src/constants/theme";
 
@@ -42,6 +42,8 @@ export default function BillingScreen() {
   // An invoice carries exactly one coupon, so applying another replaces it.
   const [appliedCoupon, setAppliedCoupon] = useState<CouponOffer | null>(null);
   const [couponInput, setCouponInput] = useState("");
+  // null = follow the plan's own default cycle (yearly whenever it is sold).
+  const [billingCycle, setBillingCycle] = useState<BillingCycle | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
 
   const plansQuery = useQuery({
@@ -157,11 +159,27 @@ export default function BillingScreen() {
     }
   };
 
+  /** Which cycle to price a plan on: the user's pick, else the plan default. */
+  const cycleFor = useCallback(
+    (plan: BillingPlan): BillingCycle => {
+      const cycles = plan?.pricing?.cycles || {};
+      const preferred = billingCycle || plan?.pricing?.default_cycle || "monthly";
+
+      return (cycles[preferred] ? preferred : (Object.keys(cycles)[0] as BillingCycle)) || "monthly";
+    },
+    [billingCycle],
+  );
+
+  const pricingFor = useCallback(
+    (plan: BillingPlan) => plan?.pricing?.cycles?.[cycleFor(plan)] || null,
+    [cycleFor],
+  );
+
   const buyPlan = async (plan: BillingPlan) => {
     setBusy(plan.slug);
     try {
       const code = appliedCoupon?.plan_slug === plan.slug ? appliedCoupon.code : null;
-      const response = await billingService.createInvoice(plan.slug, code);
+      const response = await billingService.createInvoice(plan.slug, code, cycleFor(plan));
       const invoice = unwrapData(response.data);
       if (!response.success || !invoice) throw new Error(apiMessage(response, "Could not create invoice."));
       await checkout(invoice);
@@ -172,8 +190,27 @@ export default function BillingScreen() {
   };
 
   const paidPlans = useMemo(
-    () => (plansQuery.data || []).filter((plan) => plan.slug !== "free" && Number(plan.price) > 0),
+    () =>
+      (plansQuery.data || []).filter(
+        (plan) => plan.slug !== "free" && (Number(plan.price) > 0 || Number(plan.yearly_price) > 0),
+      ),
     [plansQuery.data],
+  );
+
+  const anyYearly = useMemo(
+    () => paidPlans.some((plan) => Boolean(plan?.pricing?.cycles?.yearly)),
+    [paidPlans],
+  );
+
+  const activeCycle: BillingCycle = billingCycle || (anyYearly ? "yearly" : "monthly");
+
+  const bestYearlySaving = useMemo(
+    () =>
+      paidPlans.reduce(
+        (best, plan) => Math.max(best, plan?.pricing?.cycles?.yearly?.savings_percent || 0),
+        0,
+      ),
+    [paidPlans],
   );
 
   /**
@@ -381,16 +418,80 @@ export default function BillingScreen() {
             </Card>
             )}
 
+            {anyYearly && (
+              <View style={[styles.cycleSwitch, { backgroundColor: colors.surfaceVariant ?? `${colors.primary}12` }]}>
+                {(["monthly", "yearly"] as BillingCycle[]).map((option) => {
+                  const active = activeCycle === option;
+                  return (
+                    <Pressable
+                      key={option}
+                      onPress={() => setBillingCycle(option)}
+                      style={[styles.cycleOption, active && { backgroundColor: colors.primary }]}
+                    >
+                      <Text
+                        style={[
+                          styles.cycleLabel,
+                          { color: active ? "#ffffff" : colors.onSurfaceVariant },
+                        ]}
+                      >
+                        {option === "yearly" ? "Yearly" : "Monthly"}
+                      </Text>
+                      {option === "yearly" && bestYearlySaving > 0 && (
+                        <View
+                          style={[
+                            styles.cycleSave,
+                            { backgroundColor: active ? "rgba(255,255,255,0.24)" : colors.primaryContainer },
+                          ]}
+                        >
+                          <Text style={[styles.cycleSaveText, { color: active ? "#ffffff" : colors.primary }]}>
+                            -{bestYearlySaving}%
+                          </Text>
+                        </View>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             {(plansQuery.data || []).map((plan) => {
               const current = overview?.current_plan?.slug === plan.slug;
               const premium = plan.slug !== "free";
               const planCoupon = appliedCoupon?.plan_slug === plan.slug ? appliedCoupon : null;
+              const planCycle = cycleFor(plan);
+              const pricing = pricingFor(plan);
               const canTrial = premium && plan.trial_enabled && overview?.subscription?.can_start_trial && plan.trial_days > 0 && overview?.current_plan?.slug === "free";
               return (
                 <Card key={plan.slug} variant="outlined" style={[styles.planCard, plan.is_featured && { borderColor: colors.primary, borderWidth: 2 }]}>
                   {plan.is_featured && <View style={[styles.badge, { backgroundColor: colors.primaryContainer }]}><Crown size={15} color={colors.primary} /><Text style={[styles.badgeText, { color: colors.primary }]}>BEST VALUE</Text></View>}
-                  <View style={styles.planTop}><View style={styles.flex}><Text style={[styles.planName, { color: colors.onSurface }]}>{plan.name}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{plan.tagline}</Text></View><View style={styles.priceBlock}>{planCoupon && <Text style={[styles.strikePrice, { color: colors.onSurfaceVariant }]}>{money(plan.price, plan.currency)}</Text>}<Text style={[styles.price, { color: colors.onSurface }]}>{money(planCoupon ? planCoupon.total : plan.price, plan.currency)}<Text style={[styles.period, { color: colors.onSurfaceVariant }]}>/{plan.billing_interval === "year" ? "yr" : "mo"}</Text></Text></View></View>
+                  <View style={styles.planTop}><View style={styles.flex}><Text style={[styles.planName, { color: colors.onSurface }]}>{plan.name}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{plan.tagline}</Text></View><View style={styles.priceBlock}>
+                        {/* Struck through: the coupon's "before" price when one is
+                            applied, otherwise the plan's undiscounted rate. */}
+                        {planCoupon ? (
+                          <Text style={[styles.strikePrice, { color: colors.onSurfaceVariant }]}>
+                            {money(pricing?.price ?? plan.price, plan.currency)}
+                          </Text>
+                        ) : pricing?.original_price ? (
+                          <Text style={[styles.strikePrice, { color: colors.onSurfaceVariant }]}>
+                            {money(pricing.original_price, plan.currency)}
+                          </Text>
+                        ) : null}
+                        <Text style={[styles.price, { color: colors.onSurface }]}>
+                          {money(planCoupon ? planCoupon.total : (pricing?.price ?? plan.price), plan.currency)}
+                          <Text style={[styles.period, { color: colors.onSurfaceVariant }]}>
+                            /{planCycle === "yearly" ? "yr" : "mo"}
+                          </Text>
+                        </Text>
+                      </View></View>
                   {planCoupon && <View style={styles.trial}><Tag size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{planCoupon.code} — {planCoupon.label}{planCoupon.covers_full_amount ? " · nothing to pay" : ""}</Text></View>}
+                  {!planCoupon && planCycle === "yearly" && (pricing?.savings_percent ?? 0) > 0 && (
+                    <View style={styles.saveRow}>
+                      <BadgePercent size={15} color={colors.primary} />
+                      <Text style={[styles.saveText, { color: colors.primary }]}>
+                        Save {pricing?.savings_percent}% — {money(pricing?.per_month ?? 0, plan.currency)}/mo billed yearly
+                      </Text>
+                    </View>
+                  )}
                   {premium && plan.trial_enabled && plan.trial_days > 0 && <View style={styles.trial}><Zap size={16} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{plan.trial_days}-day free trial</Text></View>}
                   <View style={styles.features}>{Object.entries(plan.features || {}).map(([key, label]) => <View style={styles.feature} key={key}><Check size={17} color={colors.tertiary} /><Text style={[styles.featureText, { color: colors.onSurface }]}>{label}</Text></View>)}</View>
                   {plan.ai_monthly_limit ? <View style={[styles.quota, { backgroundColor: colors.primaryContainer }]}><Sparkles size={16} color={colors.primary} /><Text style={{ color: colors.onPrimaryContainer, fontWeight: "700" }}>Up to {plan.ai_monthly_limit} AI transactions per period</Text></View> : null}
@@ -452,6 +553,27 @@ const styles = StyleSheet.create({
   planName: { ...typography.h1 },
   priceBlock: { alignItems: "flex-end" },
   price: { fontSize: 23, fontWeight: "800" },
+  cycleSwitch: {
+    flexDirection: "row",
+    alignSelf: "center",
+    padding: 4,
+    borderRadius: 999,
+    gap: 4,
+    marginBottom: 4,
+  },
+  cycleOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 9,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+  },
+  cycleLabel: { fontSize: 14, fontWeight: "700" },
+  cycleSave: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
+  cycleSaveText: { fontSize: 11, fontWeight: "800" },
+  saveRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  saveText: { fontSize: 12.5, fontWeight: "600", flex: 1 },
   strikePrice: { ...typography.caption, textDecorationLine: "line-through" },
   period: { fontSize: 12, fontWeight: "500" },
   couponCard: { gap: spacing.sm },

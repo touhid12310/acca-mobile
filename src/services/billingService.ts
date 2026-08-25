@@ -1,14 +1,36 @@
 import { Platform } from 'react-native';
 import { apiRequest } from '../config/api';
 
+export type BillingCycle = 'monthly' | 'yearly';
+
+export type BillingCyclePrice = {
+  cycle: BillingCycle;
+  price: number;
+  /** The "normal" rate shown struck through; null when there is no discount. */
+  original_price: number | null;
+  savings_percent: number;
+  per_month: number;
+  currency: string;
+  google_play_product_id: string | null;
+  apple_product_id: string | null;
+};
+
 export type BillingPlan = {
   id: number;
   name: string;
   slug: string;
   tagline?: string;
   price: string;
+  yearly_price: string | null;
+  yearly_original_price: string | null;
+  yearly_enabled: boolean;
   currency: string;
   billing_interval: 'month' | 'year';
+  /** Cycle-aware pricing computed by the API. */
+  pricing?: {
+    default_cycle: BillingCycle;
+    cycles: Partial<Record<BillingCycle, BillingCyclePrice>>;
+  };
   trial_days: number;
   trial_enabled: boolean;
   invoice_lead_days: number;
@@ -93,10 +115,14 @@ const billingService = {
   getOverview: () => apiRequest<BillingOverview>('/billing/overview'),
   startTrial: (planSlug: string) =>
     apiRequest(`/billing/plans/${planSlug}/trial`, { method: 'POST' }),
-  createInvoice: (planSlug: string, couponCode?: string | null) =>
+  createInvoice: (planSlug: string, couponCode?: string | null, billingCycle?: string | null) =>
     apiRequest<SubscriptionInvoice>('/billing/invoices', {
       method: 'POST',
-      body: { plan_slug: planSlug, coupon_code: couponCode ?? null },
+      body: {
+        plan_slug: planSlug,
+        coupon_code: couponCode ?? null,
+        billing_cycle: billingCycle ?? null,
+      },
     }),
   getAvailableCoupons: () => apiRequest<CouponOffer[]>('/billing/coupons/available'),
   previewCoupon: (planSlug: string, couponCode: string) =>
