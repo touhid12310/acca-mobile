@@ -430,7 +430,20 @@ export default function LoansScreen() {
 
       const share = unwrapData(result.data) as LoanShare;
       setStatement((prev) => (prev ? { ...prev, share } : prev));
-      notifyToast.success(enable ? "Public link created." : "Public link revoked.");
+
+      if (!enable) {
+        notifyToast.success("Public link revoked.");
+        return;
+      }
+
+      // Creating the link is the moment it is wanted on the clipboard; the
+      // Copy button stays for later, but is no longer a required second tap.
+      if (share?.url) {
+        await Clipboard.setStringAsync(share.url);
+        notifyToast.success("Public link created and copied.");
+      } else {
+        notifyToast.success("Public link created.");
+      }
     } catch (error) {
       notifyToast.error(error instanceof Error ? error.message : "Could not update the link.");
     } finally {
