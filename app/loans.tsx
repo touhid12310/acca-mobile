@@ -131,7 +131,6 @@ export default function LoansScreen() {
 
   const [paymentData, setPaymentData] = useState({
     payment_amount: "",
-    principal_paid: "",
     interest_paid: "0",
     account_id: "",
     payment_date: todayDateInputValue(),
@@ -236,7 +235,7 @@ export default function LoansScreen() {
         direction: paymentDirection,
         // Money going the other way is fresh principal: no interest split.
         principal_paid: settling
-          ? (data.principal_paid ? parseFloat(data.principal_paid) : undefined)
+          ? undefined
           : amount,
         interest_paid: settling
           ? (data.interest_paid ? parseFloat(data.interest_paid) : 0)
@@ -324,8 +323,7 @@ export default function LoansScreen() {
     setSelectedLoan(loan);
     setPaymentData({
       payment_amount: "",
-      principal_paid: "",
-      interest_paid: "0",
+        interest_paid: "0",
       account_id: defaultAccountId,
       payment_date: todayDateInputValue(),
       next_payment: "",
@@ -371,23 +369,24 @@ export default function LoansScreen() {
     const interest = paymentData.interest_paid
       ? parseFloat(paymentData.interest_paid)
       : 0;
-    const principal = paymentData.principal_paid
-      ? parseFloat(paymentData.principal_paid)
-      : amount - interest;
+    // Principal is no longer asked for: whatever is not interest comes off
+    // the balance, which is what everyone meant by the field anyway.
+    const principal = amount - interest;
     if (!amount || amount <= 0) {
       notifyToast.error("Please enter a valid payment amount");
       return;
     }
     // The split and the balance ceiling only apply when settling the loan.
+    const settlingEntry = isRepaymentDirection(selectedLoan, paymentDirection);
+    if (settlingEntry && (!Number.isFinite(interest) || interest < 0 || interest > amount)) {
+      notifyToast.error("Interest cannot be negative or larger than the payment.");
+      return;
+    }
     if (
-      isRepaymentDirection(selectedLoan, paymentDirection) && (
-        !Number.isFinite(principal) || principal < 0 ||
-        !Number.isFinite(interest) || interest < 0 ||
-        Math.abs(principal + interest - amount) > 0.009 ||
-        principal > parseFloat(String(selectedLoan.remaining_balance ?? 0))
-      )
+      settlingEntry &&
+      principal > parseFloat(String(selectedLoan.remaining_balance ?? 0)) + 0.009
     ) {
-      notifyToast.error("Principal plus interest must equal the payment, and principal cannot exceed the remaining balance");
+      notifyToast.error("That is more than the outstanding balance.");
       return;
     }
     if (!paymentData.account_id) {
@@ -416,6 +415,28 @@ export default function LoansScreen() {
   const closeStatement = () => {
     setStatementVisible(false);
     setStatement(null);
+    // Otherwise an expanded note stays expanded for whichever loan opens next.
+    setNotesExpanded(false);
+    setExpandedEntryNotes(new Set());
+  };
+
+  // Short enough that the preview plus "See more" stays on one line.
+  const ENTRY_NOTE_LIMIT = 45;
+  const [expandedEntryNotes, setExpandedEntryNotes] = useState<Set<number>>(
+    () => new Set()
+  );
+  const [notesExpanded, setNotesExpanded] = useState(false);
+
+  const toggleEntryNote = (id: number) => {
+    setExpandedEntryNotes((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const toggleShareLink = async (enable: boolean) => {
@@ -1642,9 +1663,22 @@ export default function LoansScreen() {
                     <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
                       NOTES
                     </Text>
-                    <Text variant="bodyMedium" style={{ color: colors.onSurface, marginTop: 4 }}>
+                    <Text
+                      variant="bodyMedium"
+                      numberOfLines={notesExpanded ? undefined : 8}
+                      style={{ color: colors.onSurface, marginTop: 4 }}
+                    >
                       {selectedLoan.notes}
                     </Text>
+                    {selectedLoan.notes.length > ENTRY_NOTE_LIMIT && (
+                      <Text
+                        variant="bodySmall"
+                        onPress={() => setNotesExpanded((open) => !open)}
+                        style={{ color: colors.primary, fontWeight: "600", marginTop: 6 }}
+                      >
+                        {notesExpanded ? "See less" : "See more"}
+                      </Text>
+                    )}
                   </Surface>
                 )}
 
@@ -1770,12 +1804,26 @@ export default function LoansScreen() {
                         {entry.interest > 0 ? ` · int ${formatAmount(entry.interest)}` : ""}
                       </Text>
                       {!!entry.notes && (
-                        <Text
-                          variant="bodySmall"
-                          style={{ color: colors.onSurfaceVariant, marginTop: 2 }}
-                        >
-                          {entry.notes}
-                        </Text>
+                        <>
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: colors.onSurfaceVariant, marginTop: 2 }}
+                          >
+                            {expandedEntryNotes.has(entry.id) ||
+                            entry.notes.length <= ENTRY_NOTE_LIMIT
+                              ? entry.notes
+                              : entry.notes.slice(0, ENTRY_NOTE_LIMIT).trimEnd() + "…"}
+                          </Text>
+                          {entry.notes.length > ENTRY_NOTE_LIMIT && (
+                            <Text
+                              variant="bodySmall"
+                              onPress={() => toggleEntryNote(entry.id)}
+                              style={{ color: colors.primary, fontWeight: "600", marginTop: 2 }}
+                            >
+                              {expandedEntryNotes.has(entry.id) ? "See less" : "See more"}
+                            </Text>
+                          )}
+                        </>
                       )}
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
@@ -1938,33 +1986,19 @@ export default function LoansScreen() {
               style={styles.input}
             />
 
-            {/* The principal/interest split only means something when the
-                entry is settling the loan. */}
+            {/* Interest only means anything when the entry settles the loan;
+                the rest of the payment comes off the balance automatically. */}
             {isRepaymentDirection(selectedLoan, paymentDirection) && (
-              <>
-                <TextInput
-                  label="Principal"
-                  value={paymentData.principal_paid}
-                  onChangeText={(text) =>
-                    setPaymentData({ ...paymentData, principal_paid: text })
-                  }
-                  mode="outlined"
-                  keyboardType="decimal-pad"
-                  placeholder="Defaults to payment minus interest"
-                  style={styles.input}
-                />
-
-                <TextInput
-                  label="Interest"
-                  value={paymentData.interest_paid}
-                  onChangeText={(text) =>
-                    setPaymentData({ ...paymentData, interest_paid: text })
-                  }
-                  mode="outlined"
-                  keyboardType="decimal-pad"
-                  style={styles.input}
-                />
-              </>
+              <TextInput
+                label="Interest"
+                value={paymentData.interest_paid}
+                onChangeText={(text) =>
+                  setPaymentData({ ...paymentData, interest_paid: text })
+                }
+                mode="outlined"
+                keyboardType="decimal-pad"
+                style={styles.input}
+              />
             )}
 
             {/* Account Selection for Payment */}
