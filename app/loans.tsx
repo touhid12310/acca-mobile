@@ -937,7 +937,7 @@ export default function LoansScreen() {
                         variant="bodySmall"
                         style={{ color: colors.onSurfaceVariant }}
                       >
-                        Original
+                        {loan.loan_type === "Borrowed" ? "Total borrowed" : "Total lent"}
                       </Text>
                       <Text
                         variant="bodyMedium"
