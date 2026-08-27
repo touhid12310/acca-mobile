@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
+  Share,
   View,
   StyleSheet,
   ScrollView,
@@ -29,6 +30,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -36,14 +39,25 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import { notifyToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
-import loanService from "../src/services/loanService";
+import loanService, {
+  LoanDirection,
+  LoanShare,
+  LoanStatement,
+} from "../src/services/loanService";
 import accountService from "../src/services/accountService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Loan } from "../src/types";
-import { todayDateInputValue } from "../src/utils/date";
+import { formatDate, todayDateInputValue } from "../src/utils/date";
 
 // Helper function to extract detailed validation errors from API response
+/**
+ * The API wraps payloads as { success, data: { ... } }; apiRequest hands back
+ * the whole body, so one more hop is needed to reach the payload.
+ */
+const unwrapData = <T,>(value: any): T | undefined =>
+  (value && typeof value === "object" && "data" in value ? value.data : value) as T | undefined;
+
 const formatApiError = (result: any): string => {
   const errorData = result.data;
   let errorMsg = errorData?.message || result.error || "Request failed";
@@ -83,6 +97,13 @@ export default function LoansScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  // 'in' = money arrived, 'out' = money left. Whether that settles or grows
+  // the loan depends on loan_type — see LoanLedgerService on the backend.
+  const [paymentDirection, setPaymentDirection] = useState<LoanDirection>("in");
+  const [statementVisible, setStatementVisible] = useState(false);
+  const [statement, setStatement] = useState<LoanStatement | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [shareBusy, setShareBusy] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -207,13 +228,18 @@ export default function LoansScreen() {
       id: number;
       data: typeof paymentData;
     }) => {
+      const settling = isRepaymentDirection(selectedLoan, paymentDirection);
+      const amount = parseFloat(data.payment_amount) || 0;
+
       const payload = {
-        payment_amount: parseFloat(data.payment_amount) || 0,
-        principal_paid: data.principal_paid
-          ? parseFloat(data.principal_paid)
-          : undefined,
-        interest_paid: data.interest_paid
-          ? parseFloat(data.interest_paid)
+        payment_amount: amount,
+        direction: paymentDirection,
+        // Money going the other way is fresh principal: no interest split.
+        principal_paid: settling
+          ? (data.principal_paid ? parseFloat(data.principal_paid) : undefined)
+          : amount,
+        interest_paid: settling
+          ? (data.interest_paid ? parseFloat(data.interest_paid) : 0)
           : 0,
         account_id: parseInt(data.account_id) || undefined,
         payment_date:
@@ -276,12 +302,28 @@ export default function LoansScreen() {
     setShowAccountPicker(false);
   };
 
-  const openPaymentModal = (loan: Loan) => {
+  /** Mirrors LoanLedgerService: which direction settles this kind of loan. */
+  const isRepaymentDirection = (loan: Loan | null, direction: LoanDirection) =>
+    loan?.loan_type === "Borrowed" ? direction === "out" : direction === "in";
+
+  const directionLabels = (loan: Loan | null) =>
+    loan?.loan_type === "Borrowed"
+      ? { in: "Borrowed more", out: "Repayment sent" }
+      : { in: "Payment received", out: "Amount given" };
+
+  /** One word each for the card buttons — the full phrases wrap on narrow phones. */
+  const directionShortLabels = (loan: Loan | null) =>
+    loan?.loan_type === "Borrowed"
+      ? { in: "Borrowed", out: "Repaid" }
+      : { in: "Received", out: "Given" };
+
+  const openPaymentModal = (loan: Loan, direction: LoanDirection = "in") => {
     const defaultAccountId = accounts?.[0]?.id ? String(accounts[0].id) : "";
 
+    setPaymentDirection(direction);
     setSelectedLoan(loan);
     setPaymentData({
-      payment_amount: String(loan.next_payment || ""),
+      payment_amount: "",
       principal_paid: "",
       interest_paid: "0",
       account_id: defaultAccountId,
@@ -336,11 +378,14 @@ export default function LoansScreen() {
       notifyToast.error("Please enter a valid payment amount");
       return;
     }
+    // The split and the balance ceiling only apply when settling the loan.
     if (
-      !Number.isFinite(principal) || principal < 0 ||
-      !Number.isFinite(interest) || interest < 0 ||
-      Math.abs(principal + interest - amount) > 0.009 ||
-      principal > parseFloat(String(selectedLoan.remaining_balance ?? 0))
+      isRepaymentDirection(selectedLoan, paymentDirection) && (
+        !Number.isFinite(principal) || principal < 0 ||
+        !Number.isFinite(interest) || interest < 0 ||
+        Math.abs(principal + interest - amount) > 0.009 ||
+        principal > parseFloat(String(selectedLoan.remaining_balance ?? 0))
+      )
     ) {
       notifyToast.error("Principal plus interest must equal the payment, and principal cannot exceed the remaining balance");
       return;
@@ -350,6 +395,77 @@ export default function LoansScreen() {
       return;
     }
     paymentMutation.mutate({ id: selectedLoan.id, data: paymentData });
+  };
+
+  const openStatement = async (loan: Loan) => {
+    setSelectedLoan(loan);
+    setStatement(null);
+    setStatementVisible(true);
+    setStatementLoading(true);
+    try {
+      const result = await loanService.getStatement(loan.id);
+      if (result.success) setStatement(unwrapData(result.data) as LoanStatement);
+      else notifyToast.error("Could not load the statement.");
+    } catch {
+      notifyToast.error("Could not load the statement.");
+    } finally {
+      setStatementLoading(false);
+    }
+  };
+
+  const closeStatement = () => {
+    setStatementVisible(false);
+    setStatement(null);
+  };
+
+  const toggleShareLink = async (enable: boolean) => {
+    if (!selectedLoan || shareBusy) return;
+    setShareBusy(true);
+    try {
+      const result = enable
+        ? await loanService.createShareLink(selectedLoan.id)
+        : await loanService.revokeShareLink(selectedLoan.id);
+
+      if (!result.success) throw new Error(formatApiError(result));
+
+      const share = unwrapData(result.data) as LoanShare;
+      setStatement((prev) => (prev ? { ...prev, share } : prev));
+      notifyToast.success(enable ? "Public link created." : "Public link revoked.");
+    } catch (error) {
+      notifyToast.error(error instanceof Error ? error.message : "Could not update the link.");
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const shareStatementLink = async () => {
+    const url = statement?.share?.url;
+    if (!url) return;
+    try {
+      await Share.share({
+        message: `${selectedLoan?.loan_name ?? "Loan"} statement: ${url}`,
+        url,
+      });
+    } catch {
+      // The user dismissing the share sheet is not an error.
+    }
+  };
+
+  const copyStatementLink = async () => {
+    const url = statement?.share?.url;
+    if (!url) return;
+    await Clipboard.setStringAsync(url);
+    notifyToast.success("Link copied.");
+  };
+
+  /** The PDF opens in the system browser, which handles auth-less download. */
+  const openStatementPdf = async () => {
+    const url = statement?.share?.pdf_url;
+    if (url) {
+      await WebBrowser.openBrowserAsync(url);
+      return;
+    }
+    notifyToast.error("Create a share link first to download the PDF.");
   };
 
   const showLoanActions = (loan: Loan) => {
@@ -902,27 +1018,76 @@ export default function LoansScreen() {
                     />
                   </View>
 
-                  {status === "Active" && (
-                    <TouchableOpacity
-                      style={[
-                        styles.makePaymentButton,
-                        { backgroundColor: colors.primaryContainer },
-                      ]}
-                      onPress={() => openPaymentModal(loan)}
-                    >
-                      <MaterialCommunityIcons
-                        name="cash"
-                        size={18}
-                        color={colors.primary}
-                      />
-                      <Text
-                        variant="labelMedium"
-                        style={{ color: colors.primary, marginLeft: 4 }}
+                  {/* Both directions on one agreement, plus the statement. */}
+                  {status !== "Archived" && (
+                    <View style={styles.entryButtonRow}>
+                      <TouchableOpacity
+                        style={[
+                          styles.entryButton,
+                          { backgroundColor: colors.primaryContainer },
+                        ]}
+                        onPress={() =>
+                          openPaymentModal(loan, loan.loan_type === "Borrowed" ? "out" : "in")
+                        }
                       >
-                        Make Payment
-                      </Text>
-                    </TouchableOpacity>
+                        <MaterialCommunityIcons
+                          name="arrow-bottom-left"
+                          size={17}
+                          color={colors.primary}
+                        />
+                        <Text
+                          variant="labelMedium"
+                          style={{ color: colors.primary, marginLeft: 4 }}
+                          numberOfLines={1}
+                        >
+                          {directionShortLabels(loan)[loan.loan_type === "Borrowed" ? "out" : "in"]}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.entryButton,
+                          { backgroundColor: `${colors.tertiary}1f` },
+                        ]}
+                        onPress={() =>
+                          openPaymentModal(loan, loan.loan_type === "Borrowed" ? "in" : "out")
+                        }
+                      >
+                        <MaterialCommunityIcons
+                          name="arrow-top-right"
+                          size={17}
+                          color={colors.tertiary}
+                        />
+                        <Text
+                          variant="labelMedium"
+                          style={{ color: colors.tertiary, marginLeft: 4 }}
+                          numberOfLines={1}
+                        >
+                          {directionShortLabels(loan)[loan.loan_type === "Borrowed" ? "in" : "out"]}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.detailsButton,
+                      { borderColor: colors.outlineVariant ?? colors.outline },
+                    ]}
+                    onPress={() => openStatement(loan)}
+                  >
+                    <MaterialCommunityIcons
+                      name="file-document-outline"
+                      size={17}
+                      color={colors.onSurfaceVariant}
+                    />
+                    <Text
+                      variant="labelMedium"
+                      style={{ color: colors.onSurfaceVariant, marginLeft: 5 }}
+                    >
+                      Statement
+                    </Text>
+                  </TouchableOpacity>
                 </TouchableOpacity>
               </Surface>
             );
@@ -1349,6 +1514,289 @@ export default function LoansScreen() {
         </Modal>
       </Portal>
 
+      {/* Statement — the running two-way ledger, PDF and share link */}
+      <Portal>
+        <Modal
+          visible={statementVisible}
+          onDismiss={closeStatement}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text variant="titleLarge" style={{ color: colors.onSurface }}>
+              {selectedLoan?.loan_name || selectedLoan?.name}
+            </Text>
+            <Text
+              variant="bodySmall"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+            >
+              {selectedLoan?.loan_type === "Borrowed" ? "Money borrowed" : "Money lent"}
+              {selectedLoan?.start_date ? ` · opened ${formatDate(selectedLoan.start_date)}` : ""}
+            </Text>
+
+            {statementLoading && (
+              <ActivityIndicator style={{ marginVertical: 32 }} color={colors.primary} />
+            )}
+
+            {!statementLoading && statement && (
+              <>
+                <View style={styles.statementCards}>
+                  <Surface
+                    style={[styles.statementCard, { backgroundColor: colors.surfaceVariant }]}
+                    elevation={0}
+                  >
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                      {statement.summary.labels.given}
+                    </Text>
+                    <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: "700" }}>
+                      {formatAmount(statement.summary.total_principal)}
+                    </Text>
+                  </Surface>
+
+                  <Surface
+                    style={[styles.statementCard, { backgroundColor: colors.surfaceVariant }]}
+                    elevation={0}
+                  >
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                      {statement.summary.labels.settled}
+                    </Text>
+                    <Text variant="titleMedium" style={{ color: colors.tertiary, fontWeight: "700" }}>
+                      {formatAmount(statement.summary.total_settled)}
+                    </Text>
+                  </Surface>
+
+                  <Surface
+                    style={[styles.statementCard, { backgroundColor: colors.surfaceVariant }]}
+                    elevation={0}
+                  >
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                      {statement.summary.labels.outstanding}
+                    </Text>
+                    <Text variant="titleMedium" style={{ color: colors.error, fontWeight: "700" }}>
+                      {formatAmount(statement.summary.outstanding)}
+                    </Text>
+                  </Surface>
+
+                  {statement.summary.total_interest > 0 && (
+                    <Surface
+                      style={[styles.statementCard, { backgroundColor: colors.surfaceVariant }]}
+                      elevation={0}
+                    >
+                      <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                        Interest
+                      </Text>
+                      <Text variant="titleMedium" style={{ color: colors.onSurface, fontWeight: "700" }}>
+                        {formatAmount(statement.summary.total_interest)}
+                      </Text>
+                    </Surface>
+                  )}
+                </View>
+
+                <View
+                  style={[
+                    styles.statementBarTrack,
+                    { backgroundColor: `${colors.tertiary}25` },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.statementBarFill,
+                      {
+                        width: `${statement.summary.progress_percent}%`,
+                        backgroundColor: colors.tertiary,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: colors.onSurfaceVariant, marginTop: 6, marginBottom: 16 }}
+                >
+                  {statement.summary.progress_percent}% settled · opened at{" "}
+                  {formatAmount(statement.summary.opening_amount)}
+                  {statement.summary.additional_amount > 0
+                    ? ` · ${formatAmount(statement.summary.additional_amount)} added later`
+                    : ""}
+                </Text>
+
+                {!!selectedLoan?.notes && (
+                  <Surface
+                    style={[styles.shareBox, { backgroundColor: colors.surfaceVariant }]}
+                    elevation={0}
+                  >
+                    <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                      NOTES
+                    </Text>
+                    <Text variant="bodyMedium" style={{ color: colors.onSurface, marginTop: 4 }}>
+                      {selectedLoan.notes}
+                    </Text>
+                  </Surface>
+                )}
+
+                <View style={styles.statementToolbar}>
+                  <Button
+                    mode={statement.share?.is_shared ? "outlined" : "contained"}
+                    icon={statement.share?.is_shared ? "link-off" : "link-variant"}
+                    loading={shareBusy}
+                    disabled={shareBusy}
+                    onPress={() => toggleShareLink(!statement.share?.is_shared)}
+                    style={{ flex: 1 }}
+                    compact
+                  >
+                    {statement.share?.is_shared ? "Revoke link" : "Share link"}
+                  </Button>
+                  <Button
+                    mode="outlined"
+                    icon="file-pdf-box"
+                    onPress={openStatementPdf}
+                    style={{ flex: 1 }}
+                    compact
+                  >
+                    PDF
+                  </Button>
+                </View>
+
+                {statement.share?.is_shared && (
+                  <Surface
+                    style={[styles.shareBox, { backgroundColor: colors.surfaceVariant }]}
+                    elevation={0}
+                  >
+                    <Text variant="labelMedium" style={{ color: colors.onSurface }}>
+                      Anyone with this link can view the statement
+                    </Text>
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: colors.onSurfaceVariant, marginTop: 3 }}
+                    >
+                      It shows live figures and the PDF, but never your notes.
+                    </Text>
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: colors.primary, marginTop: 8 }}
+                      numberOfLines={2}
+                    >
+                      {statement.share.url}
+                    </Text>
+                    <View style={styles.shareActions}>
+                      <Button mode="contained-tonal" icon="share-variant" onPress={shareStatementLink} compact>
+                        Share
+                      </Button>
+                      <Button mode="outlined" icon="content-copy" onPress={copyStatementLink} compact>
+                        Copy
+                      </Button>
+                    </View>
+                  </Surface>
+                )}
+
+                <Text
+                  variant="titleSmall"
+                  style={{ color: colors.onSurface, marginBottom: 4 }}
+                >
+                  Statement
+                </Text>
+
+                {/* Opening row, then every entry with its balance after. */}
+                <View
+                  style={[
+                    styles.statementRow,
+                    { borderBottomColor: colors.outlineVariant ?? colors.outline },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={[styles.entryPill, { backgroundColor: `${colors.error}1f` }]}
+                    >
+                      <Text variant="labelSmall" style={{ color: colors.error }}>
+                        Opening
+                      </Text>
+                    </View>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      {selectedLoan?.start_date ? formatDate(selectedLoan.start_date) : "-"}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      {formatAmount(statement.summary.opening_amount)}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      bal {formatAmount(statement.summary.opening_amount)}
+                    </Text>
+                  </View>
+                </View>
+
+                {statement.entries.map((entry) => (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.statementRow,
+                      { borderBottomColor: colors.outlineVariant ?? colors.outline },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View
+                        style={[
+                          styles.entryPill,
+                          {
+                            backgroundColor: entry.is_repayment
+                              ? `${colors.tertiary}1f`
+                              : `${colors.error}1f`,
+                          },
+                        ]}
+                      >
+                        <Text
+                          variant="labelSmall"
+                          style={{ color: entry.is_repayment ? colors.tertiary : colors.error }}
+                        >
+                          {entry.label}
+                        </Text>
+                      </View>
+                      <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                        {entry.date ? formatDate(entry.date) : "-"}
+                        {entry.interest > 0 ? ` · int ${formatAmount(entry.interest)}` : ""}
+                      </Text>
+                      {!!entry.notes && (
+                        <Text
+                          variant="bodySmall"
+                          style={{ color: colors.onSurfaceVariant, marginTop: 2 }}
+                        >
+                          {entry.notes}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                        {entry.is_repayment ? "-" : "+"}
+                        {formatAmount(entry.amount)}
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                        bal {formatAmount(entry.balance_after)}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+
+                {statement.entries.length === 0 && (
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: colors.onSurfaceVariant, paddingVertical: 20, textAlign: "center" }}
+                  >
+                    Nothing recorded on this loan yet.
+                  </Text>
+                )}
+              </>
+            )}
+
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeStatement}>
+                Close
+              </Button>
+            </View>
+          </ScrollView>
+        </Modal>
+      </Portal>
+
       {/* Make Payment Modal */}
       <Portal>
         <Modal
@@ -1367,16 +1815,55 @@ export default function LoansScreen() {
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 8 }}
             >
-              Make Payment
+              {directionLabels(selectedLoan)[paymentDirection]}
             </Text>
             {selectedLoan && (
               <Text
                 variant="bodyMedium"
-                style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+                style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}
               >
                 {selectedLoan.loan_name || selectedLoan.name}
               </Text>
             )}
+
+            {/* Switch direction without leaving the form. */}
+            <View
+              style={[
+                styles.directionSwitch,
+                { backgroundColor: colors.surfaceVariant },
+              ]}
+            >
+              {(["in", "out"] as LoanDirection[]).map((option) => {
+                const active = paymentDirection === option;
+                return (
+                  <TouchableOpacity
+                    key={option}
+                    onPress={() => setPaymentDirection(option)}
+                    style={[
+                      styles.directionOption,
+                      active && { backgroundColor: colors.primary },
+                    ]}
+                  >
+                    <Text
+                      variant="labelMedium"
+                      style={{ color: active ? "#ffffff" : colors.onSurfaceVariant }}
+                      numberOfLines={1}
+                    >
+                      {directionLabels(selectedLoan)[option]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text
+              variant="bodySmall"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 14 }}
+            >
+              {isRepaymentDirection(selectedLoan, paymentDirection)
+                ? "This reduces the outstanding balance."
+                : "This adds to the same agreement — the balance goes up."}
+            </Text>
 
             {selectedLoan && (
               <Surface
@@ -1428,7 +1915,7 @@ export default function LoansScreen() {
             )}
 
             <TextInput
-              label="Payment Amount *"
+              label="Amount *"
               value={paymentData.payment_amount}
               onChangeText={(text) =>
                 setPaymentData({ ...paymentData, payment_amount: text })
@@ -1438,35 +1925,41 @@ export default function LoansScreen() {
               style={styles.input}
             />
 
-            <TextInput
-              label="Principal"
-              value={paymentData.principal_paid}
-              onChangeText={(text) =>
-                setPaymentData({ ...paymentData, principal_paid: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              placeholder="Defaults to payment minus interest"
-              style={styles.input}
-            />
+            {/* The principal/interest split only means something when the
+                entry is settling the loan. */}
+            {isRepaymentDirection(selectedLoan, paymentDirection) && (
+              <>
+                <TextInput
+                  label="Principal"
+                  value={paymentData.principal_paid}
+                  onChangeText={(text) =>
+                    setPaymentData({ ...paymentData, principal_paid: text })
+                  }
+                  mode="outlined"
+                  keyboardType="decimal-pad"
+                  placeholder="Defaults to payment minus interest"
+                  style={styles.input}
+                />
 
-            <TextInput
-              label="Interest"
-              value={paymentData.interest_paid}
-              onChangeText={(text) =>
-                setPaymentData({ ...paymentData, interest_paid: text })
-              }
-              mode="outlined"
-              keyboardType="decimal-pad"
-              style={styles.input}
-            />
+                <TextInput
+                  label="Interest"
+                  value={paymentData.interest_paid}
+                  onChangeText={(text) =>
+                    setPaymentData({ ...paymentData, interest_paid: text })
+                  }
+                  mode="outlined"
+                  keyboardType="decimal-pad"
+                  style={styles.input}
+                />
+              </>
+            )}
 
             {/* Account Selection for Payment */}
             <Text
               variant="bodyMedium"
               style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
             >
-              From Account *
+              {paymentDirection === "in" ? "Into account *" : "From account *"}
             </Text>
             <TouchableOpacity
               style={[
@@ -1869,6 +2362,97 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     marginTop: 12,
+  },
+  // Two-way ledger: one button per direction, side by side.
+  entryButtonRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+  entryButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  detailsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  directionSwitch: {
+    flexDirection: "row",
+    padding: 4,
+    borderRadius: 999,
+    gap: 4,
+    marginBottom: 12,
+  },
+  directionOption: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  // ---- statement modal ----
+  statementCards: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 14,
+  },
+  statementCard: {
+    flexGrow: 1,
+    flexBasis: "47%",
+    padding: 12,
+    borderRadius: 12,
+  },
+  statementBarTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+  statementBarFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  statementRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  entryPill: {
+    alignSelf: "flex-start",
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginBottom: 3,
+  },
+  shareBox: {
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  shareActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  statementToolbar: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
   },
   emptyState: {
     alignItems: "center",

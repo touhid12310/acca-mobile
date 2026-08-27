@@ -1358,7 +1358,7 @@ export default function TransactionFormContent({
              drop-down list paints over them instead of behind. */
           <View style={[styles.section, { zIndex: 20 }]}>
             <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-              Merchant / Payee
+              Merchant / Payee (optional)
             </Text>
             <View style={{ position: 'relative', zIndex: 20 }}>
               <TextInput
@@ -1372,7 +1372,7 @@ export default function TransactionFormContent({
                 onBlur={() => {
                   setTimeout(() => setShowMerchantSuggestions(false), 150);
                 }}
-                placeholder="e.g., Grocery Store"
+                placeholder='Leave blank for "Unknown"'
                 autoComplete="off"
               />
               {showMerchantSuggestions &&

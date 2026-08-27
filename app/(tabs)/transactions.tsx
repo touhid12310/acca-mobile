@@ -47,6 +47,8 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  FileText,
+  Pencil,
   Wallet,
   X,
   LucideIcon,
@@ -70,6 +72,7 @@ import {
   PeriodRange,
 } from "../../src/components/ui";
 import { BrandStrip } from "../../src/components";
+import * as WebBrowser from "expo-web-browser";
 import transactionService from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
 import settingsService from "../../src/services/settingsService";
@@ -141,6 +144,9 @@ export default function TransactionsScreen() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(
     new Set(),
   );
@@ -627,6 +633,33 @@ export default function TransactionsScreen() {
       default:
         return colors.onSurface;
     }
+  };
+
+  /**
+   * The list payload is trimmed, so pull the full record (items, receipt,
+   * categories) before showing it — same detail the web modal renders.
+   */
+  const openTransactionDetails = async (item: Transaction) => {
+    setExpandedRowId(null);
+    setDetailTransaction(item);
+    setDetailVisible(true);
+    setDetailLoading(true);
+    try {
+      const result = await transactionService.getById(item.id);
+      if (result.success && result.data) {
+        const payload = result.data as any;
+        setDetailTransaction((payload?.data ?? payload) as Transaction);
+      }
+    } catch {
+      // Keep the row data already on screen rather than blanking the sheet.
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const closeTransactionDetails = () => {
+    setDetailVisible(false);
+    setDetailTransaction(null);
   };
 
   const handleEditTransaction = (item: Transaction) => {
@@ -1162,6 +1195,7 @@ export default function TransactionsScreen() {
                       t={t}
                       isLast={idx === group.data.length - 1}
                       expanded={expandedRowId === t.id}
+                      onView={() => openTransactionDetails(t)}
                       onOpen={() => setExpandedRowId(t.id)}
                       onClose={() =>
                         setExpandedRowId((prev) =>
@@ -1205,6 +1239,203 @@ export default function TransactionsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Transaction details — mirrors the web view modal */}
+      <Modal
+        visible={detailVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeTransactionDetails}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.detailBackdrop} onPress={closeTransactionDetails}>
+          <Pressable
+            style={[styles.detailSheet, { backgroundColor: colors.surface }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.detailGrabber}>
+              <View style={[styles.detailGrabberBar, { backgroundColor: colors.outlineVariant }]} />
+            </View>
+
+            <View style={styles.detailHeader}>
+              <Text style={[styles.detailTitle, { color: colors.onSurface }]}>
+                Transaction details
+              </Text>
+              <Pressable onPress={closeTransactionDetails} hitSlop={10}>
+                <X size={22} color={colors.onSurfaceVariant} />
+              </Pressable>
+            </View>
+
+            {detailTransaction && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Headline amount */}
+                <View style={styles.detailAmountBlock}>
+                  <Text
+                    style={[
+                      styles.detailAmount,
+                      { color: getAmountColor(detailTransaction.type) },
+                    ]}
+                  >
+                    {getAmountSign(detailTransaction)}
+                    {formatAmount(parseFloat(String(detailTransaction.amount)) || 0)}
+                  </Text>
+                  <Text style={[styles.detailMerchant, { color: colors.onSurface }]}>
+                    {detailTransaction.merchant_name ||
+                      detailTransaction.description ||
+                      "Transaction"}
+                  </Text>
+                  <View style={styles.detailBadgeRow}>
+                    <Badge
+                      label={
+                        detailTransaction.type.charAt(0).toUpperCase() +
+                        detailTransaction.type.slice(1)
+                      }
+                      tone={getTone(detailTransaction.type)}
+                      size="sm"
+                    />
+                    {detailTransaction.status &&
+                      detailTransaction.status !== "approved" && (
+                        <Badge
+                          label={detailTransaction.status.replace("_", " ")}
+                          tone="warning"
+                          size="sm"
+                        />
+                      )}
+                    {!!detailTransaction.source && (
+                      <Badge label={detailTransaction.source} tone="neutral" size="sm" />
+                    )}
+                  </View>
+                </View>
+
+                {detailLoading && (
+                  <ActivityIndicator
+                    size="small"
+                    color={colors.primary}
+                    style={{ marginBottom: spacing.md }}
+                  />
+                )}
+
+                {/* Field rows */}
+                <DetailRow label="Date" value={formatDate(detailTransaction.date)} colors={colors} />
+                <DetailRow
+                  label={detailTransaction.type === "transfer" ? "Transfer" : "Account"}
+                  value={
+                    (detailTransaction as any).payment_method_account?.account_name ||
+                    (detailTransaction as any).account?.account_name ||
+                    "-"
+                  }
+                  colors={colors}
+                />
+                {!!detailTransaction.transaction_categories?.length && (
+                  <DetailRow
+                    label="Categories"
+                    value={detailTransaction.transaction_categories
+                      .map((tc: any) =>
+                        tc.subcategory?.name
+                          ? `${tc.category?.name} > ${tc.subcategory.name}`
+                          : tc.category?.name,
+                      )
+                      .filter(Boolean)
+                      .join(", ")}
+                    colors={colors}
+                  />
+                )}
+                {!!detailTransaction.notes && (
+                  <DetailRow label="Notes" value={detailTransaction.notes} colors={colors} />
+                )}
+
+                {/* Line items */}
+                {!!(detailTransaction as any).items?.length && (
+                  <View style={{ marginTop: spacing.md }}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.onSurface }]}>
+                      Items
+                    </Text>
+                    {(detailTransaction as any).items.map((item: any, index: number) => (
+                      <View
+                        key={item.id ?? index}
+                        style={[
+                          styles.detailItemRow,
+                          { borderBottomColor: colors.outlineVariant },
+                        ]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.onSurface }}>{item.name}</Text>
+                          <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                            {item.quantity} x {formatAmount(parseFloat(String(item.price)) || 0)}
+                          </Text>
+                        </View>
+                        <Text style={{ color: colors.onSurface, fontWeight: "600" }}>
+                          {formatAmount(parseFloat(String(item.total)) || 0)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Receipt */}
+                {!!detailTransaction.receipt_file && (
+                  <View style={{ marginTop: spacing.md }}>
+                    <Text style={[styles.detailSectionTitle, { color: colors.onSurface }]}>
+                      Receipt
+                    </Text>
+                    <Pressable
+                      style={[
+                        styles.detailReceiptButton,
+                        { borderColor: colors.outlineVariant },
+                      ]}
+                      onPress={() =>
+                        WebBrowser.openBrowserAsync(String(detailTransaction.receipt_file))
+                      }
+                    >
+                      <FileText size={18} color={colors.primary} />
+                      <Text style={{ color: colors.primary, marginLeft: 8 }}>
+                        Open receipt
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                {/* Actions */}
+                <View style={styles.detailActions}>
+                  <Pressable
+                    style={[
+                      styles.detailActionButton,
+                      { backgroundColor: colors.primaryContainer },
+                    ]}
+                    onPress={() => {
+                      const target = detailTransaction;
+                      closeTransactionDetails();
+                      handleEditTransaction(target);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} />
+                    <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: "600" }}>
+                      Edit
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.detailActionButton,
+                      { backgroundColor: `${colors.error}1f` },
+                    ]}
+                    onPress={() => {
+                      const target = detailTransaction;
+                      closeTransactionDetails();
+                      if (statusView === "pending_review") setRejectTarget(target);
+                      else handleDeleteWithUndo(target);
+                    }}
+                  >
+                    <Trash2 size={18} color={colors.error} />
+                    <Text style={{ color: colors.error, marginLeft: 8, fontWeight: "600" }}>
+                      {statusView === "pending_review" ? "Reject" : "Archive"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* FAB */}
       <View
@@ -1477,10 +1708,34 @@ export default function TransactionsScreen() {
 const ACTION_WIDTH = 132;
 const TRANSACTION_ROW_HEIGHT = 72;
 
+/** One label/value line in the transaction details sheet. */
+function DetailRow({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: string;
+  colors: ReturnType<typeof useTheme>["colors"];
+}) {
+  return (
+    <View style={[styles.detailRow, { borderBottomColor: colors.outlineVariant }]}>
+      <Text style={[styles.detailRowLabel, { color: colors.onSurfaceVariant }]}>
+        {label}
+      </Text>
+      <Text style={[styles.detailRowValue, { color: colors.onSurface }]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 interface TransactionRowProps {
   t: Transaction;
   isLast: boolean;
   expanded: boolean;
+  /** Tap opens the details sheet; the swipe still carries edit/delete. */
+  onView: () => void;
   onOpen: () => void;
   onClose: () => void;
   onLongPress: () => void;
@@ -1498,6 +1753,7 @@ function TransactionRow({
   t,
   isLast,
   expanded,
+  onView,
   onOpen,
   onClose,
   onLongPress,
@@ -1519,14 +1775,15 @@ function TransactionRow({
   }, [expanded]);
 
   const handleRowPress = () => {
+    // A tap opens the details sheet. Edit/delete stay on the swipe gesture,
+    // which is what the row used to do on tap.
     if (expanded) {
       swipeableRef.current?.close();
       onClose();
       return;
     }
 
-    swipeableRef.current?.openRight();
-    onOpen();
+    onView();
   };
 
   const isPending = t.status === "pending_review";
@@ -2189,6 +2446,74 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     maxWidth: 300,
+  },
+  // ---- transaction details sheet ----
+  detailBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  detailSheet: {
+    maxHeight: "88%",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+  },
+  detailGrabber: { alignItems: "center", paddingVertical: 10 },
+  detailGrabberBar: { width: 42, height: 4, borderRadius: 999 },
+  detailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  detailTitle: { fontSize: 17, fontWeight: "700" },
+  detailAmountBlock: { alignItems: "center", marginBottom: 18 },
+  detailAmount: { fontSize: 32, fontWeight: "800", letterSpacing: -0.5 },
+  detailMerchant: { fontSize: 15, fontWeight: "600", marginTop: 4 },
+  detailBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 10,
+    justifyContent: "center",
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailRowLabel: { fontSize: 13, flexShrink: 0 },
+  detailRowValue: { fontSize: 14, fontWeight: "500", flex: 1, textAlign: "right" },
+  detailSectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 6 },
+  detailItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailReceiptButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  detailActions: { flexDirection: "row", gap: 10, marginTop: 22 },
+  detailActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    borderRadius: 12,
   },
   confirmButtons: {
     flexDirection: "row",

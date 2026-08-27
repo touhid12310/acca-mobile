@@ -1,6 +1,48 @@
 import API_CONFIG, { apiRequest, getAuthToken } from '../config/api';
 import { Loan, LoanPayment, ApiResponse } from '../types';
 
+export type LoanDirection = 'in' | 'out';
+
+export type LoanStatementEntry = {
+  id: number;
+  direction: LoanDirection;
+  is_repayment: boolean;
+  label: string;
+  amount: number;
+  principal: number;
+  interest: number;
+  date: string | null;
+  balance_after: number;
+  notes?: string | null;
+};
+
+export type LoanShare = {
+  is_shared: boolean;
+  url: string | null;
+  pdf_url: string | null;
+  shared_at: string | null;
+};
+
+export type LoanStatement = {
+  loan: Loan;
+  summary: {
+    currency: string | null;
+    opening_amount: number;
+    additional_amount: number;
+    total_principal: number;
+    total_settled: number;
+    total_interest: number;
+    outstanding: number;
+    is_settled: boolean;
+    progress_percent: number;
+    entry_count: number;
+    last_entry_at: string | null;
+    labels: { given: string; settled: string; outstanding: string; in: string; out: string };
+  };
+  entries: LoanStatementEntry[];
+  share: LoanShare;
+};
+
 export const loanService = {
   getAll: async (): Promise<ApiResponse<Loan[]>> => {
     const token = await getAuthToken();
@@ -56,6 +98,8 @@ export const loanService = {
     id: number,
     paymentData: {
       payment_amount: number;
+      /** 'in' = money arrived, 'out' = money left. Omitted means "repayment". */
+      direction?: LoanDirection;
       principal_paid?: number;
       interest_paid?: number;
       account_id?: number;
@@ -88,6 +132,35 @@ export const loanService = {
       token,
     });
   },
+
+  /** Running two-way ledger: summary, entries with balance-after, share state. */
+  getStatement: async (id: number): Promise<ApiResponse<LoanStatement>> => {
+    const token = await getAuthToken();
+    return apiRequest<LoanStatement>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}/statement`, {
+      method: 'GET',
+      token,
+    });
+  },
+
+  createShareLink: async (id: number): Promise<ApiResponse<LoanShare>> => {
+    const token = await getAuthToken();
+    return apiRequest<LoanShare>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}/share`, {
+      method: 'POST',
+      token,
+    });
+  },
+
+  revokeShareLink: async (id: number): Promise<ApiResponse<LoanShare>> => {
+    const token = await getAuthToken();
+    return apiRequest<LoanShare>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}/share`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  /** Absolute URL of the owner's PDF, for opening in the system browser. */
+  statementPdfUrl: (id: number): string =>
+    `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.LOANS}/${id}/statement/pdf`,
 };
 
 export default loanService;
