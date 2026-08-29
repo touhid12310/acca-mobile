@@ -484,11 +484,14 @@ export default function BillingScreen() {
                         </Text>
                       </View></View>
                   {planCoupon && <View style={styles.trial}><Tag size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{planCoupon.code} — {planCoupon.label}{planCoupon.covers_full_amount ? " · nothing to pay" : ""}</Text></View>}
-                  {!planCoupon && planCycle === "yearly" && (pricing?.savings_percent ?? 0) > 0 && (
+                  {/* Monthly can carry a discount too, so this is not gated to yearly. */}
+                  {!planCoupon && (pricing?.savings_percent ?? 0) > 0 && (
                     <View style={styles.saveRow}>
                       <BadgePercent size={15} color={colors.primary} />
                       <Text style={[styles.saveText, { color: colors.primary }]}>
-                        Save {pricing?.savings_percent}% — {money(pricing?.per_month ?? 0, plan.currency)}/mo billed yearly
+                        {planCycle === "yearly"
+                          ? `Save ${pricing?.savings_percent}% — ${money(pricing?.per_month ?? 0, plan.currency)}/mo billed yearly`
+                          : `Save ${pricing?.savings_percent}% off the usual price`}
                       </Text>
                     </View>
                   )}
