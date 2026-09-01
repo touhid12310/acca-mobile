@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
-import { BadgePercent, Check, Clock3, Copy, Crown, FileText, ShieldCheck, Sparkles, Tag, X, Zap } from "lucide-react-native";
+import { BadgePercent, Check, ChevronRight, Clock3, Copy, CreditCard, Crown, FileText, ShieldCheck, Smartphone, Sparkles, Tag, X, Zap } from "lucide-react-native";
 
 import { BrandStrip } from "../src/components";
 import { Button, Card, ScreenHeader } from "../src/components/ui";
@@ -123,6 +123,14 @@ export default function BillingScreen() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  /**
+   * Which purchase the gateway sheet is asking about. Both rails can settle
+   * either kind, so the sheet is opened with the target rather than a flag.
+   */
+  const [gatewayFor, setGatewayFor] = useState<
+    { kind: "plan"; plan: BillingPlan } | { kind: "invoice"; invoice: SubscriptionInvoice } | null
+  >(null);
+
   const checkout = async (invoice: SubscriptionInvoice) => {
     setBusy(invoice.uuid);
     try {
@@ -187,6 +195,47 @@ export default function BillingScreen() {
       toast.error(error instanceof Error ? error.message : "Could not create invoice.");
       setBusy(null);
     }
+  };
+
+  /** The plan a gateway choice applies to, for either kind of target. */
+  const gatewayPlan = useMemo((): BillingPlan | null => {
+    if (!gatewayFor) return null;
+    if (gatewayFor.kind === "plan") return gatewayFor.plan;
+
+    return (
+      (plansQuery.data || []).find((plan) => plan.slug === gatewayFor.invoice.plan?.slug) || null
+    );
+  }, [gatewayFor, plansQuery.data]);
+
+  /**
+   * Open the chooser when both rails can take the money, otherwise go straight
+   * to the only one that can — a one-option dialog is just a wasted tap.
+   */
+  const startPurchase = (target: { kind: "plan"; plan: BillingPlan } | { kind: "invoice"; invoice: SubscriptionInvoice }) => {
+    const plan = target.kind === "plan" ? target.plan : (plansQuery.data || []).find((p) => p.slug === target.invoice.plan?.slug);
+    const playReady = play.available && play.connected && !play.expoGoBlocked && Boolean(plan && play.displayPriceFor(plan.slug));
+
+    if (!playReady) {
+      if (target.kind === "plan") buyPlan(target.plan);
+      else checkout(target.invoice);
+      return;
+    }
+
+    setGatewayFor(target);
+  };
+
+  const payWithEps = () => {
+    const target = gatewayFor;
+    setGatewayFor(null);
+    if (!target) return;
+    if (target.kind === "plan") buyPlan(target.plan);
+    else checkout(target.invoice);
+  };
+
+  const payWithStore = () => {
+    const plan = gatewayPlan;
+    setGatewayFor(null);
+    if (plan) play.purchase(plan.slug);
   };
 
   const paidPlans = useMemo(
@@ -502,24 +551,23 @@ export default function BillingScreen() {
                     <Button label="Current package" icon={ShieldCheck} variant="secondary" fullWidth disabled />
                   ) : canTrial ? (
                     <Button label={`Start ${plan.trial_days}-day free trial`} fullWidth loading={trialMutation.isPending} onPress={() => trialMutation.mutate(plan)} />
-                  ) : premium && play.available ? (
+                  ) : premium && Platform.OS === "ios" ? (
+                    /* Apple does not allow an alternative payment rail for
+                       digital goods, so iOS stays App Store only. */
                     <Button
-                      label={
-                        play.displayPriceFor(plan.slug)
-                          ? `Subscribe · ${play.displayPriceFor(plan.slug)}`
-                          : play.store === "app_store"
-                            ? "Subscribe with Apple"
-                            : "Subscribe with Google Play"
-                      }
+                      label={play.displayPriceFor(plan.slug) ? `Subscribe · ${play.displayPriceFor(plan.slug)}` : "Subscribe with Apple"}
                       fullWidth
                       loading={play.purchasing === plan.slug}
-                      disabled={play.expoGoBlocked || !play.connected || !play.displayPriceFor(plan.slug)}
+                      disabled={!play.available || play.expoGoBlocked || !play.connected || !play.displayPriceFor(plan.slug)}
                       onPress={() => play.purchase(plan.slug)}
                     />
-                  ) : premium && Platform.OS === "ios" ? (
-                    <Button label="Available via the App Store" fullWidth disabled />
                   ) : premium ? (
-                    <Button label={planCoupon?.covers_full_amount ? "Redeem coupon & activate" : "Create invoice & pay"} fullWidth loading={busy === plan.slug} onPress={() => buyPlan(plan)} />
+                    <Button
+                      label={planCoupon?.covers_full_amount ? "Redeem coupon & activate" : "Choose how to pay"}
+                      fullWidth
+                      loading={busy === plan.slug || play.purchasing === plan.slug}
+                      onPress={() => startPurchase({ kind: "plan", plan })}
+                    />
                   ) : null}
                 </Card>
               );
@@ -527,11 +575,72 @@ export default function BillingScreen() {
 
             <Card variant="elevated" style={styles.invoiceCard}>
               <View style={styles.invoiceHeading}><View><Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>RENEWAL CENTER</Text><Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Invoices</Text></View><FileText size={23} color={colors.primary} /></View>
-              {overview?.invoices?.length ? overview.invoices.map((invoice) => <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}><View style={styles.flex}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{invoice.plan?.name} · {new Date(invoice.created_at).toLocaleDateString()}{Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}</Text></View><View style={styles.invoiceRight}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>{invoice.status === "pending" && Platform.OS !== "ios" ? <Button label={busy === invoice.uuid ? "Opening…" : "Pay"} size="sm" loading={busy === invoice.uuid} onPress={() => checkout(invoice)} /> : <Text style={{ color: invoice.status === "paid" ? colors.tertiary : colors.onSurfaceVariant, textTransform: "capitalize", fontWeight: "700" }}>{invoice.status}</Text>}</View></View>) : <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No invoices yet. Monthly renewal invoices will appear here.</Text>}
+              {overview?.invoices?.length ? overview.invoices.map((invoice) => <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}><View style={styles.flex}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{invoice.plan?.name} · {new Date(invoice.created_at).toLocaleDateString()}{Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}</Text></View><View style={styles.invoiceRight}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>{invoice.status === "pending" && Platform.OS !== "ios" ? <Button label={busy === invoice.uuid ? "Opening…" : "Pay"} size="sm" loading={busy === invoice.uuid} onPress={() => startPurchase({ kind: "invoice", invoice })} /> : <Text style={{ color: invoice.status === "paid" ? colors.tertiary : colors.onSurfaceVariant, textTransform: "capitalize", fontWeight: "700" }}>{invoice.status}</Text>}</View></View>) : <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No invoices yet. Monthly renewal invoices will appear here.</Text>}
             </Card>
           </>
         )}
       </ScrollView>
+    
+      <Modal
+        visible={Boolean(gatewayFor)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setGatewayFor(null)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setGatewayFor(null)}>
+          <Pressable
+            style={[styles.sheet, { backgroundColor: colors.surface }]}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <View style={styles.sheetGrip} />
+            <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>Choose how to pay</Text>
+            <Text style={[styles.sheetSub, { color: colors.onSurfaceVariant }]}>
+              {gatewayPlan?.name ? `${gatewayPlan.name} · ` : ""}
+              Both options give the same access.
+            </Text>
+
+            <Pressable
+              style={[styles.gateway, { borderColor: colors.outlineVariant }]}
+              onPress={payWithStore}
+              android_ripple={{ color: colors.surfaceVariant }}
+            >
+              <View style={[styles.gatewayIcon, { backgroundColor: colors.primaryContainer }]}>
+                <Smartphone size={20} color={colors.primary} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Google Play</Text>
+                <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
+                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug)
+                    ? `${play.displayPriceFor(gatewayPlan.slug)} · renews automatically`
+                    : "Renews automatically"}
+                  . Manage or cancel in the Play Store.
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.onSurfaceVariant} />
+            </Pressable>
+
+            <Pressable
+              style={[styles.gateway, { borderColor: colors.outlineVariant }]}
+              onPress={payWithEps}
+              android_ripple={{ color: colors.surfaceVariant }}
+            >
+              <View style={[styles.gatewayIcon, { backgroundColor: colors.secondaryContainer }]}>
+                <CreditCard size={20} color={colors.secondary} />
+              </View>
+              <View style={styles.flex}>
+                <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Card or mobile banking</Text>
+                <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
+                  Pay this invoice through EPS. Coupons apply here.
+                </Text>
+              </View>
+              <ChevronRight size={18} color={colors.onSurfaceVariant} />
+            </Pressable>
+
+            <Button label="Cancel" variant="secondary" fullWidth onPress={() => setGatewayFor(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -624,6 +733,34 @@ const styles = StyleSheet.create({
   feature: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   featureText: { ...typography.body, flex: 1 },
   quota: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md },
+  sheetBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+  sheet: {
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  sheetGrip: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(128,128,128,0.35)",
+    marginBottom: spacing.sm,
+  },
+  sheetTitle: { ...typography.h2 },
+  sheetSub: { ...typography.caption, marginBottom: spacing.xs },
+  gateway: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+  },
+  gatewayIcon: { width: 40, height: 40, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  gatewayName: { ...typography.bodyStrong },
+  gatewaySub: { ...typography.caption, marginTop: 2 },
   invoiceCard: { gap: spacing.md },
   invoiceHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionTitle: { ...typography.h2, marginTop: 3 },

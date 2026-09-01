@@ -23,7 +23,15 @@ interface TransactionFilters {
   sort_order?: "asc" | "desc";
 }
 
-export const transactionService = {
+export interface InboundEmailBody {
+  from: string | null;
+  subject: string | null;
+  received_at: string | null;
+  attachment_count: number;
+  body_text: string | null;
+}
+
+const transactionService = {
   getAll: async (
     filters: TransactionFilters = {},
   ): Promise<ApiResponse<PaginatedResponse<Transaction>>> => {
@@ -130,6 +138,15 @@ export const transactionService = {
     const token = await getAuthToken();
     return apiRequest<unknown>(`/transactions/${id}/reject`, {
       method: "POST",
+      token,
+    });
+  },
+
+  /** Plain text of the email a draft came from. Attachments are not included. */
+  getEmailBody: async (id: number): Promise<ApiResponse<InboundEmailBody>> => {
+    const token = await getAuthToken();
+    return apiRequest<InboundEmailBody>(`/transactions/${id}/email`, {
+      method: "GET",
       token,
     });
   },

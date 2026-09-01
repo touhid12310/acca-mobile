@@ -16,6 +16,7 @@ import {
   TextInput,
   Text,
   Modal,
+  Platform,
 } from "react-native";
 import {
   SafeAreaView,
@@ -73,7 +74,7 @@ import {
 } from "../../src/components/ui";
 import { BrandStrip } from "../../src/components";
 import * as WebBrowser from "expo-web-browser";
-import transactionService from "../../src/services/transactionService";
+import transactionService, { InboundEmailBody } from "../../src/services/transactionService";
 import accountService from "../../src/services/accountService";
 import settingsService from "../../src/services/settingsService";
 import { formatDate } from "../../src/utils/date";
@@ -158,6 +159,13 @@ export default function TransactionsScreen() {
     "all" | "email" | "schedule" | "subscription"
   >("all");
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
+  // Fetched on demand rather than with the list: bodies are large and most
+  // drafts are never opened.
+  const [emailBody, setEmailBody] = useState<{
+    loading: boolean;
+    data: InboundEmailBody | null;
+    error: string | null;
+  } | null>(null);
   const pendingDeleteTimers = useRef<
     Map<number, ReturnType<typeof setTimeout>>
   >(new Map());
@@ -518,6 +526,24 @@ export default function TransactionsScreen() {
     | undefined;
 
   // Archive draft mutation
+  const loadEmailBody = async (transactionId: number) => {
+    setEmailBody({ loading: true, data: null, error: null });
+    try {
+      const response = await transactionService.getEmailBody(transactionId);
+      const payload = (response.data as any)?.data ?? response.data;
+      if (!response.success || !payload) {
+        throw new Error((response.data as any)?.message || "Could not load the email.");
+      }
+      setEmailBody({ loading: false, data: payload as InboundEmailBody, error: null });
+    } catch (error) {
+      setEmailBody({
+        loading: false,
+        data: null,
+        error: error instanceof Error ? error.message : "Could not load the email.",
+      });
+    }
+  };
+
   const rejectDraftMutation = useMutation({
     mutationFn: (id: number) => transactionService.reject(id),
     onSuccess: async (res) => {
@@ -660,6 +686,7 @@ export default function TransactionsScreen() {
   const closeTransactionDetails = () => {
     setDetailVisible(false);
     setDetailTransaction(null);
+    setEmailBody(null);
   };
 
   const handleEditTransaction = (item: Transaction) => {
@@ -1250,7 +1277,14 @@ export default function TransactionsScreen() {
       >
         <Pressable style={styles.detailBackdrop} onPress={closeTransactionDetails}>
           <Pressable
-            style={[styles.detailSheet, { backgroundColor: colors.surface }]}
+            style={[
+              styles.detailSheet,
+              {
+                backgroundColor: colors.surface,
+                // Clear the gesture bar, or the pinned actions sit under it.
+                paddingBottom: 20 + insets.bottom,
+              },
+            ]}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={styles.detailGrabber}>
@@ -1267,7 +1301,11 @@ export default function TransactionsScreen() {
             </View>
 
             {detailTransaction && (
-              <ScrollView showsVerticalScrollIndicator={false}>
+            <>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: spacing.sm }}
+              >
                 {/* Headline amount */}
                 <View style={styles.detailAmountBlock}>
                   <Text
@@ -1372,30 +1410,119 @@ export default function TransactionsScreen() {
                   </View>
                 )}
 
-                {/* Receipt */}
-                {!!detailTransaction.receipt_file && (
+                {/* Source files. The email button toggles, so the row keeps
+                    both slots and the body opens full width underneath. */}
+                {(detailTransaction.source === "email" || !!detailTransaction.receipt_file) && (
                   <View style={{ marginTop: spacing.md }}>
                     <Text style={[styles.detailSectionTitle, { color: colors.onSurface }]}>
-                      Receipt
+                      Original
                     </Text>
-                    <Pressable
-                      style={[
-                        styles.detailReceiptButton,
-                        { borderColor: colors.outlineVariant },
-                      ]}
-                      onPress={() =>
-                        WebBrowser.openBrowserAsync(String(detailTransaction.receipt_file))
-                      }
-                    >
-                      <FileText size={18} color={colors.primary} />
-                      <Text style={{ color: colors.primary, marginLeft: 8 }}>
-                        Open receipt
+
+                    <View style={styles.detailFileRow}>
+                      {detailTransaction.source === "email" && (
+                        <Pressable
+                          style={[
+                            styles.detailReceiptButton,
+                            styles.detailFileButton,
+                            { borderColor: colors.outlineVariant },
+                          ]}
+                          onPress={() =>
+                            emailBody ? setEmailBody(null) : loadEmailBody(detailTransaction.id)
+                          }
+                        >
+                          <Mail size={18} color={colors.primary} />
+                          <Text style={[styles.detailFileLabel, { color: colors.primary }]}>
+                            {emailBody ? "Hide email" : "Email text"}
+                          </Text>
+                        </Pressable>
+                      )}
+
+                      {!!detailTransaction.receipt_file && (
+                        <Pressable
+                          style={[
+                            styles.detailReceiptButton,
+                            styles.detailFileButton,
+                            { borderColor: colors.outlineVariant },
+                          ]}
+                          onPress={() =>
+                            WebBrowser.openBrowserAsync(String(detailTransaction.receipt_file))
+                          }
+                        >
+                          <FileText size={18} color={colors.primary} />
+                          <Text style={[styles.detailFileLabel, { color: colors.primary }]}>
+                            Receipt
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+
+                    {emailBody?.loading && (
+                      <Text style={{ color: colors.onSurfaceVariant, marginTop: spacing.sm }}>
+                        Loading the email…
                       </Text>
-                    </Pressable>
+                    )}
+
+                    {emailBody?.error && (
+                      <Text style={{ color: colors.error, marginTop: spacing.sm }}>
+                        {emailBody.error}
+                      </Text>
+                    )}
+
+                    {emailBody?.data && (
+                      <View style={{ marginTop: spacing.sm }}>
+                        <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
+                          {emailBody.data.from || "Unknown sender"}
+                          {emailBody.data.attachment_count > 0
+                            ? ` · ${emailBody.data.attachment_count} attachment${emailBody.data.attachment_count > 1 ? "s" : ""} not shown`
+                            : ""}
+                        </Text>
+
+                        {emailBody.data.body_text ? (
+                          <>
+                            <ScrollView
+                              style={[
+                                styles.emailBodyBox,
+                                {
+                                  borderColor: colors.outlineVariant,
+                                  backgroundColor: colors.surfaceVariant,
+                                },
+                              ]}
+                              nestedScrollEnabled
+                            >
+                              <Text style={[styles.emailBodyText, { color: colors.onSurface }]}>
+                                {emailBody.data.body_text}
+                              </Text>
+                            </ScrollView>
+                            <Pressable
+                              style={[
+                                styles.detailReceiptButton,
+                                { borderColor: colors.outlineVariant, marginTop: spacing.sm },
+                              ]}
+                              onPress={async () => {
+                                await Clipboard.setStringAsync(String(emailBody.data?.body_text));
+                                toast.success("Email text copied.");
+                              }}
+                            >
+                              <Copy size={18} color={colors.primary} />
+                              <Text style={{ color: colors.primary, marginLeft: 8 }}>
+                                Copy text
+                              </Text>
+                            </Pressable>
+                          </>
+                        ) : (
+                          <Text style={{ color: colors.onSurfaceVariant, marginTop: spacing.xs }}>
+                            This email had no readable text — probably an attachment only.
+                          </Text>
+                        )}
+                      </View>
+                    )}
                   </View>
                 )}
 
-                {/* Actions */}
+              </ScrollView>
+
+              {/* Pinned below the scroll area: these are the reason the
+                  sheet is open, so they must never need scrolling to reach. */}
                 <View style={styles.detailActions}>
                   <Pressable
                     style={[
@@ -1431,7 +1558,7 @@ export default function TransactionsScreen() {
                     </Text>
                   </Pressable>
                 </View>
-              </ScrollView>
+            </>
             )}
           </Pressable>
         </Pressable>
@@ -2458,7 +2585,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
-    paddingBottom: 28,
+    // paddingBottom is applied inline: it has to include the safe-area inset.
   },
   detailGrabber: { alignItems: "center", paddingVertical: 10 },
   detailGrabberBar: { width: 42, height: 4, borderRadius: 999 },
@@ -2498,6 +2625,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  emailBodyBox: {
+    maxHeight: 260,
+    marginTop: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  emailBodyText: {
+    fontSize: 12.5,
+    lineHeight: 19,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
   detailReceiptButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -2506,7 +2645,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  detailActions: { flexDirection: "row", gap: 10, marginTop: 22 },
+  detailFileRow: { flexDirection: "row", gap: 10 },
+  detailFileButton: { flex: 1, paddingHorizontal: 8 },
+  detailFileLabel: { marginLeft: 8, fontWeight: "600" },
+  detailActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   detailActionButton: {
     flex: 1,
     flexDirection: "row",
