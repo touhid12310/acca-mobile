@@ -114,7 +114,17 @@
       ],
       "expo-web-browser",
       "./plugins/withoutMediaPlaybackForegroundService",
-      "expo-iap"
+      "expo-iap",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "-keep class com.accounte.finance.** { *; }\n-keepattributes SourceFile,LineNumberTable\n-keepattributes *Annotation*,Signature,Exceptions\n-keep class com.facebook.hermes.unicode.** { *; }\n-keep class com.facebook.jni.** { *; }"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
