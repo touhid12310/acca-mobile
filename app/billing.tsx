@@ -213,7 +213,19 @@ export default function BillingScreen() {
    */
   const startPurchase = (target: { kind: "plan"; plan: BillingPlan } | { kind: "invoice"; invoice: SubscriptionInvoice }) => {
     const plan = target.kind === "plan" ? target.plan : (plansQuery.data || []).find((p) => p.slug === target.invoice.plan?.slug);
-    const playReady = play.available && play.connected && !play.expoGoBlocked && Boolean(plan && play.displayPriceFor(plan.slug));
+    // Play must be able to sell the cycle on screen. Without this the sheet
+    // offered a monthly product against a yearly plan.
+    const planCycle = plan ? cycleFor(plan) : "monthly";
+    // A coupon rides on the EPS invoice only, so offering Play here would mean
+    // offering to drop the user's discount. Go straight to the rail that honours it.
+    const couponApplies = Boolean(plan && appliedCoupon?.plan_slug === plan.slug);
+
+    const playReady =
+      !couponApplies &&
+      play.available &&
+      play.connected &&
+      !play.expoGoBlocked &&
+      Boolean(plan && play.displayPriceFor(plan.slug, planCycle));
 
     if (!playReady) {
       if (target.kind === "plan") buyPlan(target.plan);
@@ -235,7 +247,7 @@ export default function BillingScreen() {
   const payWithStore = () => {
     const plan = gatewayPlan;
     setGatewayFor(null);
-    if (plan) play.purchase(plan.slug);
+    if (plan) play.purchase(plan.slug, cycleFor(plan));
   };
 
   const paidPlans = useMemo(
@@ -333,7 +345,7 @@ export default function BillingScreen() {
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
                   {play.store === "app_store"
                     ? "Subscriptions on iPhone are billed by Apple and renew automatically. Manage or cancel from Settings → Apple ID → Subscriptions."
-                    : "Subscriptions on Android are billed by Google Play and renew automatically. Manage or cancel from the Play Store. Discount codes are redeemed through Play, not here."}
+                    : "Pay with Google Play and the subscription renews automatically — manage or cancel from the Play Store, and redeem Play promo codes there. AccountE coupons apply when you pay by card instead."}
                 </Text>
                 {play.expoGoBlocked && (
                   <Text style={[styles.muted, { color: colors.warning }]}>
@@ -368,7 +380,10 @@ export default function BillingScreen() {
               </Card>
             )}
 
-            {!play.available && Platform.OS !== "ios" && (
+            {/* Coupons ride on the EPS invoice, which Android reaches through
+                the payment chooser. iOS is App Store only, so they cannot
+                apply there. */}
+            {Platform.OS !== "ios" && (
             <Card variant="elevated" style={styles.couponCard}>
               <View style={styles.currentTitle}>
                 <BadgePercent size={20} color={colors.primary} />
@@ -377,6 +392,7 @@ export default function BillingScreen() {
               <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Have a coupon?</Text>
               <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
                 One code per purchase. Applying another replaces it.
+                {play.available ? " Applies when you pay by card, not through the store." : ""}
               </Text>
 
               {appliedCoupon ? (
@@ -555,11 +571,20 @@ export default function BillingScreen() {
                     /* Apple does not allow an alternative payment rail for
                        digital goods, so iOS stays App Store only. */
                     <Button
-                      label={play.displayPriceFor(plan.slug) ? `Subscribe · ${play.displayPriceFor(plan.slug)}` : "Subscribe with Apple"}
+                      label={
+                        play.displayPriceFor(plan.slug, planCycle)
+                          ? `Subscribe · ${play.displayPriceFor(plan.slug, planCycle)}`
+                          : "Subscribe with Apple"
+                      }
                       fullWidth
                       loading={play.purchasing === plan.slug}
-                      disabled={!play.available || play.expoGoBlocked || !play.connected || !play.displayPriceFor(plan.slug)}
-                      onPress={() => play.purchase(plan.slug)}
+                      disabled={
+                        !play.available ||
+                        play.expoGoBlocked ||
+                        !play.connected ||
+                        !play.displayPriceFor(plan.slug, planCycle)
+                      }
+                      onPress={() => play.purchase(plan.slug, planCycle)}
                     />
                   ) : premium ? (
                     <Button
@@ -610,11 +635,12 @@ export default function BillingScreen() {
               <View style={styles.flex}>
                 <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Google Play</Text>
                 <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
-                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug)
-                    ? `${play.displayPriceFor(gatewayPlan.slug)} · renews automatically`
+                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug, cycleFor(gatewayPlan))
+                    ? `${play.displayPriceFor(gatewayPlan.slug, cycleFor(gatewayPlan))} · renews automatically`
                     : "Renews automatically"}
                   . Manage or cancel in the Play Store.
                 </Text>
+
               </View>
               <ChevronRight size={18} color={colors.onSurfaceVariant} />
             </Pressable>
@@ -630,7 +656,7 @@ export default function BillingScreen() {
               <View style={styles.flex}>
                 <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Card or mobile banking</Text>
                 <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
-                  Pay this invoice through EPS. Coupons apply here.
+                  Card, bKash or bank. Coupons apply here.
                 </Text>
               </View>
               <ChevronRight size={18} color={colors.onSurfaceVariant} />

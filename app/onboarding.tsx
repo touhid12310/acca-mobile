@@ -58,6 +58,9 @@ export default function OnboardingScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const [displayName, setDisplayName] = useState(user?.name || "");
+  // Prefilled when they registered with a number; empty after social
+  // sign-in, which never supplies one.
+  const [mobile, setMobile] = useState(user?.mobile || "");
   const [selectedCurrency, setSelectedCurrency] = useState(user?.currency || currency || "USD");
   const [timezone, setTimezone] = useState(user?.timezone || detectedTz);
   const [monthMode, setMonthMode] = useState<"first" | "custom">("first");
@@ -98,6 +101,7 @@ export default function OnboardingScreen() {
     }
     if (key === "displayName") setDisplayName(value);
     if (key === "selectedCurrency") setSelectedCurrency(value);
+    if (key === "mobile") setMobile(value);
     if (key === "timezone") setTimezone(value);
     if (key === "monthMode") setMonthMode(value);
     if (key === "customDay") setCustomDay(value);
@@ -112,6 +116,8 @@ export default function OnboardingScreen() {
     const next: Record<string, string> = {};
     if (which === 1) {
       if (!displayName.trim()) next.displayName = "Display name is required";
+      if (!mobile.trim()) next.mobile = "Mobile number is required";
+      else if (!/^\+?[0-9][0-9\s\-()]{6,19}$/.test(mobile.trim())) next.mobile = "Enter a valid mobile number";
       if (!selectedCurrency) next.selectedCurrency = "Pick a currency";
       if (monthMode === "custom") {
         const day = Number(customDay);
@@ -148,6 +154,7 @@ export default function OnboardingScreen() {
     const balance = parseFloat(openingBalance);
     return {
       display_name: displayName.trim(),
+      mobile: mobile.trim(),
       currency: selectedCurrency,
       timezone,
       financial_month_start_day: day,
@@ -265,6 +272,23 @@ export default function OnboardingScreen() {
                   ]}
                 />
                 {errors.displayName && <Text style={styles.errorText}>{errors.displayName}</Text>}
+              </View>
+
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: subtle }]}>Mobile number</Text>
+                <TextInput
+                  value={mobile}
+                  onChangeText={(v) => setField("mobile", v)}
+                  placeholder="+880 1XXX XXXXXX"
+                  placeholderTextColor={subtle}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  style={[
+                    styles.input,
+                    { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
+                  ]}
+                />
+                {errors.mobile && <Text style={styles.errorText}>{errors.mobile}</Text>}
               </View>
 
               <View style={styles.field}>

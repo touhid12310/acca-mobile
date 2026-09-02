@@ -74,6 +74,8 @@ export type CouponPreview = {
 export type StoreProduct = {
   plan_slug: string;
   plan_name: string;
+  /** Which billing cycle this store product sells. */
+  cycle?: BillingCycle;
   product_id: string;
   base_plan_id?: string | null;
 };

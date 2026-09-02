@@ -213,8 +213,28 @@ export function useGooglePlayBilling({
     [storeCatalog],
   );
 
+  /**
+   * Resolve the store product for a plan on a given cycle.
+   *
+   * Matching on the slug alone quoted (and would have charged) the monthly
+   * product against a yearly plan. A catalogue row without a cycle is an older
+   * backend, and is treated as monthly.
+   */
+  const productMappingFor = useCallback(
+    (planSlug: string, cycle?: string) => {
+      const wanted = cycle || 'monthly';
+
+      return (
+        catalogue.find(
+          (item) => item.plan_slug === planSlug && (item.cycle || 'monthly') === wanted,
+        ) ?? null
+      );
+    },
+    [catalogue],
+  );
+
   const purchase = useCallback(
-    async (planSlug: string) => {
+    async (planSlug: string, cycle?: string) => {
       if (isExpoGo) {
         onError?.(
           'In-app purchases need a development or store build. Expo Go cannot talk to the Play Store or App Store.',
@@ -222,12 +242,12 @@ export function useGooglePlayBilling({
         return;
       }
 
-      const mapping = catalogue.find((item) => item.plan_slug === planSlug);
+      const mapping = productMappingFor(planSlug, cycle);
       if (!mapping) {
         onError?.(
           isIos
-            ? 'This plan is not available on the App Store yet.'
-            : 'This plan is not available on the Play Store.',
+            ? `This plan is not available on the App Store on a ${cycle || 'monthly'} cycle yet.`
+            : `This plan is not available on the Play Store on a ${cycle || 'monthly'} cycle yet.`,
         );
         return;
       }
@@ -377,10 +397,14 @@ export function useGooglePlayBilling({
     expoGoBlocked: isExpoGo && backendEnabled,
     purchase,
     restore,
-    displayPriceFor: (planSlug: string): string | null => {
-      const mapping = catalogue.find((item) => item.plan_slug === planSlug);
+    /** Store price for a plan on a cycle, or null when the store has no such product. */
+    displayPriceFor: (planSlug: string, cycle?: string): string | null => {
+      const mapping = productMappingFor(planSlug, cycle);
       return findStoreProduct(mapping?.product_id || '')?.displayPrice ?? null;
     },
+    /** Whether the store can sell this plan on this cycle at all. */
+    supportsCycle: (planSlug: string, cycle?: string): boolean =>
+      Boolean(productMappingFor(planSlug, cycle)),
   };
 }
 
