@@ -74,6 +74,9 @@ export const registerDevice = async (authToken: string): Promise<boolean> => {
       token: pushToken,
       platform: Platform.OS,
       device_name: Device.deviceName || `${Platform.OS} device`,
+      // Lets admin see who is still on an old build.
+      app_version: Constants.expoConfig?.version ?? null,
+      os_version: Device.osVersion ?? null,
     },
     token: authToken,
   });
