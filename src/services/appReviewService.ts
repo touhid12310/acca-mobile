@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { requireOptionalNativeModule } from "expo";
 import Constants from "expo-constants";
-import * as StoreReview from "expo-store-review";
 import { AppState, type AppStateStatus, Linking, Platform, Share } from "react-native";
 
 import { apiRequest, getAuthToken } from "../config/api";
@@ -57,6 +57,30 @@ const EMPTY_STATE: ReviewState = {
 
 let backgroundedAt: number | null = null;
 let inFlight = false;
+
+type StoreReviewModule = typeof import("expo-store-review");
+let storeReviewModule: StoreReviewModule | null | undefined;
+
+/**
+ * expo-store-review is native: a build made before it was added (or an OTA
+ * update landing on one) throws "Cannot find native module" the moment it is
+ * imported. Metro reports that as fatal even inside a try/catch, so ask
+ * whether the native side exists first, and only then load the package.
+ * No native module = no in-app review on this build; Rate/Share still work.
+ */
+const getStoreReview = (): StoreReviewModule | null => {
+  if (storeReviewModule !== undefined) return storeReviewModule;
+
+  storeReviewModule = null;
+  if (requireOptionalNativeModule("ExpoStoreReview")) {
+    try {
+      storeReviewModule = require("expo-store-review") as StoreReviewModule;
+    } catch {
+      // Leave it null — the prompt is optional.
+    }
+  }
+  return storeReviewModule;
+};
 
 const localDay = (date: Date = new Date()): string => {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -154,7 +178,8 @@ export const maybeAskForReview = async (trigger: ReviewTrigger): Promise<void> =
   inFlight = true;
 
   try {
-    if (!(await StoreReview.isAvailableAsync())) return;
+    const StoreReview = getStoreReview();
+    if (!StoreReview || !(await StoreReview.isAvailableAsync())) return;
 
     // Cheap, on-device checks first; the server call only if they pass.
     const state = await loadState();
@@ -189,12 +214,13 @@ const fallbackPlayUrl = (): string =>
 /** The admin-set store link for this phone, falling back to app.json's, then Play. */
 const storeUrlForThisPlatform = async (): Promise<string | null> => {
   const config = await getCachedAppConfig();
+  const appJsonUrl = getStoreReview()?.storeUrl() ?? null;
 
   if (Platform.OS === "ios") {
-    return config?.ios_url || StoreReview.storeUrl() || null;
+    return config?.ios_url || appJsonUrl;
   }
 
-  return config?.android_url || StoreReview.storeUrl() || fallbackPlayUrl();
+  return config?.android_url || appJsonUrl || fallbackPlayUrl();
 };
 
 /**
