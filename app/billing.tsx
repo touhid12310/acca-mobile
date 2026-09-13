@@ -560,7 +560,14 @@ export default function BillingScreen() {
                       </Text>
                     </View>
                   )}
-                  {premium && plan.trial_enabled && plan.trial_days > 0 && <View style={styles.trial}><Zap size={16} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{plan.trial_days}-day free trial</Text></View>}
+                  {/* The plan's trial settings say nothing about whether this user
+                      already used theirs — only advertise it when they still can. */}
+                  {canTrial && <View style={styles.trial}><Zap size={16} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{plan.trial_days}-day free trial</Text></View>}
+                  {premium && !current && !canTrial && plan.trial_enabled && plan.trial_days > 0 && overview?.current_plan?.slug === "free" && (
+                    <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
+                      You've used your free trial — Premium starts once you pay.
+                    </Text>
+                  )}
                   <View style={styles.features}>{Object.entries(plan.features || {}).map(([key, label]) => <View style={styles.feature} key={key}><Check size={17} color={colors.tertiary} /><Text style={[styles.featureText, { color: colors.onSurface }]}>{label}</Text></View>)}</View>
                   {plan.ai_monthly_limit ? <View style={[styles.quota, { backgroundColor: colors.primaryContainer }]}><Sparkles size={16} color={colors.primary} /><Text style={{ color: colors.onPrimaryContainer, fontWeight: "700" }}>Up to {plan.ai_monthly_limit} AI transactions per period</Text></View> : null}
                   {current ? (
