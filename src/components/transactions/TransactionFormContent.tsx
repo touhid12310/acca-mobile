@@ -910,6 +910,11 @@ export default function TransactionFormContent({
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          // Taps on suggestion rows must select while the keyboard is open.
+          // Default ("never") eats the first tap to dismiss the keyboard,
+          // which is why tapping a merchant did nothing until the keyboard
+          // was closed first.
+          keyboardShouldPersistTaps="handled"
         >
           {/* Scan Receipt with AI - Only show when no data entered yet.
               Transfers have no receipt/items (web parity), so hide it. */}
