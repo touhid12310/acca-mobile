@@ -259,10 +259,14 @@ export default function LoansScreen() {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       closePaymentModal();
       // Settling a loan in full is one of the app's real "done" moments.
-      type Settled = { loan?: { status?: string } };
-      const body = result?.data as (Settled & { data?: Settled }) | undefined;
-      const loan = body?.data?.loan ?? body?.loan;
-      if (loan?.status === "Paid Off") void maybeAskForReview("loan_paid_off");
+      type Outcome = { loan?: { status?: string }; changed_sides?: boolean };
+      const body = result?.data as (Outcome & { data?: Outcome; message?: string }) | undefined;
+      const outcome = body?.data ?? body;
+      // Paid more than was owed: say who owes whom now.
+      if (outcome?.changed_sides) {
+        notifyToast.success(body?.message ?? "Settled. The loan changed sides.");
+      }
+      if (outcome?.loan?.status === "Paid Off") void maybeAskForReview("loan_paid_off");
     },
     onError: (error: Error) => notifyToast.error(error.message),
   });
@@ -310,6 +314,23 @@ export default function LoansScreen() {
   /** Mirrors LoanLedgerService: which direction settles this kind of loan. */
   const isRepaymentDirection = (loan: Loan | null, direction: LoanDirection) =>
     loan?.loan_type === "Borrowed" ? direction === "out" : direction === "in";
+
+  /**
+   * How far a repayment goes past what is owed. The backend settles the loan
+   * and carries the extra over to the other side, so it is shown, not refused.
+   */
+  const overpaymentExtra = (
+    loan: Loan | null,
+    direction: LoanDirection,
+    data: { payment_amount: string; interest_paid?: string },
+  ) => {
+    if (!loan || !isRepaymentDirection(loan, direction)) return 0;
+    const total = parseFloat(data.payment_amount);
+    if (!Number.isFinite(total)) return 0;
+    const interest = parseFloat(data.interest_paid ?? "") || 0;
+    const extra = total - interest - parseFloat(String(loan.remaining_balance ?? 0));
+    return extra > 0.009 ? Math.round(extra * 100) / 100 : 0;
+  };
 
   const directionLabels = (loan: Loan | null) =>
     loan?.loan_type === "Borrowed"
@@ -375,24 +396,16 @@ export default function LoansScreen() {
     const interest = paymentData.interest_paid
       ? parseFloat(paymentData.interest_paid)
       : 0;
-    // Principal is no longer asked for: whatever is not interest comes off
-    // the balance, which is what everyone meant by the field anyway.
-    const principal = amount - interest;
     if (!amount || amount <= 0) {
       notifyToast.error("Please enter a valid payment amount");
       return;
     }
-    // The split and the balance ceiling only apply when settling the loan.
+    // The interest split only applies when settling the loan. More than is
+    // owed is fine: the backend settles it and carries the extra over to the
+    // other side (see overpaymentExtra).
     const settlingEntry = isRepaymentDirection(selectedLoan, paymentDirection);
     if (settlingEntry && (!Number.isFinite(interest) || interest < 0 || interest > amount)) {
       notifyToast.error("Interest cannot be negative or larger than the payment.");
-      return;
-    }
-    if (
-      settlingEntry &&
-      principal > parseFloat(String(selectedLoan.remaining_balance ?? 0)) + 0.009
-    ) {
-      notifyToast.error("That is more than the outstanding balance.");
       return;
     }
     if (!paymentData.account_id) {
@@ -1839,6 +1852,7 @@ export default function LoansScreen() {
                       </Text>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
                         bal {formatAmount(entry.balance_after)}
+                        {entry.balance_label ? ` · ${entry.balance_label}` : ""}
                       </Text>
                     </View>
                   </View>
@@ -2006,6 +2020,22 @@ export default function LoansScreen() {
                 style={styles.input}
               />
             )}
+
+            {selectedLoan &&
+              (() => {
+                const extra = overpaymentExtra(selectedLoan, paymentDirection, paymentData);
+                if (!extra) return null;
+                const who =
+                  selectedLoan.loan_type === "Borrowed"
+                    ? `${selectedLoan.loan_name} will owe you ${formatAmount(extra)}`
+                    : `you will owe ${selectedLoan.loan_name} ${formatAmount(extra)}`;
+                return (
+                  <Text variant="bodySmall" style={{ color: colors.primary, marginBottom: 12 }}>
+                    That is {formatAmount(extra)} more than is owed. The loan will be settled and
+                    change sides — {who}.
+                  </Text>
+                );
+              })()}
 
             {/* Account Selection for Payment */}
             <Text

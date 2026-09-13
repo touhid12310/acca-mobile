@@ -13,6 +13,9 @@ export type LoanStatementEntry = {
   interest: number;
   date: string | null;
   balance_after: number;
+  /** Only on loans that changed sides: which way this balance points. */
+  balance_side?: 'Borrowed' | 'Lent';
+  balance_label?: string;
   notes?: string | null;
 };
 
