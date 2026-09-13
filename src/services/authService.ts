@@ -160,11 +160,11 @@ export const authService = {
     });
   },
 
-  disableTwoFactor: async (password?: string): Promise<ApiResponse<void>> => {
+  disableTwoFactor: async (password?: string, code?: string): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
     return apiRequest<void>('/two-factor/disable', {
       method: 'POST',
-      body: JSON.stringify(password ? { password } : {}),
+      body: JSON.stringify({ ...(password ? { password } : {}), ...(code ? { code } : {}) }),
       token,
     });
   },

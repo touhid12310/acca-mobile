@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import NetInfo from '@react-native-community/netinfo';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 
-import { AuthProvider } from '../src/contexts/AuthContext';
+import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
@@ -44,12 +44,17 @@ const ROUTABLE_TYPES: Record<string, string> = {
   subscription_invoice_due: '/billing',
 };
 
+// Strict allow-list: only these routes may ever come from a push payload.
+// The server-controlled `route` field is deliberately ignored — trusting it
+// would let a compromised backend (or crafted FCM/APNs payload) force
+// navigation to any screen, including purchase sheets.
+const ALLOWED_PUSH_ROUTES = new Set<string>(Object.values(ROUTABLE_TYPES));
+
 const routeFromNotificationData = (data: unknown): string | undefined => {
-  const d = data as { type?: string; route?: string } | undefined;
-  const route =
-    (typeof d?.route === 'string' && d.route) ||
-    (d?.type ? ROUTABLE_TYPES[d.type] : undefined);
-  return route || undefined;
+  const d = data as { type?: string } | undefined;
+  const mapped = d?.type ? ROUTABLE_TYPES[d.type] : undefined;
+  if (mapped && ALLOWED_PUSH_ROUTES.has(mapped)) return mapped;
+  return undefined;
 };
 
 // Create a client
@@ -73,11 +78,35 @@ onlineManager.setEventListener((setOnline) =>
 
 function RootLayoutNav() {
   const { theme, isDark } = useTheme();
+  const { isAuthenticated, user, loading } = useAuth();
+  const segments = useSegments();
 
   useEffect(() => {
     // Hide splash screen after app is ready
     SplashScreen.hideAsync();
   }, []);
+
+  // Central deep-link guard: every Stack screen outside (auth)/ sits behind
+  // this. Per-group guards in index + (tabs)/_layout still apply; this
+  // catches direct links to /transaction-modal, /billing, /onboarding, etc.
+  // Index (segments empty) owns its own redirect, so leave it alone.
+  useEffect(() => {
+    if (loading || (segments as readonly string[]).length === 0) return;
+    const root = (segments as readonly string[])[0];
+    const isAuthRoute = root === '(auth)';
+    const isOnboarding = root === 'onboarding';
+    if (!isAuthenticated && !isAuthRoute) {
+      router.replace('/(auth)/login' as any);
+    } else if (
+      isAuthenticated &&
+      user &&
+      !user.onboarding_completed_at &&
+      !isOnboarding &&
+      !isAuthRoute
+    ) {
+      router.replace('/onboarding' as any);
+    }
+  }, [loading, isAuthenticated, user, segments]);
 
   // Route the user to the right screen when they tap a push notification.
   // useLastNotificationResponse (not addNotificationResponseReceivedListener)

@@ -20,7 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
-import { WebView } from "react-native-webview";
+import { SvgXml } from "react-native-svg";
 
 import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -69,6 +69,7 @@ export default function ProfileScreen() {
   const [secretKey, setSecretKey] = useState("");
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
+  const [disableTotpCode, setDisableTotpCode] = useState("");
   const [showVerifyStep, setShowVerifyStep] = useState(false);
   const [is2FALoading, setIs2FALoading] = useState(false);
 
@@ -398,16 +399,24 @@ export default function ProfileScreen() {
       notifyToast.error("Please enter your password");
       return;
     }
+    // Fresh TOTP is always required — a stolen session alone must not be
+    // able to strip 2FA (backend enforces this too).
+    if (disableTotpCode.length !== 6) {
+      notifyToast.error("Enter the 6-digit code from your authenticator app");
+      return;
+    }
 
     setIs2FALoading(true);
     try {
       const result = await authService.disableTwoFactor(
         needsPassword ? disablePassword : undefined,
+        disableTotpCode,
       );
       if (result.success) {
         notifyToast.success("Two-factor authentication disabled");
         setTwoFactorModalVisible(false);
         setDisablePassword("");
+        setDisableTotpCode("");
         loadTwoFactorStatus();
       } else {
         notifyToast.error(result.error || "Failed to disable 2FA");
@@ -874,6 +883,7 @@ export default function ProfileScreen() {
             setShowVerifyStep(false);
             setTwoFactorCode("");
             setDisablePassword("");
+            setDisableTotpCode("");
           }}
           contentContainerStyle={[
             styles.modal,
@@ -893,8 +903,8 @@ export default function ProfileScreen() {
                 style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
               >
                 {user?.has_password === false
-                  ? "This will turn off two-factor authentication on your account."
-                  : "Enter your password to disable two-factor authentication."}
+                  ? "Enter the 6-digit code from your authenticator app to turn off two-factor authentication."
+                  : "Enter your password and the 6-digit code from your authenticator app."}
               </Text>
 
               {user?.has_password !== false && (
@@ -907,6 +917,22 @@ export default function ProfileScreen() {
                 style={styles.input}
               />
               )}
+              <TextInput
+                label="6-digit code"
+                value={disableTotpCode}
+                onChangeText={(text) =>
+                  setDisableTotpCode(text.replace(/\D/g, "").slice(0, 6))
+                }
+                mode="outlined"
+                keyboardType="number-pad"
+                maxLength={6}
+                style={styles.input}
+                contentStyle={{
+                  textAlign: "center",
+                  letterSpacing: 8,
+                  fontSize: 24,
+                }}
+              />
 
               <View style={styles.modalButtons}>
                 <Button
@@ -989,37 +1015,10 @@ export default function ProfileScreen() {
               {qrCode ? (
                 <View style={styles.qrContainer}>
                   <View style={styles.qrCodeWrapper}>
-                    <WebView
-                      source={{
-                        html: `
-                          <!DOCTYPE html>
-                          <html>
-                            <head>
-                              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                              <style>
-                                body {
-                                  margin: 0;
-                                  padding: 0;
-                                  display: flex;
-                                  justify-content: center;
-                                  align-items: center;
-                                  background: #fff;
-                                }
-                                svg {
-                                  width: 180px;
-                                  height: 180px;
-                                }
-                              </style>
-                            </head>
-                            <body>${qrCode}</body>
-                          </html>
-                        `,
-                      }}
-                      style={styles.qrWebView}
-                      scrollEnabled={false}
-                      showsHorizontalScrollIndicator={false}
-                      showsVerticalScrollIndicator={false}
-                    />
+                    {/* Server SVG rendered natively — no WebView, so embedded
+                    scripts (if the backend were ever compromised) cannot
+                    execute. */}
+                    <SvgXml xml={qrCode} width={180} height={180} />
                   </View>
                   <Text
                     variant="labelSmall"

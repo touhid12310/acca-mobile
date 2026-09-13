@@ -32,7 +32,6 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useToast } from '../../contexts/NotificationContext';
-import { WebView } from 'react-native-webview';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -1084,17 +1083,24 @@ export default function TransactionFormContent({
                   />
                 )}
 
-                {/* Show PDF inline using WebView with Google Docs viewer */}
+                {/* PDFs render as a privacy-safe placeholder — never send the
+                receipt URL to a third-party viewer (e.g. Google Docs). The
+                "Open in Browser" button above opens the file directly. */}
                 {formData.receipt_type === 'pdf' && formData.receipt_path && (
                   <View style={styles.pdfContainer}>
-                    <WebView
-                      source={{
-                        uri: `https://docs.google.com/viewer?url=${encodeURIComponent(buildFileUrl(formData.receipt_path) || '')}&embedded=true`,
-                      }}
-                      style={styles.pdfWebView}
-                      startInLoadingState={true}
-                      scalesPageToFit={true}
-                    />
+                    <View style={styles.receiptFileInfo}>
+                      <MaterialCommunityIcons
+                        name="file-document"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <Text style={{ color: colors.onSurface, marginTop: 8 }} numberOfLines={1}>
+                        {formData.receipt_name || 'Receipt PDF'}
+                      </Text>
+                      <Text style={{ color: colors.onSurfaceVariant, marginTop: 4, textAlign: 'center' }}>
+                        PDF preview is disabled for privacy. Use Open in Browser above.
+                      </Text>
+                    </View>
                   </View>
                 )}
 
