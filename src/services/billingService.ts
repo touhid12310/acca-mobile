@@ -99,6 +99,7 @@ export type BillingOverview = {
     grace_ends_at?: string | null;
     in_grace_period: boolean;
     can_start_trial: boolean;
+    trial_unavailable_reason?: 'trial_used' | 'had_premium' | null;
     billing_provider: 'eps' | 'google_play' | 'app_store';
     managed_by_google_play: boolean;
     managed_by_app_store?: boolean;

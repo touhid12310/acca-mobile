@@ -565,7 +565,9 @@ export default function BillingScreen() {
                   {canTrial && <View style={styles.trial}><Zap size={16} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{plan.trial_days}-day free trial</Text></View>}
                   {premium && !current && !canTrial && plan.trial_enabled && plan.trial_days > 0 && overview?.current_plan?.slug === "free" && (
                     <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
-                      You've used your free trial — Premium starts once you pay.
+                      {overview?.subscription?.trial_unavailable_reason === "had_premium"
+                        ? "You've had Premium before — welcome back, Premium starts once you pay."
+                        : "You've used your free trial — Premium starts once you pay."}
                     </Text>
                   )}
                   <View style={styles.features}>{Object.entries(plan.features || {}).map(([key, label]) => <View style={styles.feature} key={key}><Check size={17} color={colors.tertiary} /><Text style={[styles.featureText, { color: colors.onSurface }]}>{label}</Text></View>)}</View>
