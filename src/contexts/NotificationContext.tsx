@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Toast, ToastItem } from "../components/ui/Toast";
 import { spacing } from "../constants/theme";
 import type { AlertTone } from "../components/ui/AlertBar";
+import { markSessionError } from "../services/sessionHealth";
 
 const MAX_VISIBLE = 3;
 
@@ -67,6 +68,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     counterRef.current += 1;
     const id = input.id ?? `toast-${Date.now()}-${counterRef.current}`;
     const toast: ToastItem = { tone: "info", ...input, id };
+    // Any error the user sees rules out the rating prompt for this session.
+    if (toast.tone === "error") markSessionError();
     setItems((prev) => {
       const next = [...prev, toast];
       return next.length > MAX_VISIBLE ? next.slice(next.length - MAX_VISIBLE) : next;

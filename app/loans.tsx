@@ -49,6 +49,7 @@ import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Loan } from "../src/types";
 import { formatDate, todayDateInputValue } from "../src/utils/date";
+import { maybeAskForReview } from "../src/services/appReviewService";
 
 // Helper function to extract detailed validation errors from API response
 /**
@@ -253,10 +254,15 @@ export default function LoansScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["loans"] });
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       closePaymentModal();
+      // Settling a loan in full is one of the app's real "done" moments.
+      type Settled = { loan?: { status?: string } };
+      const body = result?.data as (Settled & { data?: Settled }) | undefined;
+      const loan = body?.data?.loan ?? body?.loan;
+      if (loan?.status === "Paid Off") void maybeAskForReview("loan_paid_off");
     },
     onError: (error: Error) => notifyToast.error(error.message),
   });

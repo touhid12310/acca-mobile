@@ -12,6 +12,7 @@ import TransactionFormContent, {
 import transactionService from '../src/services/transactionService';
 import { Transaction, TransactionType } from '../src/types';
 import { toDateInputValue } from '../src/utils/date';
+import { maybeAskForReview } from '../src/services/appReviewService';
 
 export default function TransactionModalScreen() {
   const { colors } = useTheme();
@@ -271,6 +272,7 @@ export default function TransactionModalScreen() {
         variables.type === 'transfer' ? 'Transfer completed' : 'Transaction saved',
       );
       router.back();
+      void maybeAskForReview('transaction_saved');
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Unable to save transaction');

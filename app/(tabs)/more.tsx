@@ -37,6 +37,8 @@ import {
   DollarSign,
   Crown,
   FileText,
+  Share2,
+  Star,
 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
@@ -54,6 +56,7 @@ import {
 import { BrandStrip } from "../../src/components";
 import { getInitials } from "../../src/utils/format";
 import { radius, shadow, spacing } from "../../src/constants/theme";
+import { openStoreListing, shareApp } from "../../src/services/appReviewService";
 
 type MenuItem = {
   icon: LucideIcon;
@@ -204,6 +207,27 @@ export default function MoreScreen() {
           // Cast: expo-router regenerates typed routes for /support on the next
           // Metro start/build; keeps tsc green until then.
           onPress: () => router.push("/support" as never),
+          tone: "neutral",
+        },
+        {
+          icon: Star,
+          label: "Rate AccountE",
+          description: "Tell others what you think on the store",
+          onPress: () =>
+            openStoreListing()
+              .then((opened) => {
+                if (!opened) notifyToast.error("The store link is not set up yet.");
+              })
+              .catch(() => notifyToast.error("Could not open the store.")),
+          tone: "neutral",
+        },
+        {
+          icon: Share2,
+          label: "Share AccountE",
+          description: "Send the app to a friend",
+          onPress: () => {
+            shareApp().catch(() => notifyToast.error("Could not open sharing."));
+          },
           tone: "neutral",
         },
         {

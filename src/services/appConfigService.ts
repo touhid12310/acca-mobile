@@ -3,6 +3,9 @@ import { apiRequest } from '../config/api';
 export interface PublicAppConfig {
   ios_url: string;
   android_url: string;
+  /** Admin-set "Share AccountE" link; blank means use the store link. */
+  share_url: string;
+  share_message: string;
   deep_link: string;
   force_redirect: boolean;
   google_oauth: {
@@ -27,6 +30,8 @@ export async function getPublicAppConfig(): Promise<PublicAppConfig | null> {
     return {
       ios_url: data.ios_url ?? '',
       android_url: data.android_url ?? '',
+      share_url: data.share_url ?? '',
+      share_message: data.share_message ?? '',
       deep_link: data.deep_link ?? 'accounte://',
       force_redirect: data.force_redirect ?? false,
       google_oauth: {
@@ -40,4 +45,16 @@ export async function getPublicAppConfig(): Promise<PublicAppConfig | null> {
   }
 }
 
-export default { getPublicAppConfig };
+let cachedConfig: PublicAppConfig | null = null;
+
+/**
+ * The same config, fetched once per app session — for taps like "Rate" and
+ * "Share" that should feel instant. Existing callers keep the uncached fetch.
+ */
+export async function getCachedAppConfig(): Promise<PublicAppConfig | null> {
+  if (cachedConfig) return cachedConfig;
+  cachedConfig = await getPublicAppConfig();
+  return cachedConfig;
+}
+
+export default { getPublicAppConfig, getCachedAppConfig };

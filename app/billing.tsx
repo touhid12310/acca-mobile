@@ -15,6 +15,7 @@ import { useToast } from "../src/contexts/NotificationContext";
 import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice, BillingCycle } from "../src/services/billingService";
 import { useGooglePlayBilling } from "../src/hooks/useGooglePlayBilling";
 import { radius, spacing, typography } from "../src/constants/theme";
+import { maybeAskForReview } from "../src/services/appReviewService";
 
 const money = (amount: string | number, currency: string) => {
   try {
@@ -83,6 +84,7 @@ export default function BillingScreen() {
     onEntitlementGranted: async () => {
       toast.success("Purchase verified. Premium is active.");
       await refresh();
+      void maybeAskForReview("premium_activated");
     },
     onRestoreCompleted: async (active) => {
       toast[active ? "success" : "info"](
@@ -101,8 +103,12 @@ export default function BillingScreen() {
         toast.error(params.status === "cancel" ? "Payment was cancelled." : "Payment was not completed.");
       } else {
         const response = await billingService.verifyPayment(params.payment!);
-        if (response.success) toast.success("Payment confirmed. Premium is active.");
-        else toast.error(apiMessage(response, "EPS has not confirmed this payment yet."));
+        if (response.success) {
+          toast.success("Payment confirmed. Premium is active.");
+          void maybeAskForReview("premium_activated");
+        } else {
+          toast.error(apiMessage(response, "EPS has not confirmed this payment yet."));
+        }
       }
       await refresh();
       router.replace("/billing" as never);
@@ -142,6 +148,7 @@ export default function BillingScreen() {
       // backend settles the invoice and returns no redirect URL.
       if (response.success && checkoutData?.settled_without_payment) {
         toast.success("Coupon covered the full amount. Premium is active.");
+        void maybeAskForReview("premium_activated");
         setAppliedCoupon(null);
         setCouponInput("");
         setBusy(null);

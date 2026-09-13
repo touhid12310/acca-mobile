@@ -18,6 +18,7 @@ import settingsService from '../services/settingsService';
 import { User } from '../types';
 import { detectTimeZone, setActiveTimeZone } from '../utils/timezone';
 import { notifyToast } from './NotificationContext';
+import { startReviewTracking } from "../services/appReviewService";
 
 // Session validation interval (30 seconds)
 const SESSION_CHECK_INTERVAL = 30000;
@@ -144,6 +145,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Days the app is used, for the rating prompt's "3 separate days" rule.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    return startReviewTracking();
+  }, [isAuthenticated]);
 
   // Register the device for push notifications when authenticated. Best-effort:
   // failures are silent (e.g. emulator, missing backend endpoint, denied perms).

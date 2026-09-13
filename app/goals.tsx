@@ -31,6 +31,7 @@ import goalService from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Goal } from "../src/types";
+import { maybeAskForReview } from "../src/services/appReviewService";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
@@ -147,6 +148,7 @@ export default function GoalsScreen() {
             title: "Goal complete",
             duration: 5000,
           });
+          void maybeAskForReview("goal_reached");
         } else {
           toast.success(`${formatAmount(variables.amount)} added to ${goal.name}`);
         }
