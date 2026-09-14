@@ -467,6 +467,18 @@ const normalizeChatMessageResponse = (payload: any): ChatMessage[] => {
   return [];
 };
 
+/**
+ * Replies end with a "Source: …" line naming the data behind the numbers.
+ * Split it off so it renders as a small muted line, not part of the answer.
+ */
+const splitSourceLine = (
+  text?: string | null,
+): { body: string | null | undefined; source: string | null } => {
+  const match = /\n\s*(Source:[^\n]*)\s*$/.exec(text || "");
+  if (!match) return { body: text, source: null };
+  return { body: (text || "").slice(0, match.index).trimEnd(), source: match[1] };
+};
+
 const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
   id: "welcome",
   is_user: false,
@@ -1520,6 +1532,9 @@ export default function ChatScreen() {
         : null;
     const displayAttachment = attachment || relatedAttachment;
     const hasImageAttachment = Boolean(displayAttachment?.isImage);
+    const { body: messageBody, source: messageSource } = isUser
+      ? { body: message.message, source: null }
+      : splitSourceLine(message.message);
 
     return (
       <View
@@ -1606,7 +1621,7 @@ export default function ChatScreen() {
           )}
 
           {/* Message text — selectable so users can copy assistant replies. */}
-          {message.message && (
+          {messageBody ? (
             <Text
               selectable
               selectionColor={isUser ? "rgba(255,255,255,0.35)" : undefined}
@@ -1615,9 +1630,17 @@ export default function ChatScreen() {
                 { color: isUser ? "#ffffff" : colors.onSurface },
               ]}
             >
-              <BrandText>{message.message}</BrandText>
+              <BrandText>{messageBody}</BrandText>
             </Text>
-          )}
+          ) : null}
+          {messageSource ? (
+            <Text
+              selectable
+              style={[styles.messageSource, { color: colors.onSurfaceVariant }]}
+            >
+              {messageSource}
+            </Text>
+          ) : null}
 
           {/* Candidate summary card (merchant + amount), shown ABOVE the items
               table. The Preview & Save button is rendered separately AFTER the
@@ -2701,6 +2724,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     padding: 8,
     paddingBottom: Platform.OS === "ios" ? 8 : 8,
+  },
+  messageSource: {
+    fontSize: 11,
+    marginTop: 6,
   },
   quickActionsRow: {
     flexDirection: "row",
