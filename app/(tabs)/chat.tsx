@@ -1132,10 +1132,12 @@ export default function ChatScreen() {
   );
 
   // Handle sending message
-  const handleSend = async () => {
-    if (isSending || (!inputText.trim() && !selectedFile)) return;
+  // `text` lets a suggestion chip send its own words directly — inputText
+  // would still hold the previous render's value.
+  const handleSend = async (text?: string) => {
+    const messageText = (typeof text === "string" ? text : inputText).trim();
+    if (isSending || (!messageText && !selectedFile)) return;
 
-    const messageText = inputText.trim();
     const file = selectedFile;
     setSendingHasFile(Boolean(file));
     setSendStatusIndex(0);
@@ -1520,6 +1522,17 @@ export default function ChatScreen() {
         : null;
     const displayAttachment = attachment || relatedAttachment;
     const hasImageAttachment = Boolean(displayAttachment?.isImage);
+    // AI follow-up suggestions, shown only under the newest reply so old ones
+    // don't pile up down the thread.
+    const rawSuggestions = (message.metadata as any)?.suggested_actions;
+    const suggestions: string[] =
+      !isUser &&
+      threadMessages[threadMessages.length - 1]?.id === message.id &&
+      Array.isArray(rawSuggestions)
+        ? rawSuggestions
+            .filter((action: unknown): action is string => typeof action === "string" && action.trim() !== "")
+            .slice(0, 3)
+        : [];
 
     return (
       <View
@@ -1956,6 +1969,28 @@ export default function ChatScreen() {
             </View>
           )}
 
+          {suggestions.length > 0 && (
+            <View style={styles.suggestionsRow}>
+              {suggestions.map((action) => (
+                <TouchableOpacity
+                  key={action}
+                  style={[
+                    styles.suggestionChip,
+                    {
+                      borderColor: colors.primary,
+                      backgroundColor: `${colors.primary}12`,
+                    },
+                  ]}
+                  onPress={() => handleSend(action)}
+                >
+                  <Text style={{ color: colors.primary, fontSize: 12 }}>
+                    {action}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
         </View>
 
         {/* User avatar — prefer the saved profile picture, fall back to the
@@ -2267,7 +2302,7 @@ export default function ChatScreen() {
                 <IconButton
                   icon="send"
                   size={24}
-                  onPress={handleSend}
+                  onPress={() => handleSend()}
                   iconColor="#ffffff"
                   style={[
                     styles.sendButton,
@@ -2714,6 +2749,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
+  },
+  suggestionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 8,
+  },
+  suggestionChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   inputRow: {
     flexDirection: "row",
