@@ -272,8 +272,8 @@ export default function NotificationSettingsScreen() {
               "daily_wrapup",
               Moon,
               "Nightly Wrap-up",
-              "9 PM reminder to wrap up your day in 30 seconds — only if the day is still unlogged.",
-              "9:00 PM your time",
+              "A late-evening reminder to wrap up your day in 30 seconds — only if the day is still unlogged.",
+              "9–11 PM your time",
             )}
 
             <View style={[styles.sectionLabel]}>
