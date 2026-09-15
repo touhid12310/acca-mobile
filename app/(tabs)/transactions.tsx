@@ -48,8 +48,6 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
-  FileText,
-  Pencil,
   Wallet,
   X,
   LucideIcon,
@@ -73,8 +71,8 @@ import {
   PeriodRange,
 } from "../../src/components/ui";
 import { BrandStrip } from "../../src/components";
-import * as WebBrowser from "expo-web-browser";
-import transactionService, { InboundEmailBody } from "../../src/services/transactionService";
+import transactionService from "../../src/services/transactionService";
+import TransactionDetailsSheet from "../../src/components/transactions/TransactionDetailsSheet";
 import accountService from "../../src/services/accountService";
 import settingsService from "../../src/services/settingsService";
 import { formatDate } from "../../src/utils/date";
@@ -147,7 +145,6 @@ export default function TransactionsScreen() {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [detailVisible, setDetailVisible] = useState(false);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<Set<number>>(
     new Set(),
   );
@@ -159,13 +156,6 @@ export default function TransactionsScreen() {
     "all" | "email" | "schedule" | "subscription"
   >("all");
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
-  // Fetched on demand rather than with the list: bodies are large and most
-  // drafts are never opened.
-  const [emailBody, setEmailBody] = useState<{
-    loading: boolean;
-    data: InboundEmailBody | null;
-    error: string | null;
-  } | null>(null);
   const pendingDeleteTimers = useRef<
     Map<number, ReturnType<typeof setTimeout>>
   >(new Map());
@@ -526,24 +516,6 @@ export default function TransactionsScreen() {
     | undefined;
 
   // Archive draft mutation
-  const loadEmailBody = async (transactionId: number) => {
-    setEmailBody({ loading: true, data: null, error: null });
-    try {
-      const response = await transactionService.getEmailBody(transactionId);
-      const payload = (response.data as any)?.data ?? response.data;
-      if (!response.success || !payload) {
-        throw new Error((response.data as any)?.message || "Could not load the email.");
-      }
-      setEmailBody({ loading: false, data: payload as InboundEmailBody, error: null });
-    } catch (error) {
-      setEmailBody({
-        loading: false,
-        data: null,
-        error: error instanceof Error ? error.message : "Could not load the email.",
-      });
-    }
-  };
-
   const rejectDraftMutation = useMutation({
     mutationFn: (id: number) => transactionService.reject(id),
     onSuccess: async (res) => {
@@ -661,32 +633,16 @@ export default function TransactionsScreen() {
     }
   };
 
-  /**
-   * The list payload is trimmed, so pull the full record (items, receipt,
-   * categories) before showing it — same detail the web modal renders.
-   */
-  const openTransactionDetails = async (item: Transaction) => {
+  // The sheet fetches the full record (items, receipt, categories) itself.
+  const openTransactionDetails = (item: Transaction) => {
     setExpandedRowId(null);
     setDetailTransaction(item);
     setDetailVisible(true);
-    setDetailLoading(true);
-    try {
-      const result = await transactionService.getById(item.id);
-      if (result.success && result.data) {
-        const payload = result.data as any;
-        setDetailTransaction((payload?.data ?? payload) as Transaction);
-      }
-    } catch {
-      // Keep the row data already on screen rather than blanking the sheet.
-    } finally {
-      setDetailLoading(false);
-    }
   };
 
   const closeTransactionDetails = () => {
     setDetailVisible(false);
     setDetailTransaction(null);
-    setEmailBody(null);
   };
 
   const handleEditTransaction = (item: Transaction) => {
@@ -1267,302 +1223,18 @@ export default function TransactionsScreen() {
         )}
       </ScrollView>
 
-      {/* Transaction details — mirrors the web view modal */}
-      <Modal
+      {/* Transaction details — shared with the account screen */}
+      <TransactionDetailsSheet
         visible={detailVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closeTransactionDetails}
-        statusBarTranslucent
-      >
-        <Pressable style={styles.detailBackdrop} onPress={closeTransactionDetails}>
-          <Pressable
-            style={[
-              styles.detailSheet,
-              {
-                backgroundColor: colors.surface,
-                // Clear the gesture bar, or the pinned actions sit under it.
-                paddingBottom: 20 + insets.bottom,
-              },
-            ]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.detailGrabber}>
-              <View style={[styles.detailGrabberBar, { backgroundColor: colors.outlineVariant }]} />
-            </View>
-
-            <View style={styles.detailHeader}>
-              <Text style={[styles.detailTitle, { color: colors.onSurface }]}>
-                Transaction details
-              </Text>
-              <Pressable onPress={closeTransactionDetails} hitSlop={10}>
-                <X size={22} color={colors.onSurfaceVariant} />
-              </Pressable>
-            </View>
-
-            {detailTransaction && (
-            <>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: spacing.sm }}
-              >
-                {/* Headline amount */}
-                <View style={styles.detailAmountBlock}>
-                  <Text
-                    style={[
-                      styles.detailAmount,
-                      { color: getAmountColor(detailTransaction.type) },
-                    ]}
-                  >
-                    {getAmountSign(detailTransaction)}
-                    {formatAmount(parseFloat(String(detailTransaction.amount)) || 0)}
-                  </Text>
-                  <Text style={[styles.detailMerchant, { color: colors.onSurface }]}>
-                    {detailTransaction.merchant_name ||
-                      detailTransaction.description ||
-                      "Transaction"}
-                  </Text>
-                  <View style={styles.detailBadgeRow}>
-                    <Badge
-                      label={
-                        detailTransaction.type.charAt(0).toUpperCase() +
-                        detailTransaction.type.slice(1)
-                      }
-                      tone={getTone(detailTransaction.type)}
-                      size="sm"
-                    />
-                    {detailTransaction.status &&
-                      detailTransaction.status !== "approved" && (
-                        <Badge
-                          label={detailTransaction.status.replace("_", " ")}
-                          tone="warning"
-                          size="sm"
-                        />
-                      )}
-                    {!!detailTransaction.source && (
-                      <Badge label={detailTransaction.source} tone="neutral" size="sm" />
-                    )}
-                  </View>
-                </View>
-
-                {detailLoading && (
-                  <ActivityIndicator
-                    size="small"
-                    color={colors.primary}
-                    style={{ marginBottom: spacing.md }}
-                  />
-                )}
-
-                {/* Field rows */}
-                <DetailRow label="Date" value={formatDate(detailTransaction.date)} colors={colors} />
-                <DetailRow
-                  label={detailTransaction.type === "transfer" ? "Transfer" : "Account"}
-                  value={
-                    (detailTransaction as any).payment_method_account?.account_name ||
-                    (detailTransaction as any).account?.account_name ||
-                    "-"
-                  }
-                  colors={colors}
-                />
-                {!!detailTransaction.transaction_categories?.length && (
-                  <DetailRow
-                    label="Categories"
-                    value={detailTransaction.transaction_categories
-                      .map((tc: any) =>
-                        tc.subcategory?.name
-                          ? `${tc.category?.name} > ${tc.subcategory.name}`
-                          : tc.category?.name,
-                      )
-                      .filter(Boolean)
-                      .join(", ")}
-                    colors={colors}
-                  />
-                )}
-                {!!detailTransaction.notes && (
-                  <DetailRow label="Notes" value={detailTransaction.notes} colors={colors} />
-                )}
-
-                {/* Line items */}
-                {!!(detailTransaction as any).items?.length && (
-                  <View style={{ marginTop: spacing.md }}>
-                    <Text style={[styles.detailSectionTitle, { color: colors.onSurface }]}>
-                      Items
-                    </Text>
-                    {(detailTransaction as any).items.map((item: any, index: number) => (
-                      <View
-                        key={item.id ?? index}
-                        style={[
-                          styles.detailItemRow,
-                          { borderBottomColor: colors.outlineVariant },
-                        ]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.onSurface }}>{item.name}</Text>
-                          <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                            {item.quantity} x {formatAmount(parseFloat(String(item.price)) || 0)}
-                          </Text>
-                        </View>
-                        <Text style={{ color: colors.onSurface, fontWeight: "600" }}>
-                          {formatAmount(parseFloat(String(item.total)) || 0)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Source files. The email button toggles, so the row keeps
-                    both slots and the body opens full width underneath. */}
-                {(detailTransaction.source === "email" || !!detailTransaction.receipt_file) && (
-                  <View style={{ marginTop: spacing.md }}>
-                    <Text style={[styles.detailSectionTitle, { color: colors.onSurface }]}>
-                      Original
-                    </Text>
-
-                    <View style={styles.detailFileRow}>
-                      {detailTransaction.source === "email" && (
-                        <Pressable
-                          style={[
-                            styles.detailReceiptButton,
-                            styles.detailFileButton,
-                            { borderColor: colors.outlineVariant },
-                          ]}
-                          onPress={() =>
-                            emailBody ? setEmailBody(null) : loadEmailBody(detailTransaction.id)
-                          }
-                        >
-                          <Mail size={18} color={colors.primary} />
-                          <Text style={[styles.detailFileLabel, { color: colors.primary }]}>
-                            {emailBody ? "Hide email" : "Email text"}
-                          </Text>
-                        </Pressable>
-                      )}
-
-                      {!!detailTransaction.receipt_file && (
-                        <Pressable
-                          style={[
-                            styles.detailReceiptButton,
-                            styles.detailFileButton,
-                            { borderColor: colors.outlineVariant },
-                          ]}
-                          onPress={() =>
-                            WebBrowser.openBrowserAsync(String(detailTransaction.receipt_file))
-                          }
-                        >
-                          <FileText size={18} color={colors.primary} />
-                          <Text style={[styles.detailFileLabel, { color: colors.primary }]}>
-                            Receipt
-                          </Text>
-                        </Pressable>
-                      )}
-                    </View>
-
-                    {emailBody?.loading && (
-                      <Text style={{ color: colors.onSurfaceVariant, marginTop: spacing.sm }}>
-                        Loading the email…
-                      </Text>
-                    )}
-
-                    {emailBody?.error && (
-                      <Text style={{ color: colors.error, marginTop: spacing.sm }}>
-                        {emailBody.error}
-                      </Text>
-                    )}
-
-                    {emailBody?.data && (
-                      <View style={{ marginTop: spacing.sm }}>
-                        <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                          {emailBody.data.from || "Unknown sender"}
-                          {emailBody.data.attachment_count > 0
-                            ? ` · ${emailBody.data.attachment_count} attachment${emailBody.data.attachment_count > 1 ? "s" : ""} not shown`
-                            : ""}
-                        </Text>
-
-                        {emailBody.data.body_text ? (
-                          <>
-                            <ScrollView
-                              style={[
-                                styles.emailBodyBox,
-                                {
-                                  borderColor: colors.outlineVariant,
-                                  backgroundColor: colors.surfaceVariant,
-                                },
-                              ]}
-                              nestedScrollEnabled
-                            >
-                              <Text style={[styles.emailBodyText, { color: colors.onSurface }]}>
-                                {emailBody.data.body_text}
-                              </Text>
-                            </ScrollView>
-                            <Pressable
-                              style={[
-                                styles.detailReceiptButton,
-                                { borderColor: colors.outlineVariant, marginTop: spacing.sm },
-                              ]}
-                              onPress={async () => {
-                                await Clipboard.setStringAsync(String(emailBody.data?.body_text));
-                                toast.success("Email text copied.");
-                              }}
-                            >
-                              <Copy size={18} color={colors.primary} />
-                              <Text style={{ color: colors.primary, marginLeft: 8 }}>
-                                Copy text
-                              </Text>
-                            </Pressable>
-                          </>
-                        ) : (
-                          <Text style={{ color: colors.onSurfaceVariant, marginTop: spacing.xs }}>
-                            This email had no readable text — probably an attachment only.
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-              </ScrollView>
-
-              {/* Pinned below the scroll area: these are the reason the
-                  sheet is open, so they must never need scrolling to reach. */}
-                <View style={styles.detailActions}>
-                  <Pressable
-                    style={[
-                      styles.detailActionButton,
-                      { backgroundColor: colors.primaryContainer },
-                    ]}
-                    onPress={() => {
-                      const target = detailTransaction;
-                      closeTransactionDetails();
-                      handleEditTransaction(target);
-                    }}
-                  >
-                    <Pencil size={18} color={colors.primary} />
-                    <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: "600" }}>
-                      Edit
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.detailActionButton,
-                      { backgroundColor: `${colors.error}1f` },
-                    ]}
-                    onPress={() => {
-                      const target = detailTransaction;
-                      closeTransactionDetails();
-                      if (statusView === "pending_review") setRejectTarget(target);
-                      else handleDeleteWithUndo(target);
-                    }}
-                  >
-                    <Trash2 size={18} color={colors.error} />
-                    <Text style={{ color: colors.error, marginLeft: 8, fontWeight: "600" }}>
-                      {statusView === "pending_review" ? "Reject" : "Archive"}
-                    </Text>
-                  </Pressable>
-                </View>
-            </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
+        transaction={detailTransaction}
+        onClose={closeTransactionDetails}
+        onEdit={handleEditTransaction}
+        onDelete={(target) => {
+          if (statusView === "pending_review") setRejectTarget(target);
+          else handleDeleteWithUndo(target);
+        }}
+        deleteLabel={statusView === "pending_review" ? "Reject" : "Archive"}
+      />
 
       {/* FAB */}
       <View
@@ -1834,28 +1506,6 @@ export default function TransactionsScreen() {
 
 const ACTION_WIDTH = 132;
 const TRANSACTION_ROW_HEIGHT = 72;
-
-/** One label/value line in the transaction details sheet. */
-function DetailRow({
-  label,
-  value,
-  colors,
-}: {
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useTheme>["colors"];
-}) {
-  return (
-    <View style={[styles.detailRow, { borderBottomColor: colors.outlineVariant }]}>
-      <Text style={[styles.detailRowLabel, { color: colors.onSurfaceVariant }]}>
-        {label}
-      </Text>
-      <Text style={[styles.detailRowValue, { color: colors.onSurface }]}>
-        {value}
-      </Text>
-    </View>
-  );
-}
 
 interface TransactionRowProps {
   t: Transaction;
@@ -2573,89 +2223,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
     maxWidth: 300,
-  },
-  // ---- transaction details sheet ----
-  detailBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-end",
-  },
-  detailSheet: {
-    maxHeight: "88%",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    // paddingBottom is applied inline: it has to include the safe-area inset.
-  },
-  detailGrabber: { alignItems: "center", paddingVertical: 10 },
-  detailGrabberBar: { width: 42, height: 4, borderRadius: 999 },
-  detailHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  detailTitle: { fontSize: 17, fontWeight: "700" },
-  detailAmountBlock: { alignItems: "center", marginBottom: 18 },
-  detailAmount: { fontSize: 32, fontWeight: "800", letterSpacing: -0.5 },
-  detailMerchant: { fontSize: 15, fontWeight: "600", marginTop: 4 },
-  detailBadgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 10,
-    justifyContent: "center",
-  },
-  detailRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  detailRowLabel: { fontSize: 13, flexShrink: 0 },
-  detailRowValue: { fontSize: 14, fontWeight: "500", flex: 1, textAlign: "right" },
-  detailSectionTitle: { fontSize: 14, fontWeight: "700", marginBottom: 6 },
-  detailItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  emailBodyBox: {
-    maxHeight: 260,
-    marginTop: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  emailBodyText: {
-    fontSize: 12.5,
-    lineHeight: 19,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-  },
-  detailReceiptButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  detailFileRow: { flexDirection: "row", gap: 10 },
-  detailFileButton: { flex: 1, paddingHorizontal: 8 },
-  detailFileLabel: { marginLeft: 8, fontWeight: "600" },
-  detailActions: { flexDirection: "row", gap: 10, marginTop: 16 },
-  detailActionButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 13,
-    borderRadius: 12,
   },
   confirmButtons: {
     flexDirection: "row",

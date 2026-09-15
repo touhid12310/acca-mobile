@@ -2,7 +2,7 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.8.1",
+    "version": "1.8.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -49,6 +49,9 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "com.google.android.gms.permission.AD_ID"
       ]
     },
     "web": {

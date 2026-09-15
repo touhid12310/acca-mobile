@@ -38,6 +38,7 @@ import accountService from "../src/services/accountService";
 import transactionService from "../src/services/transactionService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
+import TransactionDetailsSheet from "../src/components/transactions/TransactionDetailsSheet";
 import { getAmountSign } from "../src/utils/transactions";
 import { Account, Transaction } from "../src/types";
 
@@ -265,6 +266,9 @@ export default function AccountDetailScreen() {
 
   const swipeRefs = useRef(new Map<number, Swipeable>());
   const openRowId = useRef<number | null>(null);
+  // Tapped row → details sheet (same one as the Transactions tab).
+  const [detailTransaction, setDetailTransaction] =
+    useState<Transaction | null>(null);
 
   const closeRow = (txId: number) => {
     swipeRefs.current.get(txId)?.close();
@@ -326,12 +330,13 @@ export default function AccountDetailScreen() {
   };
 
   const handleRowPress = (item: Transaction) => {
-    // A tap on an open row just closes it; otherwise it opens the editor.
+    // A tap on an open row just closes it; otherwise it opens the details
+    // sheet, like the Transactions tab (edit/archive stay on the swipe too).
     if (openRowId.current === item.id) {
       closeRow(item.id);
       return;
     }
-    handleEditTransaction(item);
+    setDetailTransaction(item);
   };
 
   const renderTxActions = (item: Transaction) => (
@@ -1713,6 +1718,15 @@ export default function AccountDetailScreen() {
           </Surface>
         </ScrollView>
       )}
+
+      <TransactionDetailsSheet
+        visible={!!detailTransaction}
+        transaction={detailTransaction}
+        onClose={() => setDetailTransaction(null)}
+        onEdit={handleEditTransaction}
+        onDelete={handleArchiveTransaction}
+        deleteLabel="Archive"
+      />
     </SafeAreaView>
   );
 }
