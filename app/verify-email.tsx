@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../src/contexts/AuthContext';
 import { useTheme } from '../src/contexts/ThemeContext';
 import authService from '../src/services/authService';
+import analyticsService from '../src/services/analyticsService';
 
 /**
  * Deep-link landing page for the email-verification link.
@@ -50,6 +51,7 @@ export default function VerifyEmailScreen() {
         if (result.success && accessToken) {
           setMessage('Email verified — welcome!');
           await loginWithToken(accessToken, user);
+          analyticsService.logLogin('email_link');
           router.replace('/(tabs)');
           return;
         }

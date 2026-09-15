@@ -108,6 +108,16 @@ export type TransactionFormData = {
   receipt_name?: string; // Filename for display
 };
 
+// Catch-all category preselected per type on new transactions. Defaults are
+// admin-managed (AdminCategoryController), so match the user's categories by
+// name; singular spellings are accepted too.
+const DEFAULT_CATEGORY_NAMES: Record<string, string[]> = {
+  expense: ['other expenses', 'other expense'],
+  income: ['other income', 'other incomes'],
+  asset: ['other assets', 'other asset'],
+  liability: ['other liabilities', 'other liability'],
+};
+
 type Props = {
   onSubmit: (data: TransactionFormData) => Promise<void>;
   onCancel: () => void;
@@ -115,6 +125,8 @@ type Props = {
   isLoading?: boolean;
   title?: string;
   autoScanMode?: 'camera' | 'gallery';
+  /** New transactions only: preselect "Other Expenses" / "Other Income" / … */
+  applyDefaultCategory?: boolean;
 };
 
 export default function TransactionFormContent({
@@ -124,6 +136,7 @@ export default function TransactionFormContent({
   isLoading = false,
   title = 'Add Transaction',
   autoScanMode,
+  applyDefaultCategory = false,
 }: Props) {
   const { colors } = useTheme();
   const { currencySymbol } = useCurrency();
@@ -320,14 +333,48 @@ export default function TransactionFormContent({
   })();
   const accounts: Account[] = accountsData || [];
 
-  useEffect(() => {
-    if (initialData || formData.account_id || accounts.length === 0) return;
+  // Preselect the type's catch-all category ("Other Expenses", "Other Income",
+  // "Other Assets", "Other Liabilities") on rows that have none. Never
+  // overwrites a pick the user — or a chat/receipt prefill — already made.
+  // Runs again after a type switch (which clears the rows) once that type's
+  // categories arrive.
+  const defaultWanted = DEFAULT_CATEGORY_NAMES[formData.type] || [];
+  const defaultCategoryId =
+    applyDefaultCategory && formData.type !== 'transfer'
+      ? categories.find((c: any) =>
+          defaultWanted.includes(String(c?.name || '').trim().toLowerCase()),
+        )?.id ?? null
+      : null;
 
+  useEffect(() => {
+    if (!defaultCategoryId) return;
+    if (!formData.items.some((item) => !item.category_id)) return;
     setFormData((prev) => ({
       ...prev,
-      account_id: accounts[0].id,
+      items: prev.items.map((item) =>
+        item.category_id
+          ? item
+          : { ...item, category_id: defaultCategoryId, subcategory_id: null },
+      ),
     }));
-  }, [accounts, formData.account_id, initialData]);
+  }, [defaultCategoryId, formData.items]);
+
+  // Preselect an account whenever nothing supplied one — a manual add, or a
+  // chat / receipt prefill that came without an account: the user's default
+  // account, else the first. Never touches an edit (initialData.id) and never
+  // replaces an account that did come in.
+  // Prefilled opens (dashboard quick-add passes { type }, chat passes more)
+  // wait until the initialData effect below has run: it replaces the whole
+  // form, so a default set before it was wiped back to "Select account".
+  useEffect(() => {
+    if (initialData?.id || formData.account_id || accounts.length === 0) return;
+    if (initialData && !isInitialized) return;
+
+    const preferred = accounts.find((a) => a.is_default) || accounts[0];
+    setFormData((prev) =>
+      prev.account_id ? prev : { ...prev, account_id: preferred.id },
+    );
+  }, [accounts, formData.account_id, initialData, isInitialized]);
 
   // Initialize form with initial data - only once when data first becomes available
   useEffect(() => {

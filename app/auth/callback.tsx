@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import socialAuthService from '../../src/services/socialAuthService';
+import analyticsService from '../../src/services/analyticsService';
 
 // Codes already processed in this app session — prevents double-exchange if
 // the inline WebBrowser.openAuthSessionAsync() handler in (auth)/login.tsx
@@ -89,6 +90,7 @@ export default function AuthCallback() {
         if (result.success && result.accessToken) {
           setMessage('Welcome back!');
           await loginWithToken(result.accessToken, result.user);
+          analyticsService.logLogin('google');
           router.replace('/(tabs)');
           return;
         }

@@ -156,10 +156,24 @@ const CombinedDarkTheme = {
   },
 };
 
+// Theme handed to PaperProvider only. Paper paints the notch behind an
+// outlined TextInput's floating label with colors.background; the dark
+// palette's transparent background left the outline striking through every
+// label. Screens/navigation keep the transparent background (gradient shows).
+const PaperDarkTheme = {
+  ...CombinedDarkTheme,
+  colors: {
+    ...CombinedDarkTheme.colors,
+    background: darkColors.surface,
+  },
+};
+
 type ThemeMode = 'light' | 'dark' | 'system';
 
 interface ThemeContextType {
   theme: typeof CombinedLightTheme;
+  /** Pass to PaperProvider — see PaperDarkTheme. */
+  paperTheme: typeof CombinedLightTheme;
   themeMode: ThemeMode;
   isDark: boolean;
   setThemeMode: (mode: ThemeMode) => Promise<void>;
@@ -199,6 +213,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Get the active theme
   const theme = useMemo(() => {
     return isDark ? CombinedDarkTheme : CombinedLightTheme;
+  }, [isDark]);
+
+  const paperTheme = useMemo(() => {
+    return isDark ? PaperDarkTheme : CombinedLightTheme;
   }, [isDark]);
 
   // Get the active colors
@@ -242,6 +260,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
   const value: ThemeContextType = {
     theme,
+    paperTheme,
     themeMode,
     isDark,
     setThemeMode,

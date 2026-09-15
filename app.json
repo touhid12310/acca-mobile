@@ -18,6 +18,7 @@
       "requireFullScreen": true,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.accounte.finance",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Allow AccountE to access your microphone for voice transcription.",
         "NSCameraUsageDescription": "AccountE needs access to your camera to capture receipts.",
@@ -119,6 +120,18 @@
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "extraProguardRules": "-keep class com.accounte.finance.** { *; }\n-keepattributes SourceFile,LineNumberTable\n-keepattributes *Annotation*,Signature,Exceptions\n-keep class com.facebook.hermes.unicode.** { *; }\n-keep class com.facebook.jni.** { *; }"
+          },
+          "ios": {
+            "useFrameworks": "dynamic"
+          }
+        }
+      ],
+      "@react-native-firebase/app",
+      [
+        "@react-native-firebase/analytics",
+        {
+          "ios": {
+            "withoutAdIdSupport": true
           }
         }
       ]

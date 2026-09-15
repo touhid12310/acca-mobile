@@ -21,6 +21,7 @@ import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import onboardingService from "../src/services/onboardingService";
+import analyticsService from "../src/services/analyticsService";
 import { detectTimeZone } from "../src/utils/timezone";
 import { BrandText } from "../src/components";
 
@@ -181,6 +182,7 @@ export default function OnboardingScreen() {
       if (!response?.success) {
         return;
       }
+      analyticsService.logEvent('tutorial_complete');
       await checkAuthStatus();
       if (destination) {
         router.replace(destination as any);
@@ -197,6 +199,7 @@ export default function OnboardingScreen() {
     setSubmitting(true);
     try {
       await onboardingService.skip();
+      analyticsService.logEvent('onboarding_skipped');
       await checkAuthStatus();
       router.replace("/(tabs)");
     } finally {

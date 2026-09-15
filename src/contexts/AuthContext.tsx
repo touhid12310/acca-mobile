@@ -19,6 +19,7 @@ import { User } from '../types';
 import { detectTimeZone, setActiveTimeZone } from '../utils/timezone';
 import { notifyToast } from './NotificationContext';
 import { startReviewTracking } from "../services/appReviewService";
+import analyticsService from '../services/analyticsService';
 
 // Session validation interval (30 seconds)
 const SESSION_CHECK_INTERVAL = 30000;
@@ -145,6 +146,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     checkAuthStatus();
   }, [checkAuthStatus]);
+
+  // Tie analytics to the backend user id (never email/name); clear on logout.
+  const analyticsUserId = isAuthenticated ? user?.id ?? null : null;
+  useEffect(() => {
+    if (loading) return;
+    analyticsService.setUserId(analyticsUserId);
+  }, [loading, analyticsUserId]);
 
   // Days the app is used, for the rating prompt's "3 separate days" rule.
   useEffect(() => {

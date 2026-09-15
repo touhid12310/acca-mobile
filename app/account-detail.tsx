@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   Alert,
   FlatList,
+  Pressable,
 } from "react-native";
+import { RectButton, Swipeable } from "react-native-gesture-handler";
 import {
   Text,
   Surface,
@@ -22,8 +24,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Wallet } from "lucide-react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { Edit3, Trash2, Wallet } from "lucide-react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -50,6 +52,9 @@ interface ReconcileTransaction {
   isMatched?: boolean;
   matchedData?: Transaction;
 }
+
+/** Width of the Edit + Archive swipe actions (matches the Transactions tab). */
+const TX_ACTION_WIDTH = 132;
 
 const accountTypeOptions = [
   { value: "Cash", label: "Cash" },
@@ -161,6 +166,20 @@ export default function AccountDetailScreen() {
     enabled: !!accountId,
   });
 
+  // Coming back from transaction-modal (edit) — refresh the balance and list.
+  // Skips the first focus; the queries above already fetch on mount.
+  const hasFocused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!hasFocused.current) {
+        hasFocused.current = true;
+        return;
+      }
+      refetchAccount();
+      refetchTransactions();
+    }, [refetchAccount, refetchTransactions]),
+  );
+
   // Ensure transactions is always an array
   const transactionsList = Array.isArray(transactions) ? transactions : [];
 
@@ -219,6 +238,128 @@ export default function AccountDetailScreen() {
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete account"),
   });
+
+  // Row actions on the Transactions tab — same swipe-to-Edit/Archive as the
+  // main Transactions screen. DELETE /transactions/{id} archives an approved
+  // transaction; it can be restored from Transactions → Archived.
+  const archiveTransactionMutation = useMutation({
+    mutationFn: async (txId: number) => {
+      const result = await transactionService.delete(txId);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["account", accountId] });
+      // Archiving a loan payment / budgeted spend rolls those trackers back.
+      queryClient.invalidateQueries({ queryKey: ["loans"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["goals"] });
+      toast.success("Transaction moved to Archived");
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not archive transaction"),
+  });
+
+  const swipeRefs = useRef(new Map<number, Swipeable>());
+  const openRowId = useRef<number | null>(null);
+
+  const closeRow = (txId: number) => {
+    swipeRefs.current.get(txId)?.close();
+  };
+
+  // Only one row open at a time, like the Transactions screen.
+  const handleRowWillOpen = (txId: number) => {
+    swipeRefs.current.forEach((row, key) => {
+      if (key !== txId) row.close();
+    });
+    openRowId.current = txId;
+  };
+
+  const handleEditTransaction = (item: Transaction) => {
+    let categoryId: number | undefined = item.category_id || item.category?.id;
+    let subcategoryId: number | undefined =
+      item.subcategory_id || item.subcategory?.id;
+
+    if (item.transaction_categories && item.transaction_categories.length > 0) {
+      const primary = item.transaction_categories[0];
+      categoryId = primary.category_id;
+      subcategoryId = primary.subcategory_id;
+    }
+
+    const txAccountId =
+      item.payment_method || item.account_id || item.account?.id || accountId;
+
+    router.push({
+      pathname: "/transaction-modal",
+      params: {
+        id: item.id.toString(),
+        type: item.type,
+        amount: item.amount.toString(),
+        merchant_name: item.merchant_name || "",
+        description: item.description || "",
+        category_id: categoryId?.toString() || "",
+        subcategory_id: subcategoryId?.toString() || "",
+        account_id: txAccountId?.toString() || "",
+        notes: item.notes || "",
+        date: item.date,
+      },
+    });
+  };
+
+  const handleArchiveTransaction = (item: Transaction) => {
+    const label = item.merchant_name || item.description || "this transaction";
+    Alert.alert(
+      "Archive transaction",
+      `Move "${label}" to Archived? You can restore it from Transactions → Archived.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Archive",
+          style: "destructive",
+          onPress: () => archiveTransactionMutation.mutate(item.id),
+        },
+      ],
+    );
+  };
+
+  const handleRowPress = (item: Transaction) => {
+    // A tap on an open row just closes it; otherwise it opens the editor.
+    if (openRowId.current === item.id) {
+      closeRow(item.id);
+      return;
+    }
+    handleEditTransaction(item);
+  };
+
+  const renderTxActions = (item: Transaction) => (
+    <View style={[styles.txActions, { backgroundColor: colors.error }]}>
+      <RectButton
+        onPress={() => {
+          closeRow(item.id);
+          handleEditTransaction(item);
+        }}
+        rippleColor="rgba(255,255,255,0.2)"
+        style={[styles.txAction, { backgroundColor: colors.primary }]}
+      >
+        <Edit3 size={20} color="#ffffff" strokeWidth={2.4} />
+        <Text style={styles.txActionLabel}>Edit</Text>
+      </RectButton>
+      <RectButton
+        onPress={() => {
+          closeRow(item.id);
+          handleArchiveTransaction(item);
+        }}
+        rippleColor="rgba(255,255,255,0.2)"
+        style={[styles.txAction, { backgroundColor: colors.error }]}
+      >
+        <Trash2 size={20} color="#ffffff" strokeWidth={2.4} />
+        <Text style={styles.txActionLabel}>Archive</Text>
+      </RectButton>
+    </View>
+  );
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
@@ -890,6 +1031,28 @@ export default function AccountDetailScreen() {
                 );
 
                 return (
+                  <Swipeable
+                    ref={(row) => {
+                      if (row) swipeRefs.current.set(item.id, row);
+                      else swipeRefs.current.delete(item.id);
+                    }}
+                    renderRightActions={() => renderTxActions(item)}
+                    rightThreshold={TX_ACTION_WIDTH * 0.35}
+                    overshootRight={false}
+                    friction={1}
+                    onSwipeableWillOpen={() => handleRowWillOpen(item.id)}
+                    onSwipeableClose={() => {
+                      if (openRowId.current === item.id) openRowId.current = null;
+                    }}
+                    containerStyle={[
+                      styles.txSwipeContainer,
+                      { backgroundColor: colors.surface },
+                    ]}
+                  >
+                  <Pressable
+                    onPress={() => handleRowPress(item)}
+                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+                  >
                   <Surface
                     style={[
                       styles.transactionItem,
@@ -968,6 +1131,8 @@ export default function AccountDetailScreen() {
                       </Text>
                     </View>
                   </Surface>
+                  </Pressable>
+                  </Swipeable>
                 );
               }}
             />
@@ -1529,11 +1694,12 @@ export default function AccountDetailScreen() {
             <View style={styles.editButtons}>
               <Button
                 mode="outlined"
+                icon="delete-outline"
                 onPress={handleDelete}
                 textColor={colors.error}
                 style={{ flex: 1, borderColor: colors.error }}
               >
-                Delete Account
+                Delete
               </Button>
               <Button
                 mode="contained"
@@ -1647,8 +1813,35 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingLeft: 12,
     paddingRight: 12,
-    borderRadius: 12,
+    // Square on purpose: the swipe container below does the rounding and
+    // clips both the row and the actions (Transactions tab parity). A rounded
+    // row left see-through notches beside Edit while swiped.
+    borderRadius: 0,
+  },
+  // Same corner radius as the Transactions tab's row card (Card radiusSize
+  // "xl"), so the Edit/Archive swipe actions look identical on both screens.
+  txSwipeContainer: {
     marginBottom: 8,
+    borderRadius: radius.xl,
+    overflow: "hidden",
+  },
+  txActions: {
+    width: TX_ACTION_WIDTH,
+    flexDirection: "row",
+  },
+  txAction: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+  },
+  txActionLabel: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 14,
+    textAlign: "center",
+    includeFontPadding: false,
   },
   txIcon: {
     width: 40,

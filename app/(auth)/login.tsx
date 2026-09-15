@@ -25,6 +25,7 @@ import authService from "../../src/services/authService";
 import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
 import { startAppleAuth } from "../../src/services/appleAuth";
 import socialAuthService from "../../src/services/socialAuthService";
+import analyticsService from "../../src/services/analyticsService";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -116,6 +117,7 @@ export default function LoginScreen() {
       const payload = data?.data || data;
       if (result.success && payload?.access_token) {
         await loginWithToken(payload.access_token, payload.user);
+        analyticsService.logLogin("email_code");
         router.replace("/(tabs)");
       } else if (data?.requires_two_factor) {
         setMagicRequiresTwoFactor(true);
@@ -157,6 +159,7 @@ export default function LoginScreen() {
             });
           } else if (exchanged.success && exchanged.accessToken) {
             await loginWithToken(exchanged.accessToken, exchanged.user);
+            analyticsService.logLogin("apple");
             router.replace("/(tabs)");
           } else {
             setErrors({ general: exchanged.message || "Apple sign-in failed" });

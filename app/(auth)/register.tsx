@@ -24,6 +24,7 @@ import { SocialProvider } from "../../src/services/socialAuthService";
 import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
 import { startAppleAuth } from "../../src/services/appleAuth";
 import socialAuthService from "../../src/services/socialAuthService";
+import analyticsService from "../../src/services/analyticsService";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -85,6 +86,7 @@ export default function RegisterScreen() {
             });
           } else if (exchanged.success && exchanged.accessToken) {
             await loginWithToken(exchanged.accessToken, exchanged.user);
+            analyticsService.logLogin("apple");
             router.replace("/(tabs)");
           } else {
             setErrors({ general: exchanged.message || "Apple sign-up failed" });

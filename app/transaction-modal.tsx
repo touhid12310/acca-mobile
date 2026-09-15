@@ -9,10 +9,12 @@ import { useToast } from '../src/contexts/NotificationContext';
 import TransactionFormContent, {
   TransactionFormData,
 } from '../src/components/transactions/TransactionFormContent';
+import NoAccountGate from '../src/components/transactions/NoAccountGate';
 import transactionService from '../src/services/transactionService';
 import { Transaction, TransactionType } from '../src/types';
 import { toDateInputValue } from '../src/utils/date';
 import { maybeAskForReview } from '../src/services/appReviewService';
+import analyticsService from '../src/services/analyticsService';
 
 export default function TransactionModalScreen() {
   const { colors } = useTheme();
@@ -272,6 +274,11 @@ export default function TransactionModalScreen() {
         variables.type === 'transfer' ? 'Transfer completed' : 'Transaction saved',
       );
       router.back();
+      analyticsService.logEvent('transaction_created', {
+        type: variables.type,
+        source: params.chat_message_id ? 'chat' : 'manual',
+        has_receipt: !!variables.receipt_path,
+      });
       void maybeAskForReview('transaction_saved');
     },
     onError: (error: Error) => {
@@ -395,12 +402,15 @@ export default function TransactionModalScreen() {
         initialData={initialData}
         isLoading={isLoading}
         title={params.id ? 'Edit Transaction' : 'Add Transaction'}
+        applyDefaultCategory={!params.id}
         autoScanMode={
           params.scan_mode === 'camera' || params.scan_mode === 'gallery'
             ? params.scan_mode
             : undefined
         }
       />
+      {/* No accounts yet → must create one before adding a transaction. */}
+      <NoAccountGate />
     </SafeAreaView>
   );
 }

@@ -59,7 +59,12 @@ export function Badge({
       ]}
     >
       {Icon && <Icon size={padding.iconSize} color={fg} strokeWidth={2.3} />}
-      <Text style={[styles.label, { color: fg, fontSize: padding.fontSize }]}>
+      {/* One line only: in tight rows a pill used to break mid-word
+          ("Bank A / ccount"); now it truncates with an ellipsis instead. */}
+      <Text
+        style={[styles.label, { color: fg, fontSize: padding.fontSize }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </View>
@@ -73,9 +78,11 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: radius.pill,
     alignSelf: "flex-start",
+    maxWidth: "100%",
   },
   label: {
     fontWeight: "700",
     letterSpacing: 0.2,
+    flexShrink: 1,
   },
 });

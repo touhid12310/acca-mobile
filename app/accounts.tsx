@@ -305,15 +305,35 @@ export default function AccountsScreen() {
                   >
                     <IconBadge icon={Icon} tone="primary" size="lg" shape="rounded" />
                     <View style={styles.accountInfo}>
-                      <Text
-                        style={[
-                          styles.accountName,
-                          { color: colors.onSurface },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {account.account_name || "Unnamed Account"}
-                      </Text>
+                      {/* Star sits beside the name (not in its own column) so
+                          the type badge keeps enough width on narrow phones. */}
+                      <View style={styles.accountNameRow}>
+                        <Text
+                          style={[
+                            styles.accountName,
+                            { color: colors.onSurface },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {account.account_name || "Unnamed Account"}
+                        </Text>
+                        <Pressable
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            handleSetDefault(account);
+                          }}
+                          hitSlop={10}
+                          disabled={account.is_default || setDefaultMutation.isPending}
+                          style={styles.defaultButton}
+                        >
+                          <Star
+                            size={16}
+                            color={account.is_default ? colors.primary : colors.onSurfaceVariant}
+                            fill={account.is_default ? colors.primary : "transparent"}
+                            strokeWidth={2.2}
+                          />
+                        </Pressable>
+                      </View>
                       <View style={styles.accountBadges}>
                         <Badge label={type} tone="neutral" size="sm" />
                         {account.is_default && (
@@ -321,22 +341,6 @@ export default function AccountsScreen() {
                         )}
                       </View>
                     </View>
-                    <Pressable
-                      onPress={(event) => {
-                        event.stopPropagation();
-                        handleSetDefault(account);
-                      }}
-                      hitSlop={8}
-                      disabled={account.is_default || setDefaultMutation.isPending}
-                      style={styles.defaultButton}
-                    >
-                      <Star
-                        size={18}
-                        color={account.is_default ? colors.primary : colors.onSurfaceVariant}
-                        fill={account.is_default ? colors.primary : "transparent"}
-                        strokeWidth={2.2}
-                      />
-                    </Pressable>
                     <View style={styles.balanceBlock}>
                       <Text
                         style={[
@@ -638,13 +642,19 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.xs,
   },
+  accountNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
   accountName: {
     fontSize: 15,
     fontWeight: "700",
+    flexShrink: 1,
   },
   defaultButton: {
-    width: 34,
-    height: 34,
+    width: 24,
+    height: 24,
     borderRadius: radius.pill,
     alignItems: "center",
     justifyContent: "center",

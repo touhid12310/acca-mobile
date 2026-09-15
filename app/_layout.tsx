@@ -16,6 +16,7 @@ import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import analyticsService from '../src/services/analyticsService';
 
 import '../global.css';
 
@@ -77,7 +78,7 @@ onlineManager.setEventListener((setOnline) =>
 );
 
 function RootLayoutNav() {
-  const { theme, isDark } = useTheme();
+  const { theme, paperTheme, isDark } = useTheme();
   const { isAuthenticated, user, loading } = useAuth();
   const segments = useSegments();
 
@@ -108,6 +109,15 @@ function RootLayoutNav() {
     }
   }, [loading, isAuthenticated, user, segments]);
 
+  // Screen views for Firebase Analytics. Built from the route pattern
+  // (e.g. "edit-transaction/[id]") rather than the pathname so record ids
+  // never end up in screen names; route groups like "(tabs)" are dropped.
+  const screenName =
+    (segments as readonly string[]).filter((s) => !s.startsWith('(')).join('/') || 'index';
+  useEffect(() => {
+    analyticsService.logScreenView(screenName);
+  }, [screenName]);
+
   // Route the user to the right screen when they tap a push notification.
   // useLastNotificationResponse (not addNotificationResponseReceivedListener)
   // because the listener is not reliably called when the tap launches the app
@@ -126,7 +136,7 @@ function RootLayoutNav() {
   }, [lastNotificationResponse]);
 
   return (
-    <PaperProvider theme={theme}>
+    <PaperProvider theme={paperTheme}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View
         style={{
