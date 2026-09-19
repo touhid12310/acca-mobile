@@ -37,6 +37,11 @@ const ACCOUNT_TYPES: { id: string; label: string; icon: string }[] = [
   { id: "Credit Card", label: "Credit Card", icon: "credit-card-outline" },
   { id: "Mobile Banking/e-Wallet", label: "Mobile Wallet", icon: "cellphone" },
   { id: "Savings Account", label: "Savings", icon: "piggy-bank-outline" },
+  { id: "Loan Account", label: "Loan", icon: "hand-coin-outline" },
+  { id: "Investment Account", label: "Investment", icon: "trending-up" },
+  { id: "Digital Bank Account", label: "Digital Bank", icon: "office-building-outline" },
+  { id: "Prepaid Card", label: "Prepaid", icon: "card-bulleted-outline" },
+  { id: "Other", label: "Other", icon: "dots-horizontal-circle-outline" },
 ];
 
 export default function OnboardingScreen() {

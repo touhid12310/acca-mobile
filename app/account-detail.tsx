@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Edit3, Trash2, Wallet } from "lucide-react-native";
+import { Edit3, Star, Trash2, Wallet } from "lucide-react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 
@@ -223,7 +223,27 @@ export default function AccountDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["account", accountId] });
       toast.success("Account updated");
     },
-    onError: (error: Error) => toast.error(error.message || "Could not update account"),
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not update account"),
+  });
+
+  // Changing the default lives here; the Accounts list only marks the default.
+  const setDefaultMutation = useMutation({
+    mutationFn: async () => {
+      const result = await accountService.setDefault(accountId);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      // Every cached account screen, not just this one: the previous default's
+      // screen would otherwise keep showing a filled star for up to 5 minutes.
+      queryClient.invalidateQueries({ queryKey: ["account"] });
+      queryClient.invalidateQueries({ queryKey: ["paymentMethods"] });
+      toast.success("Default account updated");
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not set default account"),
   });
 
   const deleteMutation = useMutation({
@@ -237,7 +257,8 @@ export default function AccountDetailScreen() {
       toast.success("Account deleted");
       router.back();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete account"),
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not delete account"),
   });
 
   // Row actions on the Transactions tab — same swipe-to-Edit/Archive as the
@@ -485,27 +506,37 @@ export default function AccountDetailScreen() {
 
         const remainingExisting = [...existingTx];
         const matchedData = bankTransactions.map((bankTx) => {
-          const matchIndex = remainingExisting.findIndex((accTx: Transaction) => {
-            const bankDate = bankTx.date?.split("T")[0];
-            const accDate = (accTx.date || "").split("T")[0];
-            const amountMatch =
-              Math.abs(Math.abs(Number(accTx.amount)) - Math.abs(bankTx.amount)) < 0.01;
-            const dateMatch = bankDate === accDate;
-            const merchantMatch =
-              bankTx.merchant_name?.toLowerCase() ===
-              accTx.merchant_name?.toLowerCase();
-            const directionFor = (tx: any) => {
-              if (tx.balance_direction) return tx.balance_direction;
-              if (tx.type === "income" || tx.type === "liability") return "credit";
-              if (tx.type === "expense" || tx.type === "asset") return "debit";
-              return null;
-            };
-            const bankDirection = directionFor(bankTx);
-            const accountDirection = directionFor(accTx);
-            const directionMatch =
-              !bankDirection || !accountDirection || bankDirection === accountDirection;
-            return dateMatch && amountMatch && merchantMatch && directionMatch;
-          });
+          const matchIndex = remainingExisting.findIndex(
+            (accTx: Transaction) => {
+              const bankDate = bankTx.date?.split("T")[0];
+              const accDate = (accTx.date || "").split("T")[0];
+              const amountMatch =
+                Math.abs(
+                  Math.abs(Number(accTx.amount)) - Math.abs(bankTx.amount),
+                ) < 0.01;
+              const dateMatch = bankDate === accDate;
+              const merchantMatch =
+                bankTx.merchant_name?.toLowerCase() ===
+                accTx.merchant_name?.toLowerCase();
+              const directionFor = (tx: any) => {
+                if (tx.balance_direction) return tx.balance_direction;
+                if (tx.type === "income" || tx.type === "liability")
+                  return "credit";
+                if (tx.type === "expense" || tx.type === "asset")
+                  return "debit";
+                return null;
+              };
+              const bankDirection = directionFor(bankTx);
+              const accountDirection = directionFor(accTx);
+              const directionMatch =
+                !bankDirection ||
+                !accountDirection ||
+                bankDirection === accountDirection;
+              return (
+                dateMatch && amountMatch && merchantMatch && directionMatch
+              );
+            },
+          );
 
           if (matchIndex !== -1) {
             const match = remainingExisting.splice(matchIndex, 1)[0];
@@ -730,13 +761,38 @@ export default function AccountDetailScreen() {
         subtitle={account.type || account.account_type || "Account"}
         showBack
         right={
-          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
-            <MaterialCommunityIcons
-              name="delete-outline"
-              size={24}
-              color={colors.error}
-            />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={() => setDefaultMutation.mutate()}
+              disabled={!!account.is_default || setDefaultMutation.isPending}
+              style={styles.deleteButton}
+              hitSlop={8}
+              accessibilityLabel={
+                account.is_default
+                  ? "Default account"
+                  : "Set as default account"
+              }
+            >
+              <Star
+                size={22}
+                color={
+                  account.is_default ? colors.primary : colors.onSurfaceVariant
+                }
+                fill={account.is_default ? colors.primary : "transparent"}
+                strokeWidth={2.2}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDelete}
+              style={styles.deleteButton}
+            >
+              <MaterialCommunityIcons
+                name="delete-outline"
+                size={24}
+                color={colors.error}
+              />
+            </TouchableOpacity>
+          </View>
         }
       />
 
@@ -1047,96 +1103,100 @@ export default function AccountDetailScreen() {
                     friction={1}
                     onSwipeableWillOpen={() => handleRowWillOpen(item.id)}
                     onSwipeableClose={() => {
-                      if (openRowId.current === item.id) openRowId.current = null;
+                      if (openRowId.current === item.id)
+                        openRowId.current = null;
                     }}
                     containerStyle={[
                       styles.txSwipeContainer,
                       { backgroundColor: colors.surface },
                     ]}
                   >
-                  <Pressable
-                    onPress={() => handleRowPress(item)}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
-                  >
-                  <Surface
-                    style={[
-                      styles.transactionItem,
-                      { backgroundColor: colors.surface },
-                    ]}
-                    elevation={1}
-                  >
-                    <View
-                      style={[
-                        styles.txIcon,
-                        { backgroundColor: `${iconColor}15` },
-                      ]}
+                    <Pressable
+                      onPress={() => handleRowPress(item)}
+                      style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
                     >
-                      <MaterialCommunityIcons
-                        name={getTransactionIcon(txType) as any}
-                        size={20}
-                        color={iconColor}
-                      />
-                    </View>
-                    <View style={styles.txInfo}>
-                      <Text
-                        variant="bodyLarge"
-                        style={{ color: colors.onSurface }}
-                        numberOfLines={1}
+                      <Surface
+                        style={[
+                          styles.transactionItem,
+                          { backgroundColor: colors.surface },
+                        ]}
+                        elevation={1}
                       >
-                        {merchantName}
-                      </Text>
-                      <Text
-                        variant="bodySmall"
-                        style={{ color: colors.onSurfaceVariant }}
-                      >
-                        {txDate}
-                      </Text>
-                      {categoryName ? (
                         <View
                           style={[
-                            styles.categoryBadge,
-                            { backgroundColor: `${iconColor}15`, marginTop: 2 },
+                            styles.txIcon,
+                            { backgroundColor: `${iconColor}15` },
                           ]}
                         >
-                          <Text style={{ color: iconColor, fontSize: 10 }}>
-                            {categoryName}
+                          <MaterialCommunityIcons
+                            name={getTransactionIcon(txType) as any}
+                            size={20}
+                            color={iconColor}
+                          />
+                        </View>
+                        <View style={styles.txInfo}>
+                          <Text
+                            variant="bodyLarge"
+                            style={{ color: colors.onSurface }}
+                            numberOfLines={1}
+                          >
+                            {merchantName}
+                          </Text>
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: colors.onSurfaceVariant }}
+                          >
+                            {txDate}
+                          </Text>
+                          {categoryName ? (
+                            <View
+                              style={[
+                                styles.categoryBadge,
+                                {
+                                  backgroundColor: `${iconColor}15`,
+                                  marginTop: 2,
+                                },
+                              ]}
+                            >
+                              <Text style={{ color: iconColor, fontSize: 10 }}>
+                                {categoryName}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {item.notes ? (
+                            <Text
+                              variant="bodySmall"
+                              style={{
+                                color: colors.onSurfaceVariant,
+                                fontSize: 10,
+                                marginTop: 2,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {item.notes}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.txAmount}>
+                          <Text
+                            variant="titleMedium"
+                            style={{
+                              color:
+                                txType === "income" || txType === "asset"
+                                  ? colors.tertiary
+                                  : txType === "transfer"
+                                    ? colors.primary
+                                    : colors.error,
+                              fontWeight: "600",
+                            }}
+                            numberOfLines={1}
+                          >
+                            {getAmountSign(item)}
+                            {formatAmount(Number(item.amount) || 0)}
                           </Text>
                         </View>
-                      ) : null}
-                      {item.notes ? (
-                        <Text
-                          variant="bodySmall"
-                          style={{
-                            color: colors.onSurfaceVariant,
-                            fontSize: 10,
-                            marginTop: 2,
-                          }}
-                          numberOfLines={1}
-                        >
-                          {item.notes}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.txAmount}>
-                      <Text
-                        variant="titleMedium"
-                        style={{
-                          color:
-                            txType === "income" || txType === "asset"
-                              ? colors.tertiary
-                              : txType === "transfer"
-                                ? colors.primary
-                                : colors.error,
-                          fontWeight: "600",
-                        }}
-                        numberOfLines={1}
-                      >
-                        {getAmountSign(item)}
-                        {formatAmount(Number(item.amount) || 0)}
-                      </Text>
-                    </View>
-                  </Surface>
-                  </Pressable>
+                      </Surface>
+                    </Pressable>
                   </Swipeable>
                 );
               }}
@@ -1744,6 +1804,11 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   deleteButton: {
     padding: 4,

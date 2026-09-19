@@ -61,10 +61,7 @@ const formatApiError = (result: any): string => {
   const validationErrors = errorData?.errors;
   if (validationErrors && typeof validationErrors === "object") {
     const details = Object.entries(validationErrors)
-      .map(
-        ([f, m]) =>
-          `${f}: ${Array.isArray(m) ? m.join(", ") : m}`,
-      )
+      .map(([f, m]) => `${f}: ${Array.isArray(m) ? m.join(", ") : m}`)
       .join("\n");
     if (details) errorMsg = `${errorMsg}\n\n${details}`;
   }
@@ -130,26 +127,16 @@ export default function AccountsScreen() {
       toast.success(name ? `${name} created` : "Account created");
       closeModal();
     },
-    onError: (error: Error) => toast.error(error.message || "Could not save account"),
-  });
-
-  const setDefaultMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const result = await accountService.setDefault(id);
-      if (!result.success) throw new Error(formatApiError(result));
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["paymentMethods"] });
-      toast.success("Default account updated");
-    },
     onError: (error: Error) =>
-      toast.error(error.message || "Could not set default account"),
+      toast.error(error.message || "Could not save account"),
   });
 
   const openAddModal = () => {
-    setFormData({ account_name: "", account_type: "Bank Account", balance: "" });
+    setFormData({
+      account_name: "",
+      account_type: "Bank Account",
+      balance: "",
+    });
     setModalVisible(true);
   };
 
@@ -166,11 +153,6 @@ export default function AccountsScreen() {
   const handleAccountPress = (account: Account) =>
     router.push(`/account-detail?id=${account.id}`);
 
-  const handleSetDefault = (account: Account) => {
-    if (account.is_default || setDefaultMutation.isPending) return;
-    setDefaultMutation.mutate(account.id);
-  };
-
   const viewAccounts = accounts || [];
   const totalBalance = viewAccounts.reduce((sum: number, acc: Account) => {
     const balance = parseFloat(String(acc.current_balance ?? acc.balance ?? 0));
@@ -183,8 +165,12 @@ export default function AccountsScreen() {
   const topAccount =
     viewAccounts.length > 0
       ? viewAccounts.reduce((prev: Account, curr: Account) => {
-          const pB = parseFloat(String(prev.current_balance ?? prev.balance ?? 0));
-          const cB = parseFloat(String(curr.current_balance ?? curr.balance ?? 0));
+          const pB = parseFloat(
+            String(prev.current_balance ?? prev.balance ?? 0),
+          );
+          const cB = parseFloat(
+            String(curr.current_balance ?? curr.balance ?? 0),
+          );
           return cB > pB ? curr : prev;
         }, viewAccounts[0])
       : null;
@@ -220,11 +206,7 @@ export default function AccountsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* scrollContent already insets by spacing.lg — see more.tsx. */}
-        <ScreenHeader
-          title="Accounts"
-          subtitle="Balances & sources"
-          showBack
-        />
+        <ScreenHeader title="Accounts" subtitle="Balances & sources" showBack />
 
         {/* Total Balance Hero */}
         <HeroCard style={styles.hero}>
@@ -234,9 +216,7 @@ export default function AccountsScreen() {
             </View>
             <View style={styles.heroTopText}>
               <Text style={styles.heroLabel}>Total balance</Text>
-              <Text style={styles.heroValue}>
-                {formatAmount(totalBalance)}
-              </Text>
+              <Text style={styles.heroValue}>{formatAmount(totalBalance)}</Text>
             </View>
           </View>
           <View style={styles.heroMeta}>
@@ -251,10 +231,7 @@ export default function AccountsScreen() {
             </View>
             <View style={styles.heroDivider} />
             <View style={styles.heroMetaItem}>
-              <Text
-                style={styles.heroMetaValueSmall}
-                numberOfLines={1}
-              >
+              <Text style={styles.heroMetaValueSmall} numberOfLines={1}>
                 {topAccount?.account_name || "—"}
               </Text>
               <Text style={styles.heroMetaLabel}>Top account</Text>
@@ -264,9 +241,7 @@ export default function AccountsScreen() {
 
         {viewAccounts.length > 0 ? (
           <View style={{ gap: spacing.md }}>
-            <Text
-              style={[styles.sectionTitle, { color: colors.onSurface }]}
-            >
+            <Text style={[styles.sectionTitle, { color: colors.onSurface }]}>
               All accounts
             </Text>
 
@@ -291,7 +266,12 @@ export default function AccountsScreen() {
                     onPress={() => handleAccountPress(account)}
                     style={styles.accountInner}
                   >
-                    <IconBadge icon={Icon} tone="primary" size="lg" shape="rounded" />
+                    <IconBadge
+                      icon={Icon}
+                      tone="primary"
+                      size="lg"
+                      shape="rounded"
+                    />
                     <View style={styles.accountInfo}>
                       {/* Star sits beside the name (not in its own column) so
                           the type badge keeps enough width on narrow phones. */}
@@ -305,22 +285,16 @@ export default function AccountsScreen() {
                         >
                           {account.account_name || "Unnamed Account"}
                         </Text>
-                        <Pressable
-                          onPress={(event) => {
-                            event.stopPropagation();
-                            handleSetDefault(account);
-                          }}
-                          hitSlop={10}
-                          disabled={account.is_default || setDefaultMutation.isPending}
-                          style={styles.defaultButton}
-                        >
+                        {/* Only the default is marked; change it from the account's screen. */}
+                        {account.is_default && (
                           <Star
                             size={16}
-                            color={account.is_default ? colors.primary : colors.onSurfaceVariant}
-                            fill={account.is_default ? colors.primary : "transparent"}
+                            color={colors.primary}
+                            fill={colors.primary}
                             strokeWidth={2.2}
+                            style={styles.defaultButton}
                           />
-                        </Pressable>
+                        )}
                       </View>
                       <View style={styles.accountBadges}>
                         <Badge label={type} tone="neutral" size="sm" />
@@ -379,13 +353,7 @@ export default function AccountsScreen() {
       </ScrollView>
 
       {/* FAB */}
-      <View
-        style={[
-          styles.fab,
-          { bottom: 20 + insets.bottom },
-          shadow.lg,
-        ]}
-      >
+      <View style={[styles.fab, { bottom: 20 + insets.bottom }, shadow.lg]}>
         <Pressable onPress={openAddModal} style={styles.fabPressable}>
           <LinearGradient
             colors={gradients.primary as any}
@@ -478,7 +446,6 @@ export default function AccountsScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-
     </SafeAreaView>
   );
 }
