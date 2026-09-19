@@ -17,6 +17,16 @@ export type LoanStatementEntry = {
   balance_side?: 'Borrowed' | 'Lent';
   balance_label?: string;
   notes?: string | null;
+  /** Owner's statement only: the account the entry posted to. */
+  account_id?: number | null;
+};
+
+export type LoanEntryUpdate = {
+  amount: number;
+  interest_paid: number;
+  payment_date: string;
+  account_id: number;
+  notes: string | null;
 };
 
 export type LoanShare = {
@@ -141,6 +151,28 @@ export const loanService = {
     const token = await getAuthToken();
     return apiRequest<LoanStatement>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}/statement`, {
       method: 'GET',
+      token,
+    });
+  },
+
+  /**
+   * One statement entry. The server rewrites its transaction and rebuilds the
+   * loan; an edit that would flip who owes whom is refused (422).
+   */
+  updateEntry: async (loanId: number, entryId: number, data: LoanEntryUpdate): Promise<ApiResponse<{ loan: Loan }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ loan: Loan }>(`${API_CONFIG.ENDPOINTS.LOANS}/${loanId}/entries/${entryId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      token,
+    });
+  },
+
+  /** Deletes the entry and moves its transaction to Archived. */
+  deleteEntry: async (loanId: number, entryId: number): Promise<ApiResponse<{ loan: Loan }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ loan: Loan }>(`${API_CONFIG.ENDPOINTS.LOANS}/${loanId}/entries/${entryId}`, {
+      method: 'DELETE',
       token,
     });
   },

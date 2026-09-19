@@ -42,6 +42,7 @@ import loanService, {
   LoanDirection,
   LoanShare,
   LoanStatement,
+  LoanStatementEntry,
 } from "../src/services/loanService";
 import accountService from "../src/services/accountService";
 import categoryService from "../src/services/categoryService";
@@ -56,6 +57,17 @@ import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput"
  * The API wraps payloads as { success, data: { ... } }; apiRequest hands back
  * the whole body, so one more hop is needed to reach the payload.
  */
+/** Inline edit of one statement entry; strings while the user types. */
+type EntryDraft = {
+  id: number;
+  is_repayment: boolean;
+  amount: string;
+  interest_paid: string;
+  payment_date: string;
+  account_id: string;
+  notes: string;
+};
+
 const unwrapData = <T,>(value: any): T | undefined =>
   (value && typeof value === "object" && "data" in value ? value.data : value) as T | undefined;
 
@@ -104,6 +116,9 @@ export default function LoansScreen() {
   const [statementVisible, setStatementVisible] = useState(false);
   const [statement, setStatement] = useState<LoanStatement | null>(null);
   const [statementLoading, setStatementLoading] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<EntryDraft | null>(null);
+  const [entryBusy, setEntryBusy] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<LoanStatementEntry | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
@@ -431,9 +446,103 @@ export default function LoansScreen() {
     }
   };
 
+  // Archived loans are read-only; the server refuses changes too.
+  const entriesEditable = selectedLoan?.status !== "Archived";
+
+  // An entry change rewrites its transaction and the loan balance, so the
+  // statement, loan cards, accounts and transactions all refetch.
+  const afterEntryChange = async (result: any) => {
+    const payload: any = unwrapData(result.data);
+    const loan = payload?.loan ?? payload?.data?.loan;
+    if (loan) setSelectedLoan((prev) => (prev ? { ...prev, ...loan } : prev));
+    if (selectedLoan) {
+      try {
+        const fresh = await loanService.getStatement(selectedLoan.id);
+        if (fresh.success) setStatement(unwrapData(fresh.data) as LoanStatement);
+      } catch {
+        // The toast below still confirms the change; a reopen will refresh.
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["loans"] });
+    queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+  };
+
+  const startEditEntry = (entry: LoanStatementEntry) =>
+    setEditingEntry({
+      id: entry.id,
+      is_repayment: entry.is_repayment,
+      amount: String(entry.amount ?? ""),
+      interest_paid: String(entry.interest || 0),
+      payment_date: entry.date || "",
+      account_id: entry.account_id ? String(entry.account_id) : "",
+      notes: entry.notes || "",
+    });
+
+  const setEntryField = (key: keyof EntryDraft, value: string) =>
+    setEditingEntry((prev) => (prev ? { ...prev, [key]: value } : prev));
+
+  const saveEntry = async () => {
+    const draft = editingEntry;
+    if (!draft || !selectedLoan) return;
+    const amount = parseFloat(draft.amount);
+    const interest = draft.is_repayment ? parseFloat(draft.interest_paid) || 0 : 0;
+    if (!(amount > 0)) return notifyToast.error("Enter an amount above zero.");
+    if (interest < 0 || interest > amount) {
+      return notifyToast.error("Interest must be between 0 and the amount.");
+    }
+    if (!draft.payment_date) return notifyToast.error("Pick a date.");
+    if (!draft.account_id) return notifyToast.error("Pick an account.");
+
+    setEntryBusy(true);
+    try {
+      const result = await loanService.updateEntry(selectedLoan.id, draft.id, {
+        amount,
+        interest_paid: interest,
+        payment_date: draft.payment_date,
+        account_id: Number(draft.account_id),
+        notes: draft.notes.trim() || null,
+      });
+      if (result.success) {
+        setEditingEntry(null);
+        await afterEntryChange(result);
+        notifyToast.success("Entry updated — transaction and balances adjusted.");
+      } else {
+        notifyToast.error(formatApiError(result) || "Could not update the entry.");
+      }
+    } catch (error: any) {
+      notifyToast.error(error?.message || "Could not update the entry.");
+    } finally {
+      setEntryBusy(false);
+    }
+  };
+
+  const deleteEntry = async () => {
+    const entry = entryToDelete;
+    if (!entry || !selectedLoan) return;
+    setEntryBusy(true);
+    try {
+      const result = await loanService.deleteEntry(selectedLoan.id, entry.id);
+      if (result.success) {
+        setEntryToDelete(null);
+        await afterEntryChange(result);
+        notifyToast.success("Entry deleted — its transaction was moved to Archived.");
+      } else {
+        notifyToast.error(formatApiError(result) || "Could not delete the entry.");
+      }
+    } catch (error: any) {
+      notifyToast.error(error?.message || "Could not delete the entry.");
+    } finally {
+      setEntryBusy(false);
+    }
+  };
+
   const closeStatement = () => {
     setStatementVisible(false);
     setStatement(null);
+    setEditingEntry(null);
+    setEntryToDelete(null);
     // Otherwise an expanded note stays expanded for whichever loan opens next.
     setNotesExpanded(false);
     setExpandedEntryNotes(new Set());
@@ -1763,36 +1872,118 @@ export default function LoansScreen() {
                   Statement
                 </Text>
 
-                {/* Opening row, then every entry with its balance after. */}
-                <View
-                  style={[
-                    styles.statementRow,
-                    { borderBottomColor: colors.outlineVariant ?? colors.outline },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
+                {/* Newest first. The API returns entries oldest-first with a
+                    running balance_after, so reversing keeps each row's balance. */}
+                {[...statement.entries].reverse().map((entry) =>
+                  editingEntry?.id === entry.id ? (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.entryEditCard,
+                      { borderColor: colors.primary, backgroundColor: colors.surfaceVariant },
+                    ]}
+                  >
                     <View
-                      style={[styles.entryPill, { backgroundColor: `${colors.error}1f` }]}
+                      style={[
+                        styles.entryPill,
+                        {
+                          backgroundColor: entry.is_repayment
+                            ? `${colors.tertiary}1f`
+                            : `${colors.error}1f`,
+                        },
+                      ]}
                     >
-                      <Text variant="labelSmall" style={{ color: colors.error }}>
-                        Opening
+                      <Text
+                        variant="labelSmall"
+                        style={{ color: entry.is_repayment ? colors.tertiary : colors.error }}
+                      >
+                        {entry.label}
                       </Text>
                     </View>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {selectedLoan?.start_date ? formatDate(selectedLoan.start_date) : "-"}
+                    <DateField
+                      label="Date *"
+                      value={editingEntry.payment_date}
+                      onChange={(date) => setEntryField("payment_date", date)}
+                      style={styles.input}
+                    />
+                    <TextInput
+                      label="Amount *"
+                      value={editingEntry.amount}
+                      onChangeText={(text) => setEntryField("amount", text)}
+                      mode="outlined"
+                      keyboardType="decimal-pad"
+                      style={styles.input}
+                    />
+                    {entry.is_repayment && (
+                      <TextInput
+                        label="Interest"
+                        value={editingEntry.interest_paid}
+                        onChangeText={(text) => setEntryField("interest_paid", text)}
+                        mode="outlined"
+                        keyboardType="decimal-pad"
+                        style={styles.input}
+                      />
+                    )}
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: colors.onSurfaceVariant, marginBottom: 6 }}
+                    >
+                      Account *
                     </Text>
+                    <View style={styles.entryAccountChips}>
+                      {viewAccounts.map((acc: any) => {
+                        const active = editingEntry.account_id === String(acc.id);
+                        return (
+                          <TouchableOpacity
+                            key={acc.id}
+                            activeOpacity={0.8}
+                            onPress={() => setEntryField("account_id", String(acc.id))}
+                            style={[
+                              styles.entryAccountChip,
+                              {
+                                backgroundColor: active ? `${colors.primary}20` : colors.surface,
+                                borderColor: active ? colors.primary : colors.outline,
+                              },
+                            ]}
+                          >
+                            <Text
+                              variant="labelMedium"
+                              numberOfLines={1}
+                              style={{ color: active ? colors.primary : colors.onSurfaceVariant }}
+                            >
+                              {acc.account_name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <TextInput
+                      label="Notes"
+                      value={editingEntry.notes}
+                      onChangeText={(text) => setEntryField("notes", text)}
+                      mode="outlined"
+                      multiline
+                      style={styles.input}
+                    />
+                    <View style={styles.entryEditButtons}>
+                      <Button
+                        mode="text"
+                        onPress={() => setEditingEntry(null)}
+                        disabled={entryBusy}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        mode="contained"
+                        onPress={saveEntry}
+                        loading={entryBusy}
+                        disabled={entryBusy}
+                      >
+                        Save
+                      </Button>
+                    </View>
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                      {formatAmount(statement.summary.opening_amount)}
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      bal {formatAmount(statement.summary.opening_amount)}
-                    </Text>
-                  </View>
-                </View>
-
-                {statement.entries.map((entry) => (
+                  ) : (
                   <View
                     key={entry.id}
                     style={[
@@ -1854,9 +2045,70 @@ export default function LoansScreen() {
                         bal {formatAmount(entry.balance_after)}
                         {entry.balance_label ? ` · ${entry.balance_label}` : ""}
                       </Text>
+                      {entriesEditable && (
+                        <View style={styles.entryActions}>
+                          <TouchableOpacity
+                            onPress={() => startEditEntry(entry)}
+                            disabled={entryBusy || !!editingEntry}
+                            hitSlop={8}
+                            style={[styles.entryActionBtn, { borderColor: colors.outline }]}
+                            accessibilityLabel="Edit entry"
+                          >
+                            <MaterialCommunityIcons
+                              name="pencil-outline"
+                              size={16}
+                              color={colors.onSurfaceVariant}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => setEntryToDelete(entry)}
+                            disabled={entryBusy || !!editingEntry}
+                            hitSlop={8}
+                            style={[styles.entryActionBtn, { borderColor: colors.outline }]}
+                            accessibilityLabel="Delete entry"
+                          >
+                            <MaterialCommunityIcons
+                              name="delete-outline"
+                              size={16}
+                              color={colors.error}
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   </View>
-                ))}
+                  )
+                )}
+
+                {/* Opening sits last: the list runs newest first. Change it with the loan's Edit. */}
+                <View
+                  style={[
+                    styles.statementRow,
+                    { borderBottomColor: colors.outlineVariant ?? colors.outline },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={[styles.entryPill, { backgroundColor: `${colors.error}1f` }]}
+                    >
+                      <Text variant="labelSmall" style={{ color: colors.error }}>
+                        Opening
+                      </Text>
+                    </View>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      {selectedLoan?.start_date ? formatDate(selectedLoan.start_date) : "-"}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      {formatAmount(statement.summary.opening_amount)}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      bal {formatAmount(statement.summary.opening_amount)}
+                    </Text>
+                  </View>
+                </View>
+
 
                 {statement.entries.length === 0 && (
                   <Text
@@ -2337,6 +2589,23 @@ export default function LoansScreen() {
         onCancel={() => setShowDeleteConfirm(false)}
         onConfirm={handleConfirmDelete}
       />
+
+      <ConfirmDialog
+        visible={!!entryToDelete}
+        title="Delete this entry?"
+        message={
+          entryToDelete
+            ? `${entryToDelete.label} of ${formatAmount(entryToDelete.amount)}` +
+              (entryToDelete.date ? ` on ${formatDate(entryToDelete.date)}` : "") +
+              ". Its transaction will be moved to Archived, the account balance adjusted, and the loan balance recalculated."
+            : ""
+        }
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={entryBusy}
+        onCancel={() => setEntryToDelete(null)}
+        onConfirm={deleteEntry}
+      />
     </SafeAreaView>
   );
 }
@@ -2554,6 +2823,44 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  entryActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  entryActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  entryEditCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 8,
+    gap: 4,
+  },
+  entryAccountChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 8,
+  },
+  entryAccountChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    maxWidth: "100%",
+  },
+  entryEditButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
   },
   modalButtons: {
     flexDirection: "row",
