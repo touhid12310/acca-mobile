@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import {
   Text,
-  TextInput,
   Button,
   SegmentedButtons,
   Portal,
@@ -32,6 +31,7 @@ import categoryService from '../../services/categoryService';
 import accountService from '../../services/accountService';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
 import { formatDate } from '../../utils/date';
+import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
 // Helper to categorize account type as Asset or Liability
 const ASSET_ACCOUNT_TYPES: AccountType[] = ['checking', 'savings', 'cash', 'investment'];

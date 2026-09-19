@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   fill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.pill,
   },
   inner: {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -16,6 +16,7 @@ import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice, BillingC
 import { useGooglePlayBilling } from "../src/hooks/useGooglePlayBilling";
 import { radius, spacing, typography } from "../src/constants/theme";
 import { maybeAskForReview } from "../src/services/appReviewService";
+import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 const money = (amount: string | number, currency: string) => {
   try {

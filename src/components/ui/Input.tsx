@@ -4,7 +4,6 @@ import {
   StyleProp,
   StyleSheet,
   Text,
-  TextInput,
   TextInputProps,
   View,
   ViewStyle,
@@ -13,6 +12,7 @@ import { Eye, EyeOff, LucideIcon } from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
+import { NativeTextInput as TextInput } from "./SafeTextInput";
 
 interface InputProps extends Omit<TextInputProps, "style"> {
   label?: string;

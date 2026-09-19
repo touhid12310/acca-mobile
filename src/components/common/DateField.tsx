@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
+
 
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
+import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
 type DateFieldProps = {
   label: string;

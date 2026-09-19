@@ -7,7 +7,6 @@ import {
   Image,
   Text,
   Modal,
-  TextInput,
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -57,6 +56,7 @@ import { BrandStrip } from "../../src/components";
 import { getInitials } from "../../src/utils/format";
 import { radius, shadow, spacing } from "../../src/constants/theme";
 import { openStoreListing, shareApp } from "../../src/services/appReviewService";
+import { NativeTextInput as TextInput } from "../../src/components/ui/SafeTextInput";
 
 type MenuItem = {
   icon: LucideIcon;

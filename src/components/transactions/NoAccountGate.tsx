@@ -14,24 +14,10 @@ import { BadgePlus, Wallet } from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { useToast } from "../../contexts/NotificationContext";
-import { Button, Chip, IconBadge, Input } from "../ui";
+import { AccountTypePicker, Button, IconBadge, Input } from "../ui";
 import { radius, shadow, spacing } from "../../constants/theme";
 import accountService from "../../services/accountService";
 import analyticsService from "../../services/analyticsService";
-
-// Keep in sync with accountTypeOptions in app/accounts.tsx.
-const accountTypeOptions = [
-  { value: "Cash", label: "Cash" },
-  { value: "Bank Account", label: "Bank Account" },
-  { value: "Savings Account", label: "Savings" },
-  { value: "Credit Card", label: "Credit Card" },
-  { value: "Mobile Banking/e-Wallet", label: "e-Wallet" },
-  { value: "Loan Account", label: "Loan" },
-  { value: "Investment Account", label: "Investment" },
-  { value: "Digital Bank Account", label: "Digital Bank" },
-  { value: "Prepaid Card", label: "Prepaid" },
-  { value: "Other", label: "Other" },
-];
 
 /**
  * Blocks the add-transaction screen until the user has at least one account —
@@ -161,21 +147,7 @@ export default function NoAccountGate() {
             <Text style={[styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
               Account type
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.typeChips}
-              keyboardShouldPersistTaps="handled"
-            >
-              {accountTypeOptions.map((opt) => (
-                <Chip
-                  key={opt.value}
-                  label={opt.label}
-                  selected={type === opt.value}
-                  onPress={() => setType(opt.value)}
-                />
-              ))}
-            </ScrollView>
+            <AccountTypePicker value={type} onChange={setType} />
 
             <View style={styles.buttons}>
               <View style={styles.buttonCell}>
@@ -240,10 +212,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     marginBottom: spacing.sm,
-  },
-  typeChips: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xs,
   },
   buttons: {
     flexDirection: "row",

@@ -10,7 +10,6 @@ import {
 import {
   Text,
   Surface,
-  TextInput,
   Button,
   Portal,
   Modal,
@@ -33,6 +32,7 @@ import {
   uploadFileFromAsset,
 } from "../src/utils/uploads";
 import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();

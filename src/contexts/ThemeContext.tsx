@@ -18,7 +18,7 @@ import {
 import {
   DefaultTheme as NavigationDefaultTheme,
   DarkTheme as NavigationDarkTheme,
-} from '@react-navigation/native';
+} from 'expo-router';
 
 // Finance-app color schemes (Indigo/violet primary, emerald success, rose danger)
 const lightColors = {
@@ -128,11 +128,13 @@ const DarkTheme: MD3Theme = {
   },
 };
 
-// Adapt navigation themes
+// Adapt navigation themes. expo-router's vendored React Navigation types
+// colors as ColorValue; Paper's adapter still expects string. Values are hex.
+type PaperNavTheme = Parameters<typeof adaptNavigationTheme>[0]['reactNavigationLight'];
 const { LightTheme: NavLightTheme, DarkTheme: NavDarkTheme } =
   adaptNavigationTheme({
-    reactNavigationLight: NavigationDefaultTheme,
-    reactNavigationDark: NavigationDarkTheme,
+    reactNavigationLight: NavigationDefaultTheme as unknown as PaperNavTheme,
+    reactNavigationDark: NavigationDarkTheme as unknown as PaperNavTheme,
     materialLight: LightTheme,
     materialDark: DarkTheme,
   });

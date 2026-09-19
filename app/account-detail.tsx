@@ -14,7 +14,6 @@ import {
   Text,
   Surface,
   ActivityIndicator,
-  TextInput,
   Button,
   IconButton,
   Menu,
@@ -41,6 +40,7 @@ import DateField from "../src/components/common/DateField";
 import TransactionDetailsSheet from "../src/components/transactions/TransactionDetailsSheet";
 import { getAmountSign } from "../src/utils/transactions";
 import { Account, Transaction } from "../src/types";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 interface ReconcileTransaction {
   date: string;

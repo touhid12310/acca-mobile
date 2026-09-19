@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   Portal,
   Modal,
-  TextInput,
   Button,
   ProgressBar,
   Chip,
@@ -40,6 +39,7 @@ import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
 import { todayDateInputValue } from "../src/utils/date";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {

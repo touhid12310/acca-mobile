@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, StyleProp, ViewStyle } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, StyleProp, ViewStyle } from "react-native";
 import { LucideIcon } from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
@@ -20,17 +20,11 @@ export function Chip({ label, selected, onPress, icon: Icon, style }: ChipProps)
   const fg = selected ? colors.onPrimary : colors.onSurfaceVariant;
 
   return (
-    <Pressable
+    <TouchableOpacity
       onPress={onPress}
       hitSlop={6}
-      style={({ pressed }) => [
-        styles.container,
-        {
-          backgroundColor: bg,
-          opacity: pressed ? 0.8 : 1,
-        },
-        style,
-      ]}
+      activeOpacity={0.8}
+      style={[styles.container, { backgroundColor: bg }, style]}
     >
       {Icon && <Icon size={14} color={fg} strokeWidth={2.3} />}
       <Text
@@ -40,7 +34,7 @@ export function Chip({ label, selected, onPress, icon: Icon, style }: ChipProps)
       >
         {label}
       </Text>
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
@@ -52,7 +46,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
+    borderRadius: 19, // half the 38px height → pill
   },
   label: {
     fontSize: 13,

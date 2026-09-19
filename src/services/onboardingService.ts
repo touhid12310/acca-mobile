@@ -6,7 +6,6 @@ export interface OnboardingPayload {
   currency: string;
   timezone?: string | null;
   financial_month_start_day: number;
-  profile_type: 'personal' | 'freelancer' | 'family' | 'business';
   load_sample_data?: boolean;
   account?: {
     account_name: string;

@@ -13,7 +13,6 @@ import {
   Pressable,
   ScrollView,
   ActivityIndicator,
-  TextInput,
   Text,
   Modal,
   Platform,
@@ -84,6 +83,7 @@ import {
   Account,
 } from "../../src/types";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import { NativeTextInput as TextInput } from "../../src/components/ui/SafeTextInput";
 
 type FilterType = "all" | TransactionType;
 
@@ -2036,7 +2036,7 @@ const styles = StyleSheet.create({
     ...shadow.sm,
   },
   emptyActionGradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",

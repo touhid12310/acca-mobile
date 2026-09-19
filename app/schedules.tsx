@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   Portal,
   Modal,
-  TextInput,
   Button,
   Divider,
 } from "react-native-paper";
@@ -40,6 +39,7 @@ import { todayDateInputValue, toDateInputValue as localDateInputValue } from "..
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Schedule } from "../src/types";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {

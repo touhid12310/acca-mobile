@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   Portal,
   Modal,
-  TextInput,
   Button,
   ProgressBar,
   Chip,
@@ -50,6 +49,7 @@ import DateField from "../src/components/common/DateField";
 import { Loan } from "../src/types";
 import { formatDate, todayDateInputValue } from "../src/utils/date";
 import { maybeAskForReview } from "../src/services/appReviewService";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 // Helper function to extract detailed validation errors from API response
 /**

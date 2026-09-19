@@ -49,6 +49,7 @@ import {
   Badge,
   Input,
   HeroCard,
+  AccountTypePicker,
 } from "../src/components/ui";
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
@@ -69,19 +70,6 @@ const formatApiError = (result: any): string => {
   }
   return errorMsg;
 };
-
-const accountTypeOptions = [
-  { value: "Cash", label: "Cash" },
-  { value: "Bank Account", label: "Bank Account" },
-  { value: "Savings Account", label: "Savings" },
-  { value: "Credit Card", label: "Credit Card" },
-  { value: "Mobile Banking/e-Wallet", label: "e-Wallet" },
-  { value: "Loan Account", label: "Loan" },
-  { value: "Investment Account", label: "Investment" },
-  { value: "Digital Bank Account", label: "Digital Bank" },
-  { value: "Prepaid Card", label: "Prepaid" },
-  { value: "Other", label: "Other" },
-];
 
 const getAccountIcon = (type: string = ""): LucideIcon => {
   const n = type.toLowerCase();
@@ -458,53 +446,12 @@ export default function AccountsScreen() {
                 >
                   Account type
                 </Text>
-                <View style={styles.typeChipsShell}>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.typeChips}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    {accountTypeOptions.map((opt) => {
-                      const active = formData.account_type === opt.value;
-                      return (
-                        <Pressable
-                          key={opt.value}
-                          onPress={() =>
-                            setFormData({
-                              ...formData,
-                              account_type: opt.value,
-                            })
-                          }
-                          style={[
-                            styles.typeChipPill,
-                            {
-                              backgroundColor: active
-                                ? colors.primary
-                                : colors.surfaceVariant,
-                            },
-                          ]}
-                          hitSlop={6}
-                        >
-                          <Text
-                            style={[
-                              styles.typeChipLabel,
-                              {
-                                color: active
-                                  ? colors.onPrimary
-                                  : colors.onSurfaceVariant,
-                              },
-                            ]}
-                            numberOfLines={1}
-                            allowFontScaling={false}
-                          >
-                            {opt.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
+                <AccountTypePicker
+                  value={formData.account_type}
+                  onChange={(account_type) =>
+                    setFormData((prev) => ({ ...prev, account_type }))
+                  }
+                />
 
                 <View style={styles.sheetButtons}>
                   <View style={{ flex: 1 }}>
@@ -722,30 +669,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
-  },
-  typeChipsShell: {
-    height: 54,
-    justifyContent: "center",
-    marginHorizontal: -spacing.xl,
-  },
-  typeChips: {
-    paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
-    alignItems: "center",
-  },
-  typeChipPill: {
-    height: 38,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  typeChipLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 16,
-    includeFontPadding: false,
-    textAlignVertical: "center",
   },
   sheetButtons: {
     flexDirection: "row",

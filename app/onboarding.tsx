@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  TextInput,
   Pressable,
   KeyboardAvoidingView,
 } from "react-native";
@@ -24,21 +23,12 @@ import onboardingService from "../src/services/onboardingService";
 import analyticsService from "../src/services/analyticsService";
 import { detectTimeZone } from "../src/utils/timezone";
 import { BrandText } from "../src/components";
-
-type ProfileType = "personal" | "freelancer" | "family" | "business";
+import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 const STEPS = [
   { id: 1, label: "Profile basics" },
-  { id: 2, label: "Pick a profile" },
-  { id: 3, label: "First account" },
-  { id: 4, label: "All set" },
-];
-
-const PROFILES: { id: ProfileType; icon: string; title: string; description: string }[] = [
-  { id: "personal", icon: "account", title: "Personal", description: "Track everyday spending, savings, and goals." },
-  { id: "freelancer", icon: "briefcase-outline", title: "Freelancer", description: "Income, expenses, and tax-ready records." },
-  { id: "family", icon: "account-group-outline", title: "Family", description: "Joint budgets, shared expenses, savings goals." },
-  { id: "business", icon: "store-outline", title: "Small Business", description: "Cash flow, invoicing, and bookkeeping." },
+  { id: 2, label: "First account" },
+  { id: 3, label: "All set" },
 ];
 
 const ACCOUNT_TYPES: { id: string; label: string; icon: string }[] = [
@@ -66,7 +56,6 @@ export default function OnboardingScreen() {
   const [timezone, setTimezone] = useState(user?.timezone || detectedTz);
   const [monthMode, setMonthMode] = useState<"first" | "custom">("first");
   const [customDay, setCustomDay] = useState("1");
-  const [profileType, setProfileType] = useState<ProfileType>("personal");
   const [accountType, setAccountType] = useState("Bank Account");
   const [accountName, setAccountName] = useState("");
   const [openingBalance, setOpeningBalance] = useState("");
@@ -106,7 +95,6 @@ export default function OnboardingScreen() {
     if (key === "timezone") setTimezone(value);
     if (key === "monthMode") setMonthMode(value);
     if (key === "customDay") setCustomDay(value);
-    if (key === "profileType") setProfileType(value);
     if (key === "accountType") setAccountType(value);
     if (key === "accountName") setAccountName(value);
     if (key === "openingBalance") setOpeningBalance(value);
@@ -127,7 +115,7 @@ export default function OnboardingScreen() {
         }
       }
     }
-    if (which === 3 && !accountName.trim()) {
+    if (which === 2 && !accountName.trim()) {
       next.accountName = "Account name is required";
     }
     setErrors(next);
@@ -159,7 +147,6 @@ export default function OnboardingScreen() {
       currency: selectedCurrency,
       timezone,
       financial_month_start_day: day,
-      profile_type: profileType,
       load_sample_data: loadSampleData,
       account: accountName.trim()
         ? {
@@ -380,36 +367,8 @@ export default function OnboardingScreen() {
             </View>
           )}
 
+
           {step === 2 && (
-            <View style={styles.body}>
-              <Text style={[styles.title, { color: colors.onSurface }]}><BrandText>What brings you to AccountE?</BrandText></Text>
-              <Text style={[styles.subtitle, { color: subtle }]}>
-                We'll tune your dashboard, categories, and features to match. You can switch profiles or mix-and-match later.
-              </Text>
-
-              <View style={styles.profileGrid}>
-                {PROFILES.map((opt) => (
-                  <Pressable
-                    key={opt.id}
-                    onPress={() => setField("profileType", opt.id)}
-                    style={[
-                      styles.profileCard,
-                      { borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
-                      profileType === opt.id && { borderColor: colors.primary },
-                    ]}
-                  >
-                    <View style={[styles.profileIcon, { backgroundColor: isDark ? "rgba(99,102,241,0.18)" : "#eef2ff" }]}>
-                      <MaterialCommunityIcons name={opt.icon as any} size={20} color={colors.primary} />
-                    </View>
-                    <Text style={[styles.profileTitle, { color: colors.onSurface }]}>{opt.title}</Text>
-                    <Text style={[styles.profileDesc, { color: subtle }]} numberOfLines={2}>{opt.description}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {step === 3 && (
             <View style={styles.body}>
               <Text style={[styles.title, { color: colors.onSurface }]}>Where does your money live?</Text>
               <Text style={[styles.subtitle, { color: subtle }]}>
@@ -487,7 +446,7 @@ export default function OnboardingScreen() {
             </View>
           )}
 
-          {step === 4 && (
+          {step === 3 && (
             <View style={styles.body}>
               <Text style={[styles.title, { color: colors.onSurface }]}>You're set up</Text>
               <Text style={[styles.subtitle, { color: subtle }]}>
@@ -556,7 +515,7 @@ export default function OnboardingScreen() {
 
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: cardBorder }]}>
-            {step < 4 ? (
+            {step < 3 ? (
               <>
                 <TouchableOpacity onPress={handleSkipAll} disabled={submitting}>
                   <Text style={[styles.ghost, { color: subtle, borderColor: cardBorder }]}>Skip for now</Text>
@@ -574,8 +533,8 @@ export default function OnboardingScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
-                      if (step === 3) {
-                        if (validateStep(3)) setStep(4);
+                      if (step === 2) {
+                        if (validateStep(2)) setStep(3);
                       } else {
                         goNext();
                       }
@@ -583,7 +542,7 @@ export default function OnboardingScreen() {
                     disabled={submitting}
                   >
                     <Text style={[styles.primary, { backgroundColor: colors.primary }]}>
-                      {submitting ? "…" : step === 3 ? "Add account" : "Continue"}
+                      {submitting ? "…" : step === 2 ? "Add account" : "Continue"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -602,7 +561,7 @@ export default function OnboardingScreen() {
             )}
           </View>
 
-          {step === 3 && (
+          {step === 2 && (
             <Text style={[styles.requiredNote, { color: subtle }]}>Required to continue</Text>
           )}
         </View>
@@ -776,28 +735,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     flexShrink: 0,
   },
-  profileGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginTop: 4,
-  },
-  profileCard: {
-    width: "48%",
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 6,
-  },
-  profileIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileTitle: { fontSize: 15, fontWeight: "600", marginTop: 4 },
-  profileDesc: { fontSize: 12, lineHeight: 16 },
   typeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -936,7 +873,7 @@ const styles = StyleSheet.create({
   modalRowCode: { width: 50, fontSize: 14, fontWeight: "600" },
   modalRowLabel: { flex: 1, fontSize: 13 },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.25)",

@@ -3,7 +3,6 @@ import {
   View,
   StyleSheet,
   FlatList,
-  TextInput as RNTextInput,
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
@@ -53,6 +52,8 @@ import {
   toDateInputValue,
   todayDateInputValue,
 } from "../../src/utils/date";
+import { NativeTextInput as RNTextInput } from "../../src/components/ui/SafeTextInput";
+import type { TextInput as RNTextInputRef } from "react-native";
 
 type SpeechRecognitionModuleType = {
   addListener: (
@@ -537,7 +538,7 @@ export default function ChatScreen() {
   })();
   const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
-  const inputRef = useRef<RNTextInput>(null);
+  const inputRef = useRef<RNTextInputRef>(null);
   const voiceBaseInputRef = useRef("");
   const voiceFinalTranscriptRef = useRef("");
   const voiceInterimTranscriptRef = useRef("");

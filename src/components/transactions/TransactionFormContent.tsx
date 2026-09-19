@@ -14,7 +14,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
-  TextInput,
   Button,
   SegmentedButtons,
   Portal,
@@ -42,6 +41,7 @@ import { buildFileUrl } from '../../config/api';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
 import { formatDate } from '../../utils/date';
 import { compatibleImagePickerOptions, uploadFileFromAsset } from '../../utils/uploads';
+import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
 // Helper to categorize account type as Asset or Liability
 const ASSET_ACCOUNT_TYPES: AccountType[] = ['checking', 'savings', 'cash', 'investment'];

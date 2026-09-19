@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   Portal,
   Modal,
-  TextInput,
   Button,
   Switch,
 } from "react-native-paper";
@@ -27,6 +26,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import categoryService from "../src/services/categoryService";
+import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 type CategoryType = "income" | "expense" | "asset" | "liability";
 
@@ -699,8 +699,10 @@ export default function CategoriesScreen() {
 
             <TextInput
               label="Category Name *"
-              value={formData.name}
-              onChangeText={(text) => setFormData({ ...formData, name: text })}
+              defaultValue={formData.name}
+              onChangeText={(text) =>
+                setFormData((prev) => ({ ...prev, name: text }))
+              }
               mode="outlined"
               style={styles.input}
             />
@@ -746,7 +748,11 @@ export default function CategoriesScreen() {
                     }
                   />
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
                     style={{
+                      flexShrink: 1,
                       color:
                         formData.type === type
                           ? typeConfig[type].color
@@ -1032,15 +1038,16 @@ const styles = StyleSheet.create({
   },
   typeButtons: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 8,
   },
   typeButton: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 4,
     borderRadius: 8,
     borderWidth: 1,
   },
@@ -1048,12 +1055,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 4,
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 8,
-    marginTop: 8,
+    marginTop: 4,
   },
 });

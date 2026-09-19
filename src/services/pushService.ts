@@ -1,9 +1,9 @@
 import { Platform } from "react-native";
-import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 
 import API_CONFIG, { apiRequest } from "../config/api";
+import { Notifications } from "./notifications";
 
 let cachedToken: string | null = null;
 
@@ -15,7 +15,7 @@ const getProjectId = (): string | undefined => {
 };
 
 export const ensureAndroidChannel = async () => {
-  if (Platform.OS !== "android") return;
+  if (Platform.OS !== "android" || !Notifications) return;
   // HIGH importance lets finance alerts (low balance, budget overage,
   // schedule reminders) appear as heads-up — DEFAULT only drops them
   // silently into the tray, which users routinely miss.
@@ -31,7 +31,7 @@ export const ensureAndroidChannel = async () => {
 };
 
 export const requestPushPermission = async (): Promise<boolean> => {
-  if (!Device.isDevice) return false;
+  if (!Notifications || !Device.isDevice) return false;
   const existing = await Notifications.getPermissionsAsync();
   if (existing.status === "granted") return true;
   const requested = await Notifications.requestPermissionsAsync({
@@ -46,7 +46,7 @@ export const requestPushPermission = async (): Promise<boolean> => {
 
 export const getExpoPushToken = async (): Promise<string | null> => {
   if (cachedToken) return cachedToken;
-  if (!Device.isDevice) return null;
+  if (!Notifications || !Device.isDevice) return null;
 
   const projectId = getProjectId();
   if (!projectId) return null;

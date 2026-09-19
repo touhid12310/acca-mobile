@@ -8,7 +8,6 @@ import { PaperProvider } from 'react-native-paper';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import * as SplashScreen from 'expo-splash-screen';
-import * as Notifications from 'expo-notifications';
 
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
@@ -17,6 +16,7 @@ import { NotificationProvider } from '../src/contexts/NotificationContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import analyticsService from '../src/services/analyticsService';
+import { Notifications } from '../src/services/notifications';
 
 import '../global.css';
 
@@ -25,7 +25,7 @@ SplashScreen.preventAutoHideAsync();
 
 // How notifications appear when the app is in the foreground.
 // shouldShowAlert was deprecated in expo-notifications 0.32 — banner+list cover it.
-Notifications.setNotificationHandler({
+Notifications?.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
@@ -33,6 +33,11 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
   }),
 });
+
+// Expo Go has no expo-notifications; the choice is fixed per runtime, so the
+// hook call order stays stable.
+const useLastNotificationResponse =
+  Notifications?.useLastNotificationResponse ?? (() => null);
 
 const ROUTABLE_TYPES: Record<string, string> = {
   budget_overage: '/budgets',
@@ -122,14 +127,14 @@ function RootLayoutNav() {
   // useLastNotificationResponse (not addNotificationResponseReceivedListener)
   // because the listener is not reliably called when the tap launches the app
   // from a killed state — the hook covers killed, background, and foreground.
-  const lastNotificationResponse = Notifications.useLastNotificationResponse();
+  const lastNotificationResponse = useLastNotificationResponse();
   useEffect(() => {
     if (!lastNotificationResponse) return;
     const route = routeFromNotificationData(
       lastNotificationResponse.notification.request.content.data,
     );
     // Clear so a remount doesn't replay the same tap.
-    Notifications.clearLastNotificationResponseAsync();
+    Notifications?.clearLastNotificationResponseAsync();
     if (route) {
       router.push(route as any);
     }
