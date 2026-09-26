@@ -11,16 +11,31 @@ import {
   ActivityIndicator,
   RefreshControl,
   KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Lightbulb, Pencil, Plus, Sparkles, Trash2, Wand2, X } from 'lucide-react-native';
+import {
+  Building2,
+  Check,
+  CreditCard,
+  Info,
+  Lightbulb,
+  LucideIcon,
+  Pencil,
+  Plus,
+  Sparkles,
+  Store,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Wand2,
+  X,
+} from 'lucide-react-native';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
-import { Button, Card, Chip, EmptyState, ScreenHeader } from '../src/components/ui';
+import { Button, Card, EmptyState, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
 import ruleService, {
@@ -41,11 +56,53 @@ const MATCH_OPTIONS: { value: RuleMatchType; label: string }[] = [
   { value: 'exact', label: 'is exactly' },
 ];
 
+type RuleType = 'expense' | 'income' | 'asset' | 'liability';
+
+type Tone = 'error' | 'tertiary' | 'info' | 'warning';
+
+// Same four types, colours and order as the Categories screen. A rule only
+// fires for transactions of its category's own type.
+const TYPE_OPTIONS: { value: RuleType; label: string; icon: LucideIcon; tone: Tone }[] = [
+  { value: 'expense', label: 'Expense', icon: TrendingDown, tone: 'error' },
+  { value: 'income', label: 'Income', icon: TrendingUp, tone: 'tertiary' },
+  { value: 'asset', label: 'Asset', icon: Building2, tone: 'info' },
+  { value: 'liability', label: 'Liability', icon: CreditCard, tone: 'warning' },
+];
+
+const TONE_CONTAINER: Record<Tone, 'errorContainer' | 'tertiaryContainer' | 'infoContainer' | 'warningContainer'> = {
+  error: 'errorContainer',
+  tertiary: 'tertiaryContainer',
+  info: 'infoContainer',
+  warning: 'warningContainer',
+};
+
+const TONE_ON_CONTAINER: Record<Tone, 'onErrorContainer' | 'onTertiaryContainer' | 'onInfoContainer' | 'onWarningContainer'> = {
+  error: 'onErrorContainer',
+  tertiary: 'onTertiaryContainer',
+  info: 'onInfoContainer',
+  warning: 'onWarningContainer',
+};
+
+const APPLY_OPTIONS: { value: ApplyScope; title: string; hint: string }[] = [
+  { value: 'none', title: 'Only new transactions', hint: 'Past transactions stay as they are' },
+  { value: 'uncategorized', title: 'Fill in the blanks', hint: 'Past matches with no category get this one' },
+  { value: 'all', title: 'Re-file every match', hint: 'Past matches move here, even ones already filed' },
+];
+
+// Merchants are compared lower-cased with punctuation stripped
+// (CategorizationRule::normalize), so capitals never matter.
+const matchHint = (matchType: RuleMatchType, pattern: string): string => {
+  const sample = pattern.trim() || 'Foodpanda';
+  if (matchType === 'starts_with') return `Merchants whose name starts with “${sample}”`;
+  if (matchType === 'exact') return `Only merchants named exactly “${sample}”`;
+  return `Any merchant with “${sample}” in its name`;
+};
+
 type FormState = {
   id: number | null;
   pattern: string;
   match_type: RuleMatchType;
-  type: 'expense' | 'income';
+  type: RuleType;
   category_id: number | null;
   subcategory_id: number | null;
   apply: ApplyScope;
@@ -75,6 +132,8 @@ export default function RulesScreen() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [modalOpen, setModalOpen] = useState(false);
   const [preview, setPreview] = useState<RulePreview | null>(null);
+  const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [patternFocused, setPatternFocused] = useState(false);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['categorization-rules'],
@@ -85,7 +144,7 @@ export default function RulesScreen() {
     },
   });
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
     queryKey: ['categories', form.type],
     enabled: modalOpen,
     queryFn: async (): Promise<Category[]> => {
@@ -100,6 +159,11 @@ export default function RulesScreen() {
 
   const rules = data?.rules ?? [];
   const suggestions = data?.suggestions ?? [];
+  const selectedCategory = categories.find((category) => category.id === form.category_id) ?? null;
+  const selectedSubcategory =
+    selectedCategory?.subcategories?.find((sub) => sub.id === form.subcategory_id) ?? null;
+  const activeType = TYPE_OPTIONS.find((option) => option.value === form.type) ?? TYPE_OPTIONS[0];
+  const typeLabel = activeType.label.toLowerCase();
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['categorization-rules'] });
@@ -148,16 +212,21 @@ export default function RulesScreen() {
   useEffect(() => {
     if (!modalOpen || form.pattern.trim().length < 2 || !form.category_id) {
       setPreview(null);
+      setPreviewState('idle');
       return undefined;
     }
     let cancelled = false;
+    setPreviewState('loading');
     const timer = setTimeout(async () => {
       const result = await ruleService.preview({
         pattern: form.pattern.trim(),
         match_type: form.match_type,
         category_id: form.category_id as number,
       });
-      if (!cancelled) setPreview(result.success ? ((result.data as any)?.data as RulePreview) : null);
+      if (cancelled) return;
+      const next = result.success ? ((result.data as any)?.data as RulePreview) : null;
+      setPreview(next ?? null);
+      setPreviewState(next ? 'ready' : 'error');
     }, 400);
     return () => {
       cancelled = true;
@@ -175,7 +244,7 @@ export default function RulesScreen() {
       id: rule.id,
       pattern: rule.pattern,
       match_type: rule.match_type,
-      type: rule.type === 'income' ? 'income' : 'expense',
+      type: (TYPE_OPTIONS.find((option) => option.value === rule.type)?.value ?? 'expense') as RuleType,
       category_id: rule.category_id,
       subcategory_id: rule.subcategory_id,
       apply: 'none',
@@ -216,6 +285,18 @@ export default function RulesScreen() {
         apply_to_existing: 'uncategorized',
       },
     });
+
+  const closeSheet = () => {
+    if (!saveMutation.isPending) setModalOpen(false);
+  };
+
+  const pickType = (type: RuleType) =>
+    setForm((prev) => (prev.type === type ? prev : { ...prev, type, category_id: null, subcategory_id: null }));
+
+  const openCategories = () => {
+    setModalOpen(false);
+    router.push('/categories' as never);
+  };
 
   const confirmDelete = (rule: CategorizationRule) =>
     Alert.alert('Delete rule?', `“${rule.pattern}” → ${rule.category_label}. Transactions it already filed keep their category.`, [
@@ -342,136 +423,349 @@ export default function RulesScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
+      <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={closeSheet}>
         <KeyboardAvoidingView behavior="padding" style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => !saveMutation.isPending && setModalOpen(false)} />
-          <View style={[styles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.lg }, shadow.lg]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet} />
+          <View style={[styles.sheet, { backgroundColor: colors.surface }, shadow.lg]}>
+            <View style={[styles.handle, { backgroundColor: colors.outline }]} />
             <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>{form.id ? 'Edit rule' : 'New rule'}</Text>
-              <Pressable onPress={() => setModalOpen(false)} hitSlop={10}>
-                <X size={20} color={colors.onSurfaceVariant} />
+              <View style={[styles.headerIcon, { backgroundColor: colors.primaryContainer }]}>
+                <Wand2 size={20} color={colors.primary} strokeWidth={2.2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>{form.id ? 'Edit rule' : 'New rule'}</Text>
+                <Text style={[styles.sheetSubtitle, { color: colors.onSurfaceVariant }]}>
+                  Matching transactions get filed for you
+                </Text>
+              </View>
+              <Pressable
+                onPress={closeSheet}
+                hitSlop={10}
+                accessibilityLabel="Close"
+                style={[styles.closeButton, { backgroundColor: colors.surfaceVariant }]}
+              >
+                <X size={18} color={colors.onSurfaceVariant} />
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={{ gap: spacing.md }} keyboardShouldPersistTaps="handled">
-              <Text style={[styles.label, { color: colors.onSurfaceVariant }]}>When the merchant name</Text>
-              <View style={styles.chips}>
-                {MATCH_OPTIONS.map((option) => (
-                  <Chip
-                    key={option.value}
-                    label={option.label}
-                    selected={form.match_type === option.value}
-                    onPress={() => setForm((prev) => ({ ...prev, match_type: option.value }))}
-                  />
-                ))}
+            {/* One scroll area for the whole form: the category list used to
+                scroll inside it, which showed two scroll bars and pushed the
+                button off-screen. The button now sits in the footer below. */}
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetBody}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <StepLabel step={1} title="Merchant" />
+              <View style={[styles.segment, { backgroundColor: colors.surfaceVariant }]} accessibilityRole="radiogroup">
+                {MATCH_OPTIONS.map((option) => {
+                  const selected = form.match_type === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setForm((prev) => ({ ...prev, match_type: option.value }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[styles.segmentItem, selected && [{ backgroundColor: colors.surface }, shadow.sm]]}
+                    >
+                      <Text
+                        style={[styles.segmentText, { color: selected ? colors.primary : colors.onSurfaceVariant }]}
+                        numberOfLines={1}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-              <TextInput
-                value={form.pattern}
-                onChangeText={(text) => setForm((prev) => ({ ...prev, pattern: text }))}
-                placeholder="e.g. Foodpanda"
-                placeholderTextColor={colors.onSurfaceVariant}
-                autoFocus={!form.id}
-                maxLength={120}
-                style={[styles.input, { color: colors.onSurface, borderColor: colors.outline, backgroundColor: colors.background }]}
-              />
+              <View
+                style={[
+                  styles.inputWrap,
+                  { borderColor: patternFocused ? colors.primary : colors.outline, backgroundColor: colors.surface },
+                ]}
+              >
+                <Store size={18} color={patternFocused ? colors.primary : colors.onSurfaceVariant} />
+                <TextInput
+                  value={form.pattern}
+                  onChangeText={(text) => setForm((prev) => ({ ...prev, pattern: text }))}
+                  onFocus={() => setPatternFocused(true)}
+                  onBlur={() => setPatternFocused(false)}
+                  placeholder="Merchant name, e.g. Foodpanda"
+                  placeholderTextColor={colors.onSurfaceVariant}
+                  autoFocus={!form.id}
+                  autoCorrect={false}
+                  maxLength={120}
+                  style={[styles.inputField, { color: colors.onSurface }]}
+                />
+                {form.pattern.length > 0 && (
+                  <Pressable
+                    onPress={() => setForm((prev) => ({ ...prev, pattern: '' }))}
+                    hitSlop={10}
+                    accessibilityLabel="Clear merchant"
+                  >
+                    <X size={16} color={colors.onSurfaceVariant} />
+                  </Pressable>
+                )}
+              </View>
+              <Text style={[styles.hint, { color: colors.onSurfaceVariant }]}>
+                {matchHint(form.match_type, form.pattern)} · capitals don't matter
+              </Text>
 
-              <Text style={[styles.label, { color: colors.onSurfaceVariant }]}>File it under</Text>
-              <View style={styles.chips}>
-                {(['expense', 'income'] as const).map((type) => (
-                  <Chip
-                    key={type}
-                    label={type === 'expense' ? 'Expense' : 'Income'}
-                    selected={form.type === type}
-                    onPress={() =>
-                      setForm((prev) =>
-                        prev.type === type ? prev : { ...prev, type, category_id: null, subcategory_id: null },
-                      )
-                    }
-                  />
-                ))}
+              <StepLabel step={2} title="File it under" />
+              <View style={styles.typeRow} accessibilityRole="radiogroup">
+                {TYPE_OPTIONS.map((option) => {
+                  const selected = form.type === option.value;
+                  const Icon = option.icon;
+                  const tone = colors[option.tone];
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => pickType(option.value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[
+                        styles.typeTile,
+                        {
+                          borderColor: selected ? tone : colors.outline,
+                          backgroundColor: selected ? colors[TONE_CONTAINER[option.tone]] : colors.surface,
+                        },
+                      ]}
+                    >
+                      <Icon size={18} color={selected ? colors[TONE_ON_CONTAINER[option.tone]] : tone} strokeWidth={2.3} />
+                      <Text
+                        style={[
+                          styles.typeLabel,
+                          { color: selected ? colors[TONE_ON_CONTAINER[option.tone]] : colors.onSurface },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-              <View style={[styles.categoryList, { borderColor: colors.outlineVariant }]}>
-                <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }}>
+
+              {categoriesLoading ? (
+                <View style={styles.inlineStatus}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={[styles.hint, { color: colors.onSurfaceVariant }]}>Loading {typeLabel} categories…</Text>
+                </View>
+              ) : categories.length === 0 ? (
+                <View style={[styles.emptyCategories, { backgroundColor: colors.surfaceVariant }]}>
+                  <Text style={[styles.hint, { color: colors.onSurfaceVariant, flex: 1 }]}>
+                    You have no {typeLabel} categories yet.
+                  </Text>
+                  <Pressable onPress={openCategories} hitSlop={8}>
+                    <Text style={[styles.linkText, { color: colors.primary }]}>Add one</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.pills}>
                   {categories.map((category) => {
-                    const categorySelected = form.category_id === category.id && !form.subcategory_id;
+                    const selected = form.category_id === category.id;
                     return (
-                      <View key={category.id}>
-                        <Pressable
-                          onPress={() => setForm((prev) => ({ ...prev, category_id: category.id, subcategory_id: null }))}
-                          style={[styles.categoryRow, categorySelected && { backgroundColor: colors.primaryContainer }]}
+                      <Pressable
+                        key={category.id}
+                        onPress={() =>
+                          setForm((prev) => ({ ...prev, category_id: category.id, subcategory_id: null }))
+                        }
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        style={[
+                          styles.pill,
+                          {
+                            backgroundColor: selected ? colors.primary : colors.surfaceVariant,
+                            borderColor: selected ? colors.primary : 'transparent',
+                          },
+                        ]}
+                      >
+                        {selected ? (
+                          <Check size={14} color={colors.onPrimary} strokeWidth={3} />
+                        ) : (
+                          <View style={[styles.dot, { backgroundColor: category.color || colors[activeType.tone] }]} />
+                        )}
+                        <Text
+                          style={[styles.pillText, { color: selected ? colors.onPrimary : colors.onSurface }]}
+                          numberOfLines={1}
                         >
-                          <Text style={[styles.categoryText, { color: colors.onSurface, fontWeight: '700' }]}>
-                            {category.name}
-                          </Text>
-                          {categorySelected && <Check size={16} color={colors.primary} />}
-                        </Pressable>
-                        {(category.subcategories ?? []).map((sub) => {
-                          const subSelected = form.subcategory_id === sub.id;
-                          return (
-                            <Pressable
-                              key={sub.id}
-                              onPress={() =>
-                                setForm((prev) => ({ ...prev, category_id: category.id, subcategory_id: sub.id }))
-                              }
-                              style={[
-                                styles.categoryRow,
-                                { paddingLeft: spacing.xl },
-                                subSelected && { backgroundColor: colors.primaryContainer },
-                              ]}
-                            >
-                              <Text style={[styles.categoryText, { color: colors.onSurfaceVariant }]}>› {sub.name}</Text>
-                              {subSelected && <Check size={16} color={colors.primary} />}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
+                          {category.name}
+                        </Text>
+                      </Pressable>
                     );
                   })}
-                  {categories.length === 0 && (
-                    <Text style={[styles.rowMeta, { color: colors.onSurfaceVariant, padding: spacing.md }]}>Loading categories…</Text>
-                  )}
-                </ScrollView>
-              </View>
+                </View>
+              )}
 
-              <View style={[styles.preview, { backgroundColor: colors.primaryContainer }]}>
-                <Text style={{ color: colors.onSurface, fontSize: 13 }}>
-                  {preview
-                    ? `${preview.total} existing transaction${preview.total === 1 ? '' : 's'} match · ${preview.uncategorized} without a category`
-                    : 'Type a merchant and pick a category to see what this rule would match.'}
-                </Text>
-                {preview && preview.samples.length > 0 && (
-                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }} numberOfLines={1}>
-                    e.g. {preview.samples.slice(0, 3).join(', ')}
+              {selectedCategory && (selectedCategory.subcategories ?? []).length > 0 && (
+                <View style={[styles.subPanel, { backgroundColor: colors.surfaceVariant }]}>
+                  <Text style={[styles.subLabel, { color: colors.onSurfaceVariant }]}>
+                    {selectedCategory.name} › subcategory (optional)
                   </Text>
+                  <View style={styles.pills}>
+                    {[{ id: null as number | null, name: 'No subcategory' }, ...(selectedCategory.subcategories ?? [])].map(
+                      (sub) => {
+                        const selected = form.subcategory_id === sub.id;
+                        return (
+                          <Pressable
+                            key={sub.id ?? 'none'}
+                            onPress={() => setForm((prev) => ({ ...prev, subcategory_id: sub.id }))}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            style={[
+                              styles.subPill,
+                              {
+                                backgroundColor: selected ? colors.primaryContainer : colors.surface,
+                                borderColor: selected ? colors.primary : colors.outline,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.subPillText,
+                                { color: selected ? colors.onPrimaryContainer : colors.onSurface },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {sub.name}
+                            </Text>
+                          </Pressable>
+                        );
+                      },
+                    )}
+                  </View>
+                </View>
+              )}
+
+              <View
+                style={[
+                  styles.previewCard,
+                  {
+                    backgroundColor: previewState === 'idle' ? colors.surfaceVariant : colors.primaryContainer,
+                    borderColor: previewState === 'idle' ? 'transparent' : colors.primary,
+                  },
+                ]}
+              >
+                {previewState === 'idle' ? (
+                  <View style={styles.previewRow}>
+                    <Info size={16} color={colors.onSurfaceVariant} />
+                    <Text style={[styles.previewText, { color: colors.onSurfaceVariant }]}>
+                      Add a merchant and pick a category to see what this rule would match.
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={[styles.previewTitle, { color: colors.onPrimaryContainer }]} numberOfLines={2}>
+                      “{form.pattern.trim()}” → {selectedCategory?.name ?? 'category'}
+                      {selectedSubcategory ? ` › ${selectedSubcategory.name}` : ''}
+                    </Text>
+                    <View style={styles.previewRow}>
+                      {previewState === 'loading' ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Sparkles size={15} color={colors.primary} />
+                      )}
+                      <Text style={[styles.previewText, { color: colors.onSurface }]}>
+                        {previewState === 'loading'
+                          ? 'Checking your past transactions…'
+                          : previewState === 'error' || !preview
+                            ? 'Could not count past matches right now. New transactions will still match.'
+                            : preview.total === 0
+                              ? `No past ${typeLabel} transactions match yet. New ones will.`
+                              : `${preview.total} past transaction${preview.total === 1 ? '' : 's'} match · ${preview.uncategorized} without a category`}
+                      </Text>
+                    </View>
+                    {previewState === 'ready' && preview && preview.samples.length > 0 && (
+                      <Text style={[styles.previewSamples, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+                        e.g. {preview.samples.slice(0, 3).join(', ')}
+                      </Text>
+                    )}
+                  </>
                 )}
               </View>
 
-              <Text style={[styles.label, { color: colors.onSurfaceVariant }]}>Existing transactions</Text>
-              <View style={styles.chips}>
-                <Chip label="Only new ones" selected={form.apply === 'none'} onPress={() => setForm((p) => ({ ...p, apply: 'none' }))} />
-                <Chip
-                  label={`Fill blanks${preview ? ` (${preview.uncategorized})` : ''}`}
-                  selected={form.apply === 'uncategorized'}
-                  onPress={() => setForm((p) => ({ ...p, apply: 'uncategorized' }))}
-                />
-                <Chip
-                  label={`Re-file all${preview ? ` (${preview.total})` : ''}`}
-                  selected={form.apply === 'all'}
-                  onPress={() => setForm((p) => ({ ...p, apply: 'all' }))}
-                />
+              <StepLabel step={3} title="Past transactions" />
+              <View style={{ gap: spacing.sm }} accessibilityRole="radiogroup">
+                {APPLY_OPTIONS.map((option) => {
+                  const selected = form.apply === option.value;
+                  const count =
+                    previewState === 'ready' && preview
+                      ? option.value === 'uncategorized'
+                        ? preview.uncategorized
+                        : option.value === 'all'
+                          ? preview.total
+                          : null
+                      : null;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setForm((prev) => ({ ...prev, apply: option.value }))}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      style={[
+                        styles.applyOption,
+                        {
+                          borderColor: selected ? colors.primary : colors.outline,
+                          backgroundColor: selected ? colors.primaryContainer : colors.surface,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.radioOuter, { borderColor: selected ? colors.primary : colors.outline }]}>
+                        {selected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.applyTitleRow}>
+                          <Text style={[styles.applyTitle, { color: colors.onSurface }]}>{option.title}</Text>
+                          {count !== null && (
+                            <View style={[styles.countPill, { backgroundColor: colors.surfaceVariant }]}>
+                              <Text style={[styles.countText, { color: colors.onSurfaceVariant }]}>{count}</Text>
+                            </View>
+                          )}
+                          {!form.id && option.value === 'uncategorized' && (
+                            <View style={[styles.countPill, { backgroundColor: colors.primary }]}>
+                              <Text style={[styles.countText, { color: colors.onPrimary }]}>Recommended</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.hint, { color: colors.onSurfaceVariant }]}>{option.hint}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
+            </ScrollView>
 
+            <View
+              style={[
+                styles.sheetFooter,
+                { borderTopColor: colors.outline, paddingBottom: insets.bottom + spacing.md, backgroundColor: colors.surface },
+              ]}
+            >
               <Button
-                label={form.id ? 'Save rule' : 'Create rule'}
+                label={form.id ? 'Save changes' : 'Create rule'}
                 icon={Check}
                 fullWidth
                 loading={saveMutation.isPending}
                 onPress={submit}
               />
-            </ScrollView>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+    </View>
+  );
+}
+
+/** Numbered heading for each part of the rule sheet. */
+function StepLabel({ step, title }: { step: number; title: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={styles.stepRow}>
+      <View style={[styles.stepBadge, { backgroundColor: colors.primaryContainer }]}>
+        <Text style={[styles.stepNumber, { color: colors.onPrimaryContainer }]}>{step}</Text>
+      </View>
+      <Text style={[styles.stepTitle, { color: colors.onSurface }]}>{title}</Text>
     </View>
   );
 }
@@ -536,58 +830,260 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   sheet: {
-    maxHeight: '90%',
+    maxHeight: '92%',
     borderTopLeftRadius: radius.xxl,
     borderTopRightRadius: radius.xxl,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.sm,
+    overflow: 'hidden',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
   },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sheetTitle: {
     fontSize: 18,
     fontWeight: '800',
   },
-  label: {
+  sheetSubtitle: {
+    fontSize: 12.5,
+    marginTop: 1,
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  sheetBody: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xl,
+    gap: spacing.md,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  stepBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepNumber: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  stepTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  segment: {
+    flexDirection: 'row',
+    padding: 4,
+    borderRadius: radius.pill,
+  },
+  segmentItem: {
+    flex: 1,
+    height: 36,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    height: 50,
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+  },
+  inputField: {
+    flex: 1,
+    height: '100%',
+    fontSize: 15,
+    paddingVertical: 0,
+  },
+  hint: {
+    fontSize: 12.5,
+    lineHeight: 17,
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  typeTile: {
+    flex: 1,
+    height: 62,
+    borderWidth: 1.5,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  typeLabel: {
     fontSize: 12,
     fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  chips: {
+  inlineStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  emptyCategories: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+  },
+  linkText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  pills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  input: {
-    height: 46,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    fontSize: 15,
-  },
-  categoryList: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-  },
-  categoryRow: {
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    gap: 6,
+    height: 36,
+    maxWidth: '100%',
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    borderWidth: 1,
   },
-  categoryText: {
-    fontSize: 14,
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  preview: {
+  pillText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  subPanel: {
     borderRadius: radius.lg,
     padding: spacing.md,
-    gap: 2,
+    gap: spacing.sm,
+  },
+  subLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  subPill: {
+    height: 32,
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    justifyContent: 'center',
+  },
+  subPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  previewCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: 6,
+  },
+  previewTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  previewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  previewText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  previewSamples: {
+    fontSize: 12,
+  },
+  applyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+  },
+  applyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  applyTitle: {
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  countPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  sheetFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
   },
 });
