@@ -5,7 +5,7 @@ The iOS / Android app for **AccountE**, a personal-finance app. App id `com.acco
 ## Stack
 
 - **Expo SDK 57**, **React Native 0.86**, **expo-router** (file-based), **react-native-paper**, **TanStack Query**, `lucide-react-native`
-- Auth token in `expo-secure-store` (`accounte_auth_token`); push via `expo-notifications`; in-app purchases via `expo-iap` (Google Play Billing / App Store)
+- Auth token in `expo-secure-store` (`accounte_auth_token`); push via `expo-notifications`; in-app purchases via `expo-iap` (Google Play Billing / App Store; `useGooglePlayBilling` buys the Play offer of the base plan the backend names per cycle and finishes paid-but-unverified purchases when the billing screen connects)
 - Face ID / fingerprint app lock via `expo-local-authentication`; voice input via `expo-speech-recognition`
 - A local native module, `modules/accounte-sms` (Android only), reads the SMS inbox for bank / wallet alerts
 
@@ -60,7 +60,7 @@ modules/accounte-sms/         Android Expo module (Kotlin) + JS wrapper
 
 ## Platform notes
 
-- **SMS import (Android):** needs `android.permission.READ_SMS` (declared in `app.json`). Google Play requires a sensitive-permission declaration for it. `useSmsAutoSync` (mounted in `app/_layout.tsx`) picks up new bank / wallet alerts when the app returns to the foreground and SMS import is on; messages are filtered to transaction alerts on the device before upload and become drafts under Activity → Pending review. iOS (and anyone) can paste messages instead.
+- **SMS import (Android):** needs `android.permission.READ_SMS` (declared in `app.json`). Google Play requires a sensitive-permission declaration for it. `useSmsAutoSync` (mounted in `app/_layout.tsx`) picks up new bank / wallet alerts when the app returns to the foreground and SMS import is on; messages are filtered to transaction alerts on the device before upload and become drafts under Activity → Pending review. Turning import on starts from "now"; older messages are pulled only when the user picks a range in **Import past messages** (Today / 7 / 14 / 30 days). iOS (and anyone) can paste messages instead.
 - **App lock:** device-only setting in SecureStore `accounte_app_lock_v1`; `AppLockOverlay` covers the app until biometrics (or the phone PIN) succeed. Face ID copy is set in the `expo-local-authentication` plugin config.
 - **Android keyboard:** `softwareKeyboardLayoutMode: "pan"` — use `KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}` except inside an RN/Paper `Modal`.
 - **Sign-in:** password, 6-digit email code, Sign in with Apple, and Google through the browser (`src/services/googleBrowserAuth.ts`): the web client flow lands on the web app's `/auth/callback`, which returns the one-time code via `accounte://auth/callback` (Google rejects custom-scheme redirects on Android OAuth clients). `/auth/social/exchange-id-token` only remains for older builds.

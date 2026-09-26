@@ -16,7 +16,23 @@ type Options = {
   /** Called after the backend has verified a purchase and granted Premium. */
   onEntitlementGranted?: () => void | Promise<void>;
   onRestoreCompleted?: (active: boolean) => void | Promise<void>;
+  /** Play took the order but the payment has not cleared yet (cash, some carriers). */
+  onPurchasePending?: () => void;
   onError?: (message: string) => void;
+};
+
+/** How one purchase fared with the backend. */
+type RedeemOutcome = 'verified' | 'pending' | 'failed';
+
+/** The Android fields of an expo-iap subscription offer this hook reads. */
+type AndroidOffer = {
+  basePlanIdAndroid?: string | null;
+  offerTokenAndroid?: string | null;
+  offerToken?: string | null;
+  displayPrice?: string | null;
+  pricingPhasesAndroid?: {
+    pricingPhaseList?: { formattedPrice?: string | null }[] | null;
+  } | null;
 };
 
 const unwrap = <T,>(value: T | { data: T } | undefined): T | undefined => {
@@ -31,13 +47,44 @@ const purchaseTokenOf = (purchase: Purchase): string | undefined =>
   (purchase as { purchaseTokenAndroid?: string | null }).purchaseTokenAndroid ||
   undefined;
 
-const offerTokenOf = (offer: {
-  offerTokenAndroid?: string | null;
-  offerToken?: string | null;
-}): string | undefined => offer.offerTokenAndroid || offer.offerToken || undefined;
+const offerTokenOf = (offer: AndroidOffer): string | undefined =>
+  offer.offerTokenAndroid || offer.offerToken || undefined;
 
 const matchesProductId = (item: { id?: string; productId?: string }, productId: string) =>
   item.id === productId || item.productId === productId;
+
+/** Play has not charged yet — never verify, finish or announce it. */
+const isPendingPurchase = (purchase: Purchase) => purchase.purchaseState === 'pending';
+
+/** Paid, but no one (app or backend) has acknowledged it — Play refunds these after three days. */
+const isUnacknowledgedAndroid = (purchase: Purchase) =>
+  (purchase as { isAcknowledgedAndroid?: boolean | null }).isAcknowledgedAndroid === false;
+
+/**
+ * The Play offer that sells one base plan.
+ *
+ * Monthly and yearly are usually two base plans of the same product, so this
+ * never falls back to another base plan's offer — that bought monthly for a
+ * yearly tap. Among the base plan's offers the plain one (a single pricing
+ * phase) wins over promotional ones, so the price charged is the price shown;
+ * the free trial is AccountE's own, started in the app, not a Play offer.
+ */
+const androidOfferFor = (product: unknown, basePlanId?: string | null): AndroidOffer | null => {
+  const offers = (product as { subscriptionOffers?: AndroidOffer[] | null } | undefined)?.subscriptionOffers || [];
+  const candidates = basePlanId ? offers.filter((offer) => offer.basePlanIdAndroid === basePlanId) : offers;
+
+  return (
+    candidates.find((offer) => (offer.pricingPhasesAndroid?.pricingPhaseList?.length ?? 0) <= 1) ||
+    candidates[0] ||
+    null
+  );
+};
+
+/** The price that renews: the last pricing phase; earlier ones are trials or intro prices. */
+const recurringPriceOf = (offer: AndroidOffer | null): string | null => {
+  const phases = offer?.pricingPhasesAndroid?.pricingPhaseList || [];
+  return phases[phases.length - 1]?.formattedPrice || offer?.displayPrice || null;
+};
 
 const apiError = (response: { message?: string; error?: string; data?: unknown }, fallback: string) => {
   const data = response.data as { message?: string } | undefined;
@@ -56,6 +103,7 @@ const apiError = (response: { message?: string; error?: string; data?: unknown }
 export function useGooglePlayBilling({
   onEntitlementGranted,
   onRestoreCompleted,
+  onPurchasePending,
   onError,
 }: Options = {}) {
   const isAndroid = Platform.OS === 'android';
@@ -64,11 +112,11 @@ export function useGooglePlayBilling({
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const redeemedTokens = useRef<Set<string>>(new Set());
-  const finishedTokens = useRef<Set<string>>(new Set());
   // Store events can arrive before `productsQuery` resolves. Hold them here
   // instead of dropping them, and drain once the backend catalogue is known.
   const pendingPurchases = useRef<Purchase[]>([]);
-  const processPurchaseRef = useRef<((purchase: Purchase) => Promise<void>) | null>(null);
+  const processPurchaseRef = useRef<((purchase: Purchase) => Promise<RedeemOutcome>) | null>(null);
+  const recoveryDone = useRef(false);
 
   const productsQuery = useQuery({
     queryKey: ['store-products', Platform.OS],
@@ -83,12 +131,17 @@ export function useGooglePlayBilling({
   });
 
   const catalogue = useMemo(() => productsQuery.data?.products || [], [productsQuery.data]);
+  // Monthly and yearly can share one Play product; ask the store for it once.
+  const productIds = useMemo(
+    () => Array.from(new Set(catalogue.map((item) => item.product_id))),
+    [catalogue],
+  );
   const backendEnabled = Boolean(isNativeStore && productsQuery.data?.enabled && catalogue.length > 0);
   const backendEnabledRef = useRef(backendEnabled);
   backendEnabledRef.current = backendEnabled;
 
   const redeem = useCallback(
-    async (purchase: Purchase) => {
+    async (purchase: Purchase, { silent = false }: { silent?: boolean } = {}): Promise<RedeemOutcome> => {
       const token = purchaseTokenOf(purchase);
       if (!token) {
         onError?.(
@@ -96,9 +149,9 @@ export function useGooglePlayBilling({
             ? 'The App Store did not return a transaction to verify.'
             : 'Google Play did not return a purchase token.',
         );
-        return false;
+        return 'failed';
       }
-      if (redeemedTokens.current.has(token)) return true;
+      if (redeemedTokens.current.has(token)) return 'verified';
 
       const response = isIos
         ? await billingService.redeemAppStorePurchase(purchase.productId, token)
@@ -106,14 +159,21 @@ export function useGooglePlayBilling({
 
       if (!response.success) {
         onError?.(apiError(response, 'Could not verify the purchase with our servers.'));
-        return false;
+        return 'failed';
+      }
+
+      // Play still lists the payment as pending: Premium turns on from the
+      // server once it clears, and the purchase must stay unfinished until then.
+      if ((response.data as { pending?: boolean } | undefined)?.pending) {
+        if (!silent) onPurchasePending?.();
+        return 'pending';
       }
 
       redeemedTokens.current.add(token);
-      await onEntitlementGranted?.();
-      return true;
+      if (!silent) await onEntitlementGranted?.();
+      return 'verified';
     },
-    [isIos, onEntitlementGranted, onError],
+    [isIos, onEntitlementGranted, onError, onPurchasePending],
   );
 
   const {
@@ -123,8 +183,6 @@ export function useGooglePlayBilling({
     fetchProducts,
     requestPurchase,
     finishTransaction,
-    getAvailablePurchases,
-    availablePurchases,
     reconnect,
   } = useIAP({
     onPurchaseSuccess: async (purchase) => {
@@ -156,21 +214,35 @@ export function useGooglePlayBilling({
   });
 
   const processPurchase = useCallback(
-    async (purchase: Purchase) => {
+    async (purchase: Purchase, options: { silent?: boolean } = {}): Promise<RedeemOutcome> => {
       try {
-        const verified = await redeem(purchase);
-        if (verified) {
-          await finishTransaction({ purchase, isConsumable: false });
-          const token = purchaseTokenOf(purchase);
-          if (token) finishedTokens.current.add(token);
+        if (isPendingPurchase(purchase)) {
+          if (!options.silent) onPurchasePending?.();
+          return 'pending';
         }
+
+        const outcome = await redeem(purchase, options);
+        // An owned Play subscription found by restore was finished long ago.
+        const alreadyFinished =
+          isAndroid && (purchase as { isAcknowledgedAndroid?: boolean | null }).isAcknowledgedAndroid === true;
+        if (outcome === 'verified' && !alreadyFinished) {
+          try {
+            await finishTransaction({ purchase, isConsumable: false });
+          } catch {
+            // The server has already acknowledged a verified Play purchase,
+            // and StoreKit redelivers an unfinished one, which redeems again
+            // harmlessly — neither is worth an error after "Premium is active".
+          }
+        }
+        return outcome;
       } catch (error) {
         onError?.(error instanceof Error ? error.message : 'Could not complete the purchase.');
+        return 'failed';
       } finally {
         setPurchasing(null);
       }
     },
-    [redeem, finishTransaction, onError],
+    [isAndroid, redeem, finishTransaction, onError, onPurchasePending],
   );
   processPurchaseRef.current = processPurchase;
 
@@ -192,7 +264,7 @@ export function useGooglePlayBilling({
 
   useEffect(() => {
     if (!backendEnabled || !connected) return;
-    fetchProducts({ skus: catalogue.map((item) => item.product_id), type: 'subs' }).catch(() => {
+    fetchProducts({ skus: productIds, type: 'subs' }).catch(() => {
       onError?.(
         isIos
           ? 'Could not load subscription pricing from the App Store.'
@@ -200,7 +272,29 @@ export function useGooglePlayBilling({
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendEnabled, connected, catalogue]);
+  }, [backendEnabled, connected, productIds]);
+
+  const isOurProduct = useCallback(
+    (purchase: Purchase) => productIds.includes(purchase.productId),
+    [productIds],
+  );
+
+  // Finish a Play purchase that was paid but never verified — the app was
+  // closed mid-purchase, the network dropped, or a pending payment cleared
+  // later. Google refunds these after three days, so check on every visit.
+  useEffect(() => {
+    if (!isAndroid || !backendEnabled || !connected || isExpoGo || recoveryDone.current) return;
+    recoveryDone.current = true;
+    fetchAvailablePurchases()
+      .then((owned) => {
+        owned
+          .filter((item) => isOurProduct(item) && !isPendingPurchase(item) && isUnacknowledgedAndroid(item))
+          .forEach((item) => {
+            processPurchase(item).catch(() => undefined);
+          });
+      })
+      .catch(() => undefined);
+  }, [isAndroid, backendEnabled, connected, isOurProduct, processPurchase]);
 
   const storeCatalog = useMemo(
     () => [...subscriptions, ...products] as ProductSubscription[],
@@ -286,7 +380,7 @@ export function useGooglePlayBilling({
       let product = findStoreProduct(mapping.product_id);
       if (!product) {
         const fetched = await fetchStoreProducts({
-          skus: catalogue.map((item) => item.product_id),
+          skus: productIds,
           type: 'subs',
         }).catch(() => []);
         product = (fetched as ProductSubscription[]).find((item) =>
@@ -294,24 +388,14 @@ export function useGooglePlayBilling({
         );
       }
 
-      const offers = (
-        product as {
-          subscriptionOffers?: {
-            basePlanIdAndroid?: string | null;
-            offerTokenAndroid?: string | null;
-            offerToken?: string | null;
-          }[];
-        }
-      )?.subscriptionOffers;
-      const offer =
-        offers?.find((candidate) => candidate.basePlanIdAndroid === mapping.base_plan_id) || offers?.[0];
+      const offer = androidOfferFor(product, mapping.base_plan_id);
       const offerToken = offer ? offerTokenOf(offer) : undefined;
 
       if (!offerToken) {
         onError?.(
           !product
             ? `Play Store has no listing for "${mapping.product_id}". Check the Play product ID on this plan and that the app is on an internal/testing track.`
-            : 'The Play Store has no active offer for this subscription yet.',
+            : `Google Play is not offering the ${cycle || 'monthly'} plan right now. Please try again later.`,
         );
         return;
       }
@@ -333,11 +417,12 @@ export function useGooglePlayBilling({
       }
     },
     [
-      catalogue,
       connected,
       findStoreProduct,
       isIos,
       onError,
+      productIds,
+      productMappingFor,
       reconnect,
       requestPurchase,
     ],
@@ -359,7 +444,16 @@ export function useGooglePlayBilling({
           .filter((value): value is string => Boolean(value));
         response = await billingService.restoreAppStorePurchases(transactionJwss);
       } else {
-        await getAvailablePurchases();
+        // Verify everything this Google account owns first, then let the
+        // backend re-read the purchases it already knew. Asking the backend
+        // first reported "nothing found" for a purchase it had never seen.
+        const owned = (await fetchAvailablePurchases()).filter(isOurProduct);
+        let anyPending = false;
+        for (const item of owned) {
+          const outcome = await processPurchase(item, { silent: true });
+          anyPending = anyPending || outcome === 'pending';
+        }
+        if (anyPending) onPurchasePending?.();
         response = await billingService.restoreGooglePlayPurchases();
       }
 
@@ -375,17 +469,7 @@ export function useGooglePlayBilling({
     } finally {
       setRestoring(false);
     }
-  }, [backendEnabled, getAvailablePurchases, isIos, onError, onRestoreCompleted]);
-
-  useEffect(() => {
-    if (!backendEnabled || availablePurchases.length === 0) return;
-    availablePurchases.forEach((item) => {
-      const token = purchaseTokenOf(item);
-      if (token && !finishedTokens.current.has(token)) {
-        processPurchase(item).catch(() => undefined);
-      }
-    });
-  }, [backendEnabled, availablePurchases, processPurchase]);
+  }, [backendEnabled, isIos, isOurProduct, onError, onPurchasePending, onRestoreCompleted, processPurchase]);
 
   return {
     /** True when this platform's store is configured in admin and products exist. */
@@ -397,10 +481,18 @@ export function useGooglePlayBilling({
     expoGoBlocked: isExpoGo && backendEnabled,
     purchase,
     restore,
-    /** Store price for a plan on a cycle, or null when the store has no such product. */
+    /**
+     * Store price for a plan on a cycle, or null when the store cannot sell it.
+     * On Android it is the base plan's own price: the product-level price is
+     * the monthly one when both cycles share a product.
+     */
     displayPriceFor: (planSlug: string, cycle?: string): string | null => {
       const mapping = productMappingFor(planSlug, cycle);
-      return findStoreProduct(mapping?.product_id || '')?.displayPrice ?? null;
+      if (!mapping) return null;
+      const product = findStoreProduct(mapping.product_id);
+      if (!product) return null;
+      if (!isAndroid) return product.displayPrice ?? null;
+      return recurringPriceOf(androidOfferFor(product, mapping.base_plan_id));
     },
     /** Whether the store can sell this plan on this cycle at all. */
     supportsCycle: (planSlug: string, cycle?: string): boolean =>

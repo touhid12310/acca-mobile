@@ -17,6 +17,7 @@ import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CalendarClock,
   Check,
   ChevronDown,
   ClipboardPaste,
@@ -40,10 +41,34 @@ import {
   requestSmsPermission,
   setSmsImportEnabled,
   smsImportSupported,
+  startSmsImportFromNow,
   syncSmsInbox,
 } from '../src/services/smsSync';
 import { Account } from '../src/types';
 import { radius, shadow, spacing } from '../src/constants/theme';
+
+// How far back "Import past messages" may look. A month is the most we offer:
+// older alerts are rarely still worth reviewing one by one.
+type RangeKey = 'today' | '7' | '14' | '30';
+
+const RANGE_OPTIONS: { key: RangeKey; title: string; hint: string; recommended?: boolean }[] = [
+  { key: 'today', title: 'Today', hint: 'Only messages since midnight' },
+  { key: '7', title: 'Last 7 days', hint: 'A quick start for most people', recommended: true },
+  { key: '14', title: 'Last 14 days', hint: 'Two weeks of alerts' },
+  { key: '30', title: 'Last 30 days', hint: 'A full month — may take a little longer' },
+];
+
+const rangeStart = (key: RangeKey): number => {
+  if (key === 'today') {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    return midnight.getTime();
+  }
+  return Date.now() - Number(key) * 24 * 60 * 60 * 1000;
+};
+
+const rangeButtonLabel = (key: RangeKey) =>
+  key === 'today' ? "Import today's messages" : `Import last ${key} days`;
 
 const timeAgo = (ms: number | null) => {
   if (!ms) return 'never';
@@ -66,6 +91,10 @@ export default function SmsImportScreen() {
   const [scanning, setScanning] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [accountPickerFor, setAccountPickerFor] = useState<SmsSenderSetting | null>(null);
+  // "first" right after switching import on; "again" from the Import past
+  // messages button. null when closed.
+  const [rangeSheet, setRangeSheet] = useState<null | 'first' | 'again'>(null);
+  const [rangeChoice, setRangeChoice] = useState<RangeKey>('7');
 
   useEffect(() => {
     void (async () => {
@@ -121,10 +150,10 @@ export default function SmsImportScreen() {
     [queryClient, toast],
   );
 
-  const runScan = async (historyDays?: number) => {
+  const runScan = async (since?: number) => {
     setScanning(true);
     try {
-      const result = await syncSmsInbox({ historyDays, force: true });
+      const result = await syncSmsInbox({ since, force: true });
       setLastSync(await getLastSmsSync());
       if (result.status === 'ok') {
         afterImport(
@@ -133,12 +162,33 @@ export default function SmsImportScreen() {
         );
       } else if (result.status === 'no_permission') {
         toast.error('AccountE needs permission to read SMS. Turn the switch off and on to allow it.');
+      } else if (result.status === 'busy') {
+        toast.info('Already checking your messages — give it a moment and try again.');
       } else if (result.status === 'error') {
         toast.error(result.message);
       }
     } finally {
       setScanning(false);
     }
+  };
+
+  const openRangeSheet = (mode: 'first' | 'again') => {
+    setRangeChoice('7');
+    setRangeSheet(mode);
+  };
+
+  const closeRangeSheet = () => {
+    const wasFirst = rangeSheet === 'first';
+    setRangeSheet(null);
+    if (wasFirst) {
+      toast.info('SMS import is on. New bank and wallet messages will arrive as drafts.');
+    }
+  };
+
+  const importRange = () => {
+    const since = rangeStart(rangeChoice);
+    setRangeSheet(null);
+    void runScan(since);
   };
 
   const toggle = async (next: boolean) => {
@@ -166,13 +216,12 @@ export default function SmsImportScreen() {
       return;
     }
 
+    // Start from "now" before anything else can sync, then let the user pick
+    // how much history to bring in.
+    await startSmsImportFromNow();
     await setSmsImportEnabled(true);
     setEnabled(true);
-    Alert.alert('Import past messages?', 'How far back should AccountE look for bank and wallet alerts?', [
-      { text: 'Last 7 days', onPress: () => void runScan(7) },
-      { text: 'Last 30 days', onPress: () => void runScan(30) },
-      { text: 'Last 90 days', onPress: () => void runScan(90) },
-    ]);
+    openRangeSheet('first');
   };
 
   const pasteMutation = useMutation({
@@ -264,15 +313,25 @@ export default function SmsImportScreen() {
                 />
               </View>
               {enabled && (
-                <Button
-                  label={scanning ? 'Scanning your inbox…' : 'Scan now'}
-                  icon={RefreshCw}
-                  variant="secondary"
-                  loading={scanning}
-                  disabled={scanning}
-                  fullWidth
-                  onPress={() => void runScan()}
-                />
+                <>
+                  <Button
+                    label={scanning ? 'Scanning your inbox…' : 'Scan now'}
+                    icon={RefreshCw}
+                    variant="secondary"
+                    loading={scanning}
+                    disabled={scanning}
+                    fullWidth
+                    onPress={() => void runScan()}
+                  />
+                  <Button
+                    label="Import past messages"
+                    icon={CalendarClock}
+                    variant="ghost"
+                    disabled={scanning}
+                    fullWidth
+                    onPress={() => openRangeSheet('again')}
+                  />
+                </>
               )}
             </Card>
           ) : (
@@ -377,6 +436,82 @@ export default function SmsImportScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={rangeSheet != null} transparent animationType="fade" onRequestClose={closeRangeSheet}>
+        <Pressable style={styles.rangeBackdrop} onPress={closeRangeSheet}>
+          <Pressable
+            style={[
+              styles.rangeSheet,
+              { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.lg },
+              shadow.lg,
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={[styles.rangeHandle, { backgroundColor: colors.outlineVariant }]} />
+            <View style={[styles.introIcon, { backgroundColor: colors.primaryContainer, alignSelf: 'center' }]}>
+              <CalendarClock size={26} color={colors.primary} strokeWidth={2} />
+            </View>
+            <Text style={[styles.introTitle, { color: colors.onSurface }]}>
+              {rangeSheet === 'first' ? 'Import past messages?' : 'Import past messages'}
+            </Text>
+            <Text style={[styles.introText, { color: colors.onSurfaceVariant, marginBottom: spacing.md }]}>
+              Choose how far back AccountE looks for bank and wallet alerts. They arrive in Pending review — nothing
+              is saved until you check it.
+            </Text>
+            <View style={{ gap: spacing.sm }} accessibilityRole="radiogroup">
+              {RANGE_OPTIONS.map((option) => {
+                const selected = rangeChoice === option.key;
+                return (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => setRangeChoice(option.key)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    style={[
+                      styles.rangeOption,
+                      {
+                        borderColor: selected ? colors.primary : colors.outlineVariant,
+                        backgroundColor: selected ? colors.primaryContainer : 'transparent',
+                      },
+                    ]}
+                  >
+                    <View style={[styles.radioOuter, { borderColor: selected ? colors.primary : colors.outline }]}>
+                      {selected && <View style={[styles.radioInner, { backgroundColor: colors.primary }]} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.rangeTitleRow}>
+                        <Text style={[styles.rowTitle, { color: colors.onSurface }]}>{option.title}</Text>
+                        {option.recommended && (
+                          <View style={[styles.recommendedPill, { backgroundColor: colors.primary }]}>
+                            <Text style={[styles.recommendedText, { color: colors.onPrimary }]}>Recommended</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.rowMeta, { color: colors.onSurfaceVariant }]}>{option.hint}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Button
+              label={rangeButtonLabel(rangeChoice)}
+              icon={RefreshCw}
+              fullWidth
+              onPress={importRange}
+              style={{ marginTop: spacing.lg }}
+            />
+            <Button
+              label={rangeSheet === 'first' ? 'Not now — only new messages' : 'Cancel'}
+              variant="ghost"
+              fullWidth
+              onPress={closeRangeSheet}
+            />
+            <Text style={[styles.footnote, { color: colors.onSurfaceVariant, textAlign: 'center' }]}>
+              Messages you've already imported are skipped, so you can do this again anytime.
+            </Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={accountPickerFor != null}
@@ -552,5 +687,59 @@ const styles = StyleSheet.create({
   accountName: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  rangeBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  rangeSheet: {
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
+    gap: spacing.xs,
+  },
+  rangeHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  rangeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+  },
+  rangeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  recommendedPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  recommendedText: {
+    fontSize: 10.5,
+    fontWeight: '700',
   },
 });

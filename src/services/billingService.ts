@@ -45,6 +45,8 @@ export type SubscriptionInvoice = {
   uuid: string;
   invoice_number: string;
   status: 'pending' | 'paid' | 'cancelled' | 'expired';
+  /** The cycle this invoice bills; paying it any other way must buy the same one. */
+  billing_cycle?: BillingCycle;
   currency: string;
   subtotal: string;
   discount_total: string;

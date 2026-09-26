@@ -62,6 +62,21 @@ export const setSmsImportEnabled = async (enabled: boolean): Promise<void> => {
   }
 };
 
+/**
+ * Start SMS import at "now": the background sync then only picks up messages
+ * that arrive from here on. Past messages come in only when the user picks a
+ * range on the SMS import screen. Called when import is switched on, so the
+ * foreground auto-sync (which fires as the permission dialog closes) can't
+ * quietly import a week of history before the user has chosen.
+ */
+export const startSmsImportFromNow = async (): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(KEYS.cursor, String(Date.now()));
+  } catch {
+    // Storage unavailable — the first sync falls back to the last 7 days.
+  }
+};
+
 export const getLastSmsSync = async (): Promise<number | null> => {
   try {
     const value = Number(await AsyncStorage.getItem(KEYS.lastRun));
@@ -113,11 +128,13 @@ let running = false;
 
 /**
  * Reads new inbox messages, uploads the ones that look like transaction
- * alerts, and moves the cursor forward. `historyDays` (first run, or "scan
- * again") looks further back than the saved cursor.
+ * alerts, and moves the cursor forward. `since` (epoch ms — "Import past
+ * messages") looks further back than the saved cursor; the cursor itself
+ * never moves backwards, so a history import doesn't make the next
+ * background sync re-read the same weeks.
  */
 export const syncSmsInbox = async (
-  options: { historyDays?: number; force?: boolean } = {},
+  options: { since?: number; force?: boolean } = {},
 ): Promise<SmsSyncResult> => {
   if (!smsImportSupported()) return { status: 'unavailable' };
   if (!options.force && !(await isSmsImportEnabled())) return { status: 'disabled' };
@@ -129,10 +146,11 @@ export const syncSmsInbox = async (
 
   try {
     const now = Date.now();
-    const storedCursor = Number(await AsyncStorage.getItem(KEYS.cursor));
-    const since = options.historyDays
-      ? now - options.historyDays * DAY_MS
-      : Number.isFinite(storedCursor) && storedCursor > 0
+    const rawCursor = Number(await AsyncStorage.getItem(KEYS.cursor));
+    const storedCursor = Number.isFinite(rawCursor) && rawCursor > 0 ? rawCursor : 0;
+    const since = options.since
+      ? options.since
+      : storedCursor > 0
         ? storedCursor
         : now - 7 * DAY_MS;
 
@@ -156,7 +174,7 @@ export const syncSmsInbox = async (
       if (!result.success || !data) {
         // Keep what did get through; the rest is retried next time.
         const reached = chunk[0]?.date ? chunk[0].date - 1 : since;
-        await AsyncStorage.setItem(KEYS.cursor, String(Math.max(since, reached)));
+        await AsyncStorage.setItem(KEYS.cursor, String(Math.max(storedCursor, since, reached)));
         return {
           status: 'error',
           message: result.error || 'Could not reach AccountE. We will try again later.',
@@ -175,7 +193,7 @@ export const syncSmsInbox = async (
     }
 
     await AsyncStorage.multiSet([
-      [KEYS.cursor, String(newest)],
+      [KEYS.cursor, String(Math.max(storedCursor, newest))],
       [KEYS.lastRun, String(now)],
     ]);
 

@@ -93,6 +93,8 @@ export default function BillingScreen() {
       );
       await refresh();
     },
+    onPurchasePending: () =>
+      toast.info("Google Play is still confirming your payment. Premium turns on as soon as it clears."),
     onError: (message) => toast.error(message),
   });
 
@@ -221,9 +223,10 @@ export default function BillingScreen() {
    */
   const startPurchase = (target: { kind: "plan"; plan: BillingPlan } | { kind: "invoice"; invoice: SubscriptionInvoice }) => {
     const plan = target.kind === "plan" ? target.plan : (plansQuery.data || []).find((p) => p.slug === target.invoice.plan?.slug);
-    // Play must be able to sell the cycle on screen. Without this the sheet
-    // offered a monthly product against a yearly plan.
-    const planCycle = plan ? cycleFor(plan) : "monthly";
+    // Play must be able to sell the cycle being paid for. Without this the
+    // sheet offered a monthly product against a yearly plan. An invoice
+    // already names its cycle; the toggle only applies to a new purchase.
+    const planCycle = target.kind === "invoice" ? target.invoice.billing_cycle || "monthly" : plan ? cycleFor(plan) : "monthly";
     // A coupon rides on the EPS invoice only, so offering Play here would mean
     // offering to drop the user's discount. Go straight to the rail that honours it.
     const couponApplies = Boolean(plan && appliedCoupon?.plan_slug === plan.slug);
@@ -252,10 +255,18 @@ export default function BillingScreen() {
     else checkout(target.invoice);
   };
 
+  /** The cycle the open payment sheet is for. */
+  const gatewayCycle = useMemo((): BillingCycle => {
+    if (!gatewayFor) return "monthly";
+    if (gatewayFor.kind === "invoice") return gatewayFor.invoice.billing_cycle || "monthly";
+    return cycleFor(gatewayFor.plan);
+  }, [gatewayFor, cycleFor]);
+
   const payWithStore = () => {
     const plan = gatewayPlan;
+    const cycle = gatewayCycle;
     setGatewayFor(null);
-    if (plan) play.purchase(plan.slug, cycleFor(plan));
+    if (plan) play.purchase(plan.slug, cycle);
   };
 
   const paidPlans = useMemo(
@@ -652,8 +663,8 @@ export default function BillingScreen() {
               <View style={styles.flex}>
                 <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Google Play</Text>
                 <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
-                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug, cycleFor(gatewayPlan))
-                    ? `${play.displayPriceFor(gatewayPlan.slug, cycleFor(gatewayPlan))} · renews automatically`
+                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug, gatewayCycle)
+                    ? `${play.displayPriceFor(gatewayPlan.slug, gatewayCycle)}/${gatewayCycle === "yearly" ? "yr" : "mo"} · renews automatically`
                     : "Renews automatically"}
                   . Manage or cancel in the Play Store.
                 </Text>
