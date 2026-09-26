@@ -142,6 +142,23 @@ const transactionService = {
     });
   },
 
+  /**
+   * Bring an archived transaction back. A transfer returns with its other
+   * leg; a rejected draft goes back to Pending review.
+   */
+  restore: async (
+    id: number,
+  ): Promise<ApiResponse<{ ids: number[]; status: string }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ ids: number[]; status: string }>(
+      `/transactions/${id}/restore`,
+      {
+        method: "POST",
+        token,
+      },
+    );
+  },
+
   /** Plain text of the email a draft came from. Attachments are not included. */
   getEmailBody: async (id: number): Promise<ApiResponse<InboundEmailBody>> => {
     const token = await getAuthToken();

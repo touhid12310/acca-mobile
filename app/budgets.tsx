@@ -35,6 +35,10 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
+import {
+  BUDGET_LIMIT_PERCENT,
+  BUDGET_WARN_PERCENT,
+} from "../src/constants/budget";
 import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
@@ -425,17 +429,24 @@ export default function BudgetsScreen() {
   };
 
   const getProgressColor = (percentage: number, status?: string) => {
-    if (status === "over_budget" || status === "over" || percentage >= 100)
+    if (
+      status === "over_budget" ||
+      status === "over" ||
+      percentage >= BUDGET_LIMIT_PERCENT
+    )
       return colors.error;
-    if (status === "warning" || percentage >= 80) return "#F59E0B";
+    if (status === "warning" || percentage >= BUDGET_WARN_PERCENT)
+      return "#F59E0B";
     return colors.tertiary;
   };
 
+  // "Near Limit" for both the API's `warning` status and a local percentage,
+  // matching the "Budget nearing limit" alert wording.
   const getStatusText = (status?: string, percentage?: number) => {
     if (status === "over_budget" || status === "over") return "Over Budget";
-    if (status === "warning") return "Warning";
-    if ((percentage || 0) >= 100) return "Over Budget";
-    if ((percentage || 0) >= 80) return "Near Limit";
+    if (status === "warning") return "Near Limit";
+    if ((percentage || 0) >= BUDGET_LIMIT_PERCENT) return "Over Budget";
+    if ((percentage || 0) >= BUDGET_WARN_PERCENT) return "Near Limit";
     return "On Track";
   };
 

@@ -11,6 +11,7 @@ import TransactionFormContent, {
 } from '../src/components/transactions/TransactionFormContent';
 import NoAccountGate from '../src/components/transactions/NoAccountGate';
 import transactionService from '../src/services/transactionService';
+import ruleService, { RuleSuggestion } from '../src/services/ruleService';
 import { Transaction, TransactionType } from '../src/types';
 import { toDateInputValue } from '../src/utils/date';
 import { maybeAskForReview } from '../src/services/appReviewService';
@@ -352,7 +353,7 @@ export default function TransactionModalScreen() {
       }
       return result;
     },
-    onSuccess: (_result, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['transaction', params.id] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -360,6 +361,36 @@ export default function TransactionModalScreen() {
       toast.success(
         variables.data.type === 'transfer' ? 'Transfer updated' : 'Transaction updated',
       );
+
+      // A category correction → offer "always file X as Y?" (web parity).
+      const suggestion = (result.data as any)?.rule_suggestion as RuleSuggestion | null | undefined;
+      if (suggestion) {
+        toast.info(`Always file “${suggestion.pattern}” as ${suggestion.category_label}?`, {
+          title: 'Make it a rule?',
+          duration: 9000,
+          action: {
+            label: 'Create rule',
+            onPress: async () => {
+              const created = await ruleService.create({
+                pattern: suggestion.pattern,
+                match_type: suggestion.match_type || 'contains',
+                category_id: suggestion.category_id,
+                subcategory_id: suggestion.subcategory_id,
+                source: 'learned',
+                apply_to_existing: 'uncategorized',
+              });
+              if (created.success) {
+                toast.success((created.data as any)?.message || 'Rule created');
+                queryClient.invalidateQueries({ queryKey: ['categorization-rules'] });
+                queryClient.invalidateQueries({ queryKey: ['transactions'] });
+              } else {
+                toast.error(created.error || 'Could not create the rule');
+              }
+            },
+          },
+        });
+      }
+
       router.back();
     },
     onError: (error: Error) => {

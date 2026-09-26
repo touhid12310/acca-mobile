@@ -37,6 +37,8 @@ import { useCurrency } from '../../contexts/CurrencyContext';
 import categoryService from '../../services/categoryService';
 import accountService from '../../services/accountService';
 import transactionService from '../../services/transactionService';
+import ruleService, { RulesPayload } from '../../services/ruleService';
+import { findMatchingRule } from '../../utils/categorizationRules';
 import { buildFileUrl } from '../../config/api';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
 import { formatDate } from '../../utils/date';
@@ -149,11 +151,31 @@ export default function TransactionFormContent({
   // the transaction-level one. Records saved before categories moved onto the
   // item rows (and chat prefills that only carry a single category) would
   // otherwise open with empty, unsaveable rows.
+  // `seed` (existing transactions only): a draft with no line items — every
+  // SMS draft, most email ones — opens with one row for the whole amount, so
+  // "Review & save" only needs a category instead of retyping the merchant.
   const convertApiItemsToFormItems = (
     apiItems?: any[],
     fallbackCategory?: { category_id: number | null; subcategory_id: number | null },
+    seed?: { name?: string | null; amount?: number | string | null },
   ): TransactionItemData[] => {
-    if (!apiItems || apiItems.length === 0) return [makeEmptyItem()];
+    if (!apiItems || apiItems.length === 0) {
+      const seedName = seed?.name && seed.name !== 'Unknown' ? seed.name : '';
+      const seedAmount = seed?.amount != null ? String(seed.amount) : '';
+      if (seedName && seedAmount && parseFloat(seedAmount) > 0) {
+        return [
+          {
+            ...makeEmptyItem(),
+            name: seedName,
+            price: seedAmount,
+            total: seedAmount,
+            category_id: fallbackCategory?.category_id ?? null,
+            subcategory_id: fallbackCategory?.subcategory_id ?? null,
+          },
+        ];
+      }
+      return [makeEmptyItem()];
+    }
     return apiItems.map(item => {
       const ownCategoryId = item.category_id ?? null;
       return {
@@ -188,10 +210,16 @@ export default function TransactionFormContent({
           ? String((initialData as any).transfer_fee)
           : '',
         notes: initialData.notes || '',
-        items: convertApiItemsToFormItems(initialData.items, {
-          category_id: initialData.category_id || null,
-          subcategory_id: initialData.subcategory_id || null,
-        }),
+        items: convertApiItemsToFormItems(
+          initialData.items,
+          {
+            category_id: initialData.category_id || null,
+            subcategory_id: initialData.subcategory_id || null,
+          },
+          initialData.id
+            ? { name: initialData.merchant_name, amount: initialData.amount }
+            : undefined,
+        ),
         receipt: null,
         receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
         receipt_type: (initialData as any).receipt_type || 'image',
@@ -359,6 +387,93 @@ export default function TransactionFormContent({
     }));
   }, [defaultCategoryId, formData.items]);
 
+  // --- Auto-categorization rules (web parity: TransactionManager) ---
+  // A known merchant files the rows under the user's rule. Only blank rows,
+  // rows still on the "Other …" catch-all, or rows a rule filled earlier are
+  // touched — a category picked by hand is never replaced.
+  const { data: rulesPayload } = useQuery({
+    queryKey: ['categorization-rules'],
+    staleTime: 60_000,
+    queryFn: async (): Promise<RulesPayload> => {
+      const result = await ruleService.getAll();
+      const payload = (result.data as any)?.data as RulesPayload | undefined;
+      return payload ?? { rules: [], suggestions: [] };
+    },
+  });
+  const [ruleHint, setRuleHint] = useState<{
+    pattern: string;
+    label: string;
+    replaced: { index: number; category_id: number | null; subcategory_id: number | null }[];
+  } | null>(null);
+  const ruleFilledRows = useRef(new Set<number>());
+  const dismissedRuleMerchant = useRef('');
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+
+  useEffect(() => {
+    if (formData.type === 'transfer') return undefined;
+    const rules = rulesPayload?.rules;
+    const available: Category[] = categoriesData || [];
+    if (!rules?.length || available.length === 0) return undefined;
+
+    const timer = setTimeout(() => {
+      const merchant = formDataRef.current.merchant_name || '';
+      const merchantKey = merchant.trim().toLowerCase();
+      if (dismissedRuleMerchant.current && dismissedRuleMerchant.current === merchantKey) return;
+
+      const rule = findMatchingRule(rules, merchant, formDataRef.current.type);
+      if (!rule) {
+        setRuleHint(null);
+        return;
+      }
+      if (!available.some((c) => c.id === rule.category_id)) return;
+
+      const replaced: { index: number; category_id: number | null; subcategory_id: number | null }[] = [];
+      const nextItems = formDataRef.current.items.map((item, index) => {
+        const alreadyRule =
+          item.category_id === rule.category_id &&
+          (item.subcategory_id ?? null) === (rule.subcategory_id ?? null);
+        const replaceable =
+          !item.category_id ||
+          ruleFilledRows.current.has(index) ||
+          (defaultCategoryId != null &&
+            item.category_id === defaultCategoryId &&
+            !item.subcategory_id);
+        if (alreadyRule || !replaceable) return item;
+
+        replaced.push({
+          index,
+          category_id: item.category_id,
+          subcategory_id: item.subcategory_id,
+        });
+        ruleFilledRows.current.add(index);
+        return { ...item, category_id: rule.category_id, subcategory_id: rule.subcategory_id ?? null };
+      });
+
+      if (replaced.length === 0) return;
+      setFormData((prev) => ({ ...prev, items: nextItems }));
+      setRuleHint({ pattern: rule.pattern, label: rule.category_label, replaced });
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [formData.merchant_name, formData.type, rulesPayload, categoriesData, defaultCategoryId]);
+
+  const undoRuleFill = () => {
+    if (!ruleHint) return;
+    const previous = new Map(ruleHint.replaced.map((entry) => [entry.index, entry]));
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.map((item, index) => {
+        const entry = previous.get(index);
+        if (!entry) return item;
+        ruleFilledRows.current.delete(index);
+        return { ...item, category_id: entry.category_id, subcategory_id: entry.subcategory_id };
+      }),
+    }));
+    dismissedRuleMerchant.current = (formData.merchant_name || '').trim().toLowerCase();
+    setRuleHint(null);
+  };
+
   // Preselect an account whenever nothing supplied one — a manual add, or a
   // chat / receipt prefill that came without an account: the user's default
   // account, else the first. Never touches an edit (initialData.id) and never
@@ -398,10 +513,16 @@ export default function TransactionFormContent({
           ? String((initialData as any).transfer_fee)
           : '',
         notes: initialData.notes || '',
-        items: convertApiItemsToFormItems(initialData.items, {
-          category_id: initialData.category_id || null,
-          subcategory_id: initialData.subcategory_id || null,
-        }),
+        items: convertApiItemsToFormItems(
+          initialData.items,
+          {
+            category_id: initialData.category_id || null,
+            subcategory_id: initialData.subcategory_id || null,
+          },
+          initialData.id
+            ? { name: initialData.merchant_name, amount: initialData.amount }
+            : undefined,
+        ),
         receipt: null,
         // Preserve receipt fields from initialData
         receipt_path: (initialData as any).receipt_path || initialData.receipt_file || undefined,
@@ -738,6 +859,8 @@ export default function TransactionFormContent({
     categoryId: number | null,
     subcategoryId: number | null,
   ) => {
+    // A hand-picked category is the user's choice; rules leave it alone now.
+    ruleFilledRows.current.delete(index);
     const updatedItems = [...formData.items];
     updatedItems[index] = {
       ...updatedItems[index],
@@ -796,6 +919,8 @@ export default function TransactionFormContent({
   };
 
   const removeItem = (index: number) => {
+    // Row indexes shift, so forget which rows a rule filled.
+    ruleFilledRows.current.clear();
     const remaining = formData.items.filter((_, i) => i !== index);
     // Removing the last row leaves a fresh blank one so the grid never collapses
     // to an empty state.
@@ -1473,6 +1598,21 @@ export default function TransactionFormContent({
                   </Surface>
                 )}
             </View>
+            {ruleHint && (
+              <View
+                style={[styles.ruleHint, { backgroundColor: colors.primaryContainer }]}
+                accessibilityRole="text"
+              >
+                <MaterialCommunityIcons name="auto-fix" size={16} color={colors.primary} />
+                <Text style={[styles.ruleHintText, { color: colors.onSurface }]}>
+                  Filed under <Text style={{ fontWeight: '700' }}>{ruleHint.label}</Text> by your rule “
+                  {ruleHint.pattern}”
+                </Text>
+                <TouchableOpacity onPress={undoRuleFill} hitSlop={8}>
+                  <Text style={[styles.ruleHintUndo, { color: colors.primary }]}>Undo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           )}
 
@@ -2011,6 +2151,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     borderRadius: 16,
+  },
+  ruleHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  ruleHintText: {
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 17,
+  },
+  ruleHintUndo: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   merchantSuggestions: {
     // Anchored to the BOTTOM EDGE of the input wrapper (`top: '100%'`) so the

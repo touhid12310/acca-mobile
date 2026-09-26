@@ -1,0 +1,3 @@
+<!-- READ_SMS is declared in app.json (android.permissions), not here, so the
+     app can ship without it by deleting one line if Play review asks. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

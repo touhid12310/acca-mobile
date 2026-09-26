@@ -24,7 +24,12 @@ export const ensureAndroidChannel = async () => {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 200, 80, 200],
     lightColor: "#3b82f6",
-    sound: "default",
+    // No `sound` key: leaving it out gives the phone's default notification
+    // sound. `sound: "default"` is read as a custom sound FILE named
+    // "default" — expo-notifications then logs "Custom sound 'default' not
+    // found in native app" on every start (the sound still falls back to the
+    // default). Add a real file via the plugin's `sounds` array if a custom
+    // tone is ever wanted.
     enableVibrate: true,
     enableLights: true,
   });

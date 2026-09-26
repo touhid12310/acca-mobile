@@ -13,8 +13,11 @@ import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
+import { AppLockProvider } from '../src/contexts/AppLockContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
+import { AppLockOverlay } from '../src/components/AppLockOverlay';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
 import { Notifications } from '../src/services/notifications';
 
@@ -86,6 +89,9 @@ function RootLayoutNav() {
   const { theme, paperTheme, isDark } = useTheme();
   const { isAuthenticated, user, loading } = useAuth();
   const segments = useSegments();
+
+  // Android: pick up new bank / wallet SMS alerts whenever the app opens.
+  useSmsAutoSync(isAuthenticated && !loading);
 
   useEffect(() => {
     // Hide splash screen after app is ready
@@ -182,6 +188,8 @@ function RootLayoutNav() {
         <Stack.Screen name="billing" options={{ headerShown: false }} />
         </Stack>
         <OfflineBanner />
+        {/* Biometric app lock + app-switcher privacy cover, above everything. */}
+        <AppLockOverlay />
       </View>
     </PaperProvider>
   );
@@ -197,7 +205,9 @@ export default function RootLayout() {
               <ThemeProvider>
                 <CurrencyProvider>
                   <NotificationProvider>
-                    <RootLayoutNav />
+                    <AppLockProvider>
+                      <RootLayoutNav />
+                    </AppLockProvider>
                   </NotificationProvider>
                 </CurrencyProvider>
               </ThemeProvider>

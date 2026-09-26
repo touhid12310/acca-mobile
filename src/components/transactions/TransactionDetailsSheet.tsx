@@ -12,7 +12,15 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
-import { Copy, FileText, Mail, Pencil, Trash2, X } from "lucide-react-native";
+import {
+  Copy,
+  FileText,
+  Mail,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react-native";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { useCurrency } from "../../contexts/CurrencyContext";
@@ -44,6 +52,11 @@ interface Props {
   /** Called after the sheet closes. */
   onDelete: (transaction: Transaction) => void;
   deleteLabel?: string;
+  /**
+   * Set for archived rows: the sheet offers Restore in place of Edit.
+   * Called after the sheet closes.
+   */
+  onRestore?: (transaction: Transaction) => void;
 }
 
 const getTone = (type: TransactionType) => {
@@ -96,6 +109,7 @@ export default function TransactionDetailsSheet({
   onEdit,
   onDelete,
   deleteLabel = "Archive",
+  onRestore,
 }: Props) {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
@@ -405,19 +419,35 @@ export default function TransactionDetailsSheet({
               {/* Pinned below the scroll area: these are the reason the
                   sheet is open, so they must never need scrolling to reach. */}
               <View style={styles.detailActions}>
-                <Pressable
-                  style={[styles.detailActionButton, { backgroundColor: colors.primaryContainer }]}
-                  onPress={() => {
-                    const target = detail;
-                    onClose();
-                    onEdit(target);
-                  }}
-                >
-                  <Pencil size={18} color={colors.primary} />
-                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: "600" }}>
-                    Edit
-                  </Text>
-                </Pressable>
+                {onRestore ? (
+                  <Pressable
+                    style={[styles.detailActionButton, { backgroundColor: `${colors.tertiary}1f` }]}
+                    onPress={() => {
+                      const target = detail;
+                      onClose();
+                      onRestore(target);
+                    }}
+                  >
+                    <RotateCcw size={18} color={colors.tertiary} />
+                    <Text style={{ color: colors.tertiary, marginLeft: 8, fontWeight: "600" }}>
+                      Restore
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={[styles.detailActionButton, { backgroundColor: colors.primaryContainer }]}
+                    onPress={() => {
+                      const target = detail;
+                      onClose();
+                      onEdit(target);
+                    }}
+                  >
+                    <Pencil size={18} color={colors.primary} />
+                    <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: "600" }}>
+                      Edit
+                    </Text>
+                  </Pressable>
+                )}
                 <Pressable
                   style={[styles.detailActionButton, { backgroundColor: `${colors.error}1f` }]}
                   onPress={() => {

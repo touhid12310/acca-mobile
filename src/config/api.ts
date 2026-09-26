@@ -78,9 +78,6 @@ const API_CONFIG = {
     // Goals
     GOALS: '/goals',
 
-    // Investments
-    INVESTMENTS: '/investments',
-
     // Reports
     REPORTS: '/reports',
     REPORTS_MONTHLY_SUMMARY: '/reports/monthly-summary',

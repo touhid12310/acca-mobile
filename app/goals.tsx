@@ -64,6 +64,8 @@ export default function GoalsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  // The goal being edited, or null when the goal modal is creating one.
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [amountToAdd, setAmountToAdd] = useState("");
   const [formData, setFormData] = useState({
     name: "",
@@ -130,6 +132,35 @@ export default function GoalsScreen() {
     onError: (error: Error) => toast.error(error.message || "Could not save goal"),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
+      const result = await goalService.update(id, {
+        name: data.name,
+        target_amount: parseFloat(data.target_amount) || 0,
+        target_date: data.target_date || undefined,
+        category: data.category || undefined,
+        description: data.description,
+      });
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["goals"] });
+      closeModal();
+      // The server re-derives the status after every edit
+      // (Goal::updateStatus), so say so when it changed on its own.
+      const status = (result.data as any)?.data?.status;
+      if (status === "completed") {
+        toast.success("Goal updated — you've already saved enough to reach it");
+      } else if (status === "paused") {
+        toast.success("Goal updated. Its target date has passed, so it's paused");
+      } else {
+        toast.success("Goal updated");
+      }
+    },
+    onError: (error: Error) => toast.error(error.message || "Could not update goal"),
+  });
+
   const addAmountMutation = useMutation({
     mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
       const result = await goalService.addAmount(id, { amount });
@@ -173,6 +204,7 @@ export default function GoalsScreen() {
   });
 
   const openModal = () => {
+    setEditingGoal(null);
     setFormData({
       name: "",
       target_amount: "",
@@ -184,8 +216,23 @@ export default function GoalsScreen() {
     setModalVisible(true);
   };
 
+  const openEditModal = (goal: Goal) => {
+    setEditingGoal(goal);
+    setFormData({
+      name: goal.name || "",
+      target_amount: String(goal.target_amount ?? ""),
+      current_amount: "",
+      // The API sends a full timestamp; DateField wants YYYY-MM-DD.
+      target_date: String(goal.target_date || goal.deadline || "").slice(0, 10),
+      category: goal.category || "",
+      description: goal.description || "",
+    });
+    setModalVisible(true);
+  };
+
   const closeModal = () => {
     setModalVisible(false);
+    setEditingGoal(null);
   };
 
   const openAddAmountModal = (goal: Goal) => {
@@ -207,6 +254,10 @@ export default function GoalsScreen() {
     }
     if (!formData.target_amount || parseFloat(formData.target_amount) <= 0) {
       toast.error("Please enter a valid target amount");
+      return;
+    }
+    if (editingGoal) {
+      updateMutation.mutate({ id: editingGoal.id, data: formData });
       return;
     }
     createMutation.mutate(formData);
@@ -264,7 +315,18 @@ export default function GoalsScreen() {
       sum + (parseFloat(String(goal.current_amount)) || 0),
     0,
   );
-  const totalRemaining = totalTargetAmount - totalCurrentAmount;
+  // Saving past the target (or lowering the target below what's saved)
+  // leaves nothing to save — show 0, never a negative amount.
+  const remainingFor = (goal: Goal) =>
+    Math.max(
+      0,
+      (parseFloat(String(goal.target_amount)) || 0) -
+        (parseFloat(String(goal.current_amount)) || 0),
+    );
+  const totalRemaining = viewGoals.reduce(
+    (sum: number, goal: Goal) => sum + remainingFor(goal),
+    0,
+  );
   const goalsCount = viewGoals.length;
 
   if (isLoading) {
@@ -541,15 +603,7 @@ export default function GoalsScreen() {
                         variant="bodyMedium"
                         style={{ color: colors.onSurface, fontWeight: "600" }}
                       >
-                        {formatAmount(
-                          parseFloat(
-                            String(
-                              (goal as any).remaining_amount ||
-                                (goal.target_amount || 0) -
-                                  (goal.current_amount || 0),
-                            ),
-                          ),
-                        )}
+                        {formatAmount(remainingFor(goal))}
                       </Text>
                     </View>
                   </View>
@@ -636,6 +690,52 @@ export default function GoalsScreen() {
                       </Text>
                     </TouchableOpacity>
                   )}
+
+                  {/* Visible edit / delete — long-press still deletes too. */}
+                  <View style={styles.goalActions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.goalActionButton,
+                        { borderColor: colors.outlineVariant },
+                      ]}
+                      onPress={() => openEditModal(goal)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${goal.name}`}
+                    >
+                      <MaterialCommunityIcons
+                        name="pencil-outline"
+                        size={16}
+                        color={colors.onSurfaceVariant}
+                      />
+                      <Text
+                        variant="labelMedium"
+                        style={{ color: colors.onSurfaceVariant, marginLeft: 6 }}
+                      >
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.goalActionButton,
+                        { borderColor: colors.outlineVariant },
+                      ]}
+                      onPress={() => handleDelete(goal)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${goal.name}`}
+                    >
+                      <MaterialCommunityIcons
+                        name="delete-outline"
+                        size={16}
+                        color={colors.error}
+                      />
+                      <Text
+                        variant="labelMedium"
+                        style={{ color: colors.error, marginLeft: 6 }}
+                      >
+                        Delete
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </TouchableOpacity>
               </Surface>
             );
@@ -685,7 +785,7 @@ export default function GoalsScreen() {
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 16 }}
             >
-              Add New Goal
+              {editingGoal ? "Edit Goal" : "Add New Goal"}
             </Text>
 
             <TextInput
@@ -727,6 +827,25 @@ export default function GoalsScreen() {
               style={styles.input}
             />
 
+            {editingGoal && (
+              <Text
+                variant="bodySmall"
+                style={[
+                  styles.editNote,
+                  {
+                    color: colors.onSurfaceVariant,
+                    backgroundColor: colors.surfaceVariant,
+                  },
+                ]}
+              >
+                Saved so far:{" "}
+                {formatAmount(
+                  parseFloat(String(editingGoal.current_amount || 0)),
+                )}
+                . Use Add Contribution on the card to add more.
+              </Text>
+            )}
+
             <TextInput
               label="Description"
               value={formData.description}
@@ -746,9 +865,10 @@ export default function GoalsScreen() {
               <Button
                 mode="contained"
                 onPress={handleSave}
-                loading={createMutation.isPending}
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                Create Goal
+                {editingGoal ? "Save Changes" : "Create Goal"}
               </Button>
             </View>
           </ScrollView>
@@ -843,15 +963,7 @@ export default function GoalsScreen() {
                   variant="bodyMedium"
                   style={{ color: colors.onSurface, fontWeight: "600" }}
                 >
-                  {formatAmount(
-                    parseFloat(
-                      String(
-                        (selectedGoal as any).remaining_amount ||
-                          (selectedGoal.target_amount || 0) -
-                            (selectedGoal.current_amount || 0),
-                      ),
-                    ),
-                  )}
+                  {formatAmount(remainingFor(selectedGoal))}
                 </Text>
               </View>
             </Surface>
@@ -990,6 +1102,26 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
     marginTop: 12,
+  },
+  goalActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  goalActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  editNote: {
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 8,
+    lineHeight: 18,
   },
   emptyState: {
     alignItems: "center",

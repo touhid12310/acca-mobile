@@ -44,6 +44,7 @@ import {
   Copy,
   Mail,
   Receipt,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -112,6 +113,9 @@ export default function TransactionsScreen() {
     amountMin?: string;
     amountMax?: string;
     account?: string;
+    // "New from SMS → Review": ?view=pending&source=sms
+    view?: string;
+    source?: string;
   }>();
 
   // Pick up the deep-link's initial values so the first render is already
@@ -151,10 +155,24 @@ export default function TransactionsScreen() {
   // Status view: approved ledger, pending drafts, or archived transactions.
   const [statusView, setStatusView] = useState<
     "approved" | "pending_review" | "archived"
-  >("approved");
+  >(routeParams?.view === "pending" ? "pending_review" : "approved");
   const [sourceView, setSourceView] = useState<
-    "all" | "email" | "schedule" | "subscription"
-  >("all");
+    "all" | "email" | "sms" | "schedule" | "subscription"
+  >(() => {
+    const src = routeParams?.source?.toString();
+    return src === "email" || src === "sms" || src === "schedule" || src === "subscription"
+      ? src
+      : "all";
+  });
+
+  // Tabs stay mounted, so a later deep link must update the views too.
+  useEffect(() => {
+    if (routeParams?.view === "pending") setStatusView("pending_review");
+    const src = routeParams?.source?.toString();
+    if (src === "email" || src === "sms" || src === "schedule" || src === "subscription") {
+      setSourceView(src);
+    }
+  }, [routeParams?.view, routeParams?.source]);
   const [rejectTarget, setRejectTarget] = useState<Transaction | null>(null);
   const pendingDeleteTimers = useRef<
     Map<number, ReturnType<typeof setTimeout>>
@@ -272,6 +290,30 @@ export default function TransactionsScreen() {
       });
       pendingDeleteTimers.current.delete(id);
       toast.error(error.message || "Could not update transaction");
+    },
+  });
+
+  // Bring an archived row back (a transfer returns with its other leg; a
+  // rejected draft goes back to Pending review).
+  const restoreMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const result = await transactionService.restore(id);
+      if (!result.success) {
+        throw new Error(result.error || "Could not restore this transaction");
+      }
+      return result;
+    },
+    onSuccess: (result) => {
+      toast.success(result.message || "Transaction restored");
+      queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["loans"] });
+      queryClient.invalidateQueries({ queryKey: ["budgets"] });
+      queryClient.invalidateQueries({ queryKey: ["goals"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Could not restore this transaction");
     },
   });
 
@@ -1038,7 +1080,7 @@ export default function TransactionsScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.sourceTabsRow}
           >
-            {(["all", "email", "schedule", "subscription"] as const).map((src) => {
+            {(["all", "email", "sms", "schedule", "subscription"] as const).map((src) => {
               const active = sourceView === src;
               return (
                 <Pressable
@@ -1064,9 +1106,11 @@ export default function TransactionsScreen() {
                       ? "All"
                       : src === "email"
                         ? "Email"
-                        : src === "schedule"
-                          ? "Schedule"
-                          : "Subscription"}
+                        : src === "sms"
+                          ? "SMS"
+                          : src === "schedule"
+                            ? "Schedule"
+                            : "Subscription"}
                   </Text>
                 </Pressable>
               );
@@ -1203,6 +1247,10 @@ export default function TransactionsScreen() {
                           handleDeleteWithUndo(t);
                         }
                       }}
+                      onRestore={() => {
+                        setExpandedRowId(null);
+                        restoreMutation.mutate(t.id);
+                      }}
                       isArchived={statusView === "archived"}
                       icon={getIcon(t.type)}
                       tone={getTone(t.type)}
@@ -1233,7 +1281,18 @@ export default function TransactionsScreen() {
           if (statusView === "pending_review") setRejectTarget(target);
           else handleDeleteWithUndo(target);
         }}
-        deleteLabel={statusView === "pending_review" ? "Reject" : "Archive"}
+        deleteLabel={
+          statusView === "pending_review"
+            ? "Reject"
+            : statusView === "archived"
+              ? "Delete"
+              : "Archive"
+        }
+        onRestore={
+          statusView === "archived"
+            ? (target) => restoreMutation.mutate(target.id)
+            : undefined
+        }
       />
 
       {/* FAB */}
@@ -1377,6 +1436,38 @@ export default function TransactionsScreen() {
                   </Pressable>
                 )}
 
+                {statusView === "archived" && (
+                  <Pressable
+                    onPress={() => {
+                      setShowActionSheet(false);
+                      if (selectedTransaction) {
+                        const t = selectedTransaction;
+                        setSelectedTransaction(null);
+                        restoreMutation.mutate(t.id);
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.actionSheetButton,
+                      {
+                        backgroundColor: pressed
+                          ? colors.surfaceVariant
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    <IconBadge icon={RotateCcw} tone="success" size="sm" />
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        { color: colors.onSurface },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Restore transaction
+                    </Text>
+                  </Pressable>
+                )}
+
                 <Pressable
                   onPress={() => {
                     setShowActionSheet(false);
@@ -1465,8 +1556,8 @@ export default function TransactionsScreen() {
                 { color: colors.onSurfaceVariant },
               ]}
             >
-              It won't be added to your ledger. It will stay under Archived for
-              30 days unless you permanently delete it sooner.
+              It won't be added to your ledger. It stays under Archived for 30
+              days, and you can restore it to Pending review until then.
             </Text>
             <View style={styles.rejectModalActions}>
               <Pressable
@@ -1518,6 +1609,8 @@ interface TransactionRowProps {
   onLongPress: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  /** Archived rows only: swipe offers Restore where other rows have Edit. */
+  onRestore: () => void;
   isArchived: boolean;
   icon: LucideIcon;
   tone: "primary" | "success" | "danger" | "warning" | "info" | "neutral";
@@ -1536,6 +1629,7 @@ function TransactionRow({
   onLongPress,
   onEdit,
   onDelete,
+  onRestore,
   isArchived,
   icon,
   tone,
@@ -1566,7 +1660,21 @@ function TransactionRow({
   const isPending = t.status === "pending_review";
   const renderRightActions = () => (
     <View style={styles.slideActions}>
-      {!isArchived && (
+      {isArchived ? (
+        <RectButton
+          onPress={() => {
+            swipeableRef.current?.close();
+            onRestore();
+          }}
+          rippleColor="rgba(255,255,255,0.2)"
+          style={[styles.slideAction, { backgroundColor: colors.tertiary }]}
+        >
+          <View style={styles.slideActionContent}>
+            <RotateCcw size={20} color="#ffffff" strokeWidth={2.4} />
+            <Text style={styles.slideActionLabel}>Restore</Text>
+          </View>
+        </RectButton>
+      ) : (
         <RectButton
           onPress={() => {
             swipeableRef.current?.close();
@@ -1587,11 +1695,7 @@ function TransactionRow({
           onDelete();
         }}
         rippleColor="rgba(255,255,255,0.2)"
-        style={[
-          styles.slideAction,
-          isArchived && { width: ACTION_WIDTH },
-          { backgroundColor: colors.error },
-        ]}
+        style={[styles.slideAction, { backgroundColor: colors.error }]}
       >
         <View style={styles.slideActionContent}>
           {isPending ? (

@@ -42,7 +42,8 @@
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.READ_SMS"
       ],
       "blockedPermissions": [
         "com.google.android.gms.permission.AD_ID"
@@ -57,6 +58,12 @@
       "expo-router",
       "expo-dev-client",
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow AccountE to use Face ID to unlock the app."
+        }
+      ],
       "expo-apple-authentication",
       [
         "expo-notifications",

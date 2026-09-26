@@ -8,6 +8,7 @@ import {
   Text,
   Modal,
   Linking,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -38,9 +39,14 @@ import {
   FileText,
   Share2,
   Star,
+  Wand2,
+  MessageSquareText,
+  Fingerprint,
+  Download,
 } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
+import { useAppLock } from "../../src/contexts/AppLockContext";
 import { notifyToast } from "../../src/contexts/NotificationContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
@@ -75,6 +81,7 @@ type MenuSection = {
 
 export default function MoreScreen() {
   const { user, logout } = useAuth();
+  const appLock = useAppLock();
   const { colors, themeMode, setThemeMode } = useTheme();
   const { currency, availableCurrencies, updateCurrency, isCurrencyUpdating } =
     useCurrency();
@@ -153,6 +160,24 @@ export default function MoreScreen() {
           onPress: () => router.push("/categories"),
           tone: "neutral",
         },
+        {
+          icon: Wand2,
+          label: "Auto-categorize",
+          description: "Rules like “Foodpanda → Food › Delivery”",
+          // Cast: typed routes regenerate on the next Metro start.
+          onPress: () => router.push("/rules" as never),
+          tone: "info",
+        },
+        {
+          icon: MessageSquareText,
+          label: "SMS import",
+          description:
+            Platform.OS === "android"
+              ? "Turn bKash, Nagad & bank SMS into drafts"
+              : "Paste bank or wallet SMS as drafts",
+          onPress: () => router.push("/sms-import" as never),
+          tone: "success",
+        },
       ],
     },
     {
@@ -190,11 +215,27 @@ export default function MoreScreen() {
       title: "Security & Privacy",
       items: [
         {
+          icon: Fingerprint,
+          label: "App lock",
+          description: appLock.settings.enabled
+            ? `On · ${appLock.capability.label}`
+            : `Off · Unlock with ${appLock.capability.label}`,
+          onPress: () => router.push("/app-lock" as never),
+          tone: appLock.settings.enabled ? "success" : "primary",
+        },
+        {
           icon: Shield,
           label: "Login Activity",
           description: "Manage active sessions",
           onPress: () => router.push("/sessions"),
           tone: "info",
+        },
+        {
+          icon: Download,
+          label: "Export my data",
+          description: "Excel, CSV or PDF — emailed to you",
+          onPress: () => router.push("/export-data" as never),
+          tone: "neutral",
         },
       ],
     },

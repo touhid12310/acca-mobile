@@ -63,6 +63,10 @@ import {
   splitTransactionByCategory,
 } from "../../src/utils/transactions";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import {
+  BUDGET_LIMIT_PERCENT,
+  BUDGET_WARN_PERCENT,
+} from "../../src/constants/budget";
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -233,7 +237,7 @@ export default function DashboardScreen() {
       const spent = parseFloat(String(b.spent_amount ?? b.spent ?? 0));
       if (budgeted <= 0) continue;
       const pct = (spent / budgeted) * 100;
-      if (pct >= 100) {
+      if (pct >= BUDGET_LIMIT_PERCENT) {
         out.push({
           id: `budget-over-${b.id}`,
           tone: "error",
@@ -241,7 +245,7 @@ export default function DashboardScreen() {
           message: `${b.name} is ${Math.round(pct)}% spent (${formatAmount(spent)} of ${formatAmount(budgeted)})`,
           onPress: () => router.push("/budgets"),
         });
-      } else if (pct >= 80) {
+      } else if (pct >= BUDGET_WARN_PERCENT) {
         out.push({
           id: `budget-warn-${b.id}`,
           tone: "warning",
