@@ -33,6 +33,7 @@ import {
 } from "../src/utils/uploads";
 import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import { uploadPart } from "../src/utils/uploadPart";
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
@@ -279,11 +280,7 @@ export default function ProfileScreen() {
       const token = await getAuthToken();
       const formData = new FormData();
 
-      formData.append("profile_picture", {
-        uri: file.uri,
-        name: file.name,
-        type: file.type,
-      } as any);
+      formData.append("profile_picture", uploadPart(file));
 
       const response = await fetch(buildApiUrl("/profile/picture"), {
         method: "POST",

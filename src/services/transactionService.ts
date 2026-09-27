@@ -9,6 +9,7 @@ import {
   ApiResponse,
   PaginatedResponse,
 } from "../types";
+import { uploadPart } from "../utils/uploadPart";
 
 interface TransactionFilters {
   page?: number;
@@ -198,11 +199,7 @@ const transactionService = {
     }
 
     const formData = new FormData();
-    formData.append("receipt_file", {
-      uri: file.uri,
-      name: file.name,
-      type: file.type,
-    } as unknown as Blob);
+    formData.append("receipt_file", uploadPart(file));
 
     try {
       const response = await fetch(
@@ -247,11 +244,7 @@ const transactionService = {
     }
 
     const formData = new FormData();
-    formData.append("csv_file", {
-      uri: file.uri,
-      name: file.name,
-      type: file.type,
-    } as unknown as Blob);
+    formData.append("csv_file", uploadPart(file));
 
     try {
       const response = await fetch(

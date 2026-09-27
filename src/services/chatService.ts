@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import API_CONFIG, { apiRequest, buildApiUrl, getAuthToken } from '../config/api';
 import { ChatMessage, ExpenseCandidate, Category, Account, ApiResponse } from '../types';
+import { uploadPart } from '../utils/uploadPart';
 
 interface SendMessageParams {
   message?: string;
@@ -82,11 +83,7 @@ export const chatService = {
     }
 
     if (file) {
-      formData.append('file', {
-        uri: file.uri,
-        name: file.name,
-        type: file.type,
-      } as unknown as Blob);
+      formData.append('file', uploadPart(file));
     }
 
     if (categories && categories.length > 0) {
@@ -153,11 +150,7 @@ export const chatService = {
     }
 
     const formData = new FormData();
-    formData.append('audio', {
-      uri: audioFile.uri,
-      name: audioFile.name,
-      type: audioFile.type,
-    } as unknown as Blob);
+    formData.append('audio', uploadPart(audioFile));
 
     try {
       const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.CHAT_TRANSCRIBE), {
