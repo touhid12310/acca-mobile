@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { Stack, router, useSegments } from 'expo-router';
+import { Stack, router, usePathname, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -19,9 +19,14 @@ import { AppLockOverlay } from '../src/components/AppLockOverlay';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
+import { installErrorReporting, setCurrentScreen } from '../src/services/errorReporter';
 import { Notifications } from '../src/services/notifications';
 
 import '../global.css';
+
+// Errors users hit reach the admin panel's App errors page. First, so
+// problems during start-up are caught too.
+installErrorReporting();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -89,6 +94,12 @@ function RootLayoutNav() {
   const { theme, paperTheme, isDark } = useTheme();
   const { isAuthenticated, user, loading } = useAuth();
   const segments = useSegments();
+  const pathname = usePathname();
+
+  // Error reports name the screen they happened on.
+  useEffect(() => {
+    setCurrentScreen(pathname);
+  }, [pathname]);
 
   // Android: pick up new bank / wallet SMS alerts whenever the app opens.
   useSmsAutoSync(isAuthenticated && !loading);

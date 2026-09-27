@@ -1,6 +1,8 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
+import { reportError } from '../services/errorReporter';
+
 interface Props {
   children: ReactNode;
 }
@@ -25,8 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error) {
-    // Surface in dev; in production this is where a crash reporter would hook in.
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    // Reaches the admin panel's App errors page (release builds).
+    const component = info?.componentStack?.trim().split('\n')[0]?.trim();
+    reportError('render_error', error, component ? { location: component } : {});
     if (__DEV__) {
       // eslint-disable-next-line no-console
       console.error('ErrorBoundary caught:', error);
