@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -22,6 +23,7 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import onboardingService from "../src/services/onboardingService";
 import analyticsService from "../src/services/analyticsService";
 import { detectTimeZone } from "../src/utils/timezone";
+import { detectCurrency } from "../src/utils/detectCurrency";
 import { BrandText } from "../src/components";
 import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
@@ -30,6 +32,19 @@ const STEPS = [
   { id: 2, label: "First account" },
   { id: 3, label: "All set" },
 ];
+
+// users.currency defaults to USD, so USD alone doesn't mean they picked it.
+const DEFAULT_CURRENCY = "USD";
+// Holds the user id once step 1 is saved: from then on their currency is their
+// choice, even when it is USD.
+const PROFILE_SAVED_KEY = "accounte_onboarding_profile_saved_v1";
+
+// API field → the key this screen shows the error under.
+const SERVER_FIELDS: Record<string, string> = {
+  display_name: "displayName",
+  currency: "selectedCurrency",
+  financial_month_start_day: "customDay",
+};
 
 const ACCOUNT_TYPES: { id: string; label: string; icon: string }[] = [
   { id: "Cash", label: "Cash Wallet", icon: "wallet-outline" },
@@ -57,10 +72,23 @@ export default function OnboardingScreen() {
   // Prefilled when they registered with a number; empty after social
   // sign-in, which never supplies one.
   const [mobile, setMobile] = useState(user?.mobile || "");
-  const [selectedCurrency, setSelectedCurrency] = useState(user?.currency || currency || "USD");
+  // Their own pick first, else the currency of the country the phone's
+  // timezone puts them in (Asia/Dhaka → BDT), else the app default.
+  const [selectedCurrency, setSelectedCurrency] = useState(
+    () =>
+      (user?.currency && user.currency !== DEFAULT_CURRENCY ? user.currency : null) ||
+      detectCurrency({
+        supported: (availableCurrencies || []).map((c) => c.code),
+        timezone: detectedTz,
+      }) ||
+      user?.currency ||
+      currency ||
+      DEFAULT_CURRENCY
+  );
   const [timezone, setTimezone] = useState(user?.timezone || detectedTz);
-  const [monthMode, setMonthMode] = useState<"first" | "custom">("first");
-  const [customDay, setCustomDay] = useState("1");
+  const savedMonthDay = user?.financial_month_start_day || 1;
+  const [monthMode, setMonthMode] = useState<"first" | "custom">(savedMonthDay > 1 ? "custom" : "first");
+  const [customDay, setCustomDay] = useState(String(savedMonthDay));
   const [accountType, setAccountType] = useState("Bank Account");
   const [accountName, setAccountName] = useState("");
   const [openingBalance, setOpeningBalance] = useState("");
@@ -69,6 +97,22 @@ export default function OnboardingScreen() {
 
   const [currencyModalOpen, setCurrencyModalOpen] = useState(false);
   const [currencyQuery, setCurrencyQuery] = useState("");
+
+  // Back after closing the app with step 1 already saved: keep the currency
+  // they saved (even USD) instead of the detected one.
+  const currencyPicked = useRef(false);
+  const userId = user?.id;
+  const userCurrency = user?.currency;
+  useEffect(() => {
+    if (!userId || !userCurrency) return;
+    AsyncStorage.getItem(PROFILE_SAVED_KEY)
+      .then((savedFor) => {
+        if (savedFor === String(userId) && !currencyPicked.current) {
+          setSelectedCurrency(userCurrency);
+        }
+      })
+      .catch(() => {});
+  }, [userId, userCurrency]);
 
   const filteredCurrencies = useMemo(() => {
     const list = availableCurrencies || [];
@@ -95,7 +139,10 @@ export default function OnboardingScreen() {
       });
     }
     if (key === "displayName") setDisplayName(value);
-    if (key === "selectedCurrency") setSelectedCurrency(value);
+    if (key === "selectedCurrency") {
+      currencyPicked.current = true;
+      setSelectedCurrency(value);
+    }
     if (key === "mobile") setMobile(value);
     if (key === "timezone") setTimezone(value);
     if (key === "monthMode") setMonthMode(value);
@@ -127,9 +174,39 @@ export default function OnboardingScreen() {
     return Object.keys(next).length === 0;
   };
 
-  const goNext = () => {
-    if (!validateStep(step)) return;
-    setStep((s) => Math.min(STEPS.length, s + 1));
+  /** Step 1's fields, as /onboarding/profile and /onboarding/complete expect them. */
+  const profilePayload = () => ({
+    display_name: displayName.trim(),
+    mobile: mobile.trim(),
+    currency: selectedCurrency,
+    timezone,
+    financial_month_start_day: monthMode === "custom" ? Math.max(1, Math.min(28, Number(customDay) || 1)) : 1,
+  });
+
+  // Step 1's Continue saves Profile basics right away, so nothing is lost if
+  // they close the app on a later step. Server field errors land under the inputs.
+  const saveProfileAndContinue = async () => {
+    if (!validateStep(1)) return;
+    setSubmitting(true);
+    try {
+      const response = await onboardingService.saveProfile(profilePayload());
+      if (!response?.success) {
+        const serverErrors =
+          (response?.data as { errors?: Record<string, string[] | string> } | undefined)?.errors || {};
+        const next: Record<string, string> = {};
+        Object.entries(serverErrors).forEach(([key, messages]) => {
+          next[SERVER_FIELDS[key] || key] = Array.isArray(messages) ? messages[0] : String(messages);
+        });
+        next.form = response?.error || "Could not save your details. Please try again.";
+        setErrors(next);
+        return;
+      }
+      AsyncStorage.setItem(PROFILE_SAVED_KEY, String(userId ?? "")).catch(() => {});
+      setErrors({});
+      setStep(2);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const goBack = () => {
@@ -144,14 +221,9 @@ export default function OnboardingScreen() {
   };
 
   const buildPayload = () => {
-    const day = monthMode === "custom" ? Math.max(1, Math.min(28, Number(customDay) || 1)) : 1;
     const balance = parseFloat(openingBalance);
     return {
-      display_name: displayName.trim(),
-      mobile: mobile.trim(),
-      currency: selectedCurrency,
-      timezone,
-      financial_month_start_day: day,
+      ...profilePayload(),
       load_sample_data: loadSampleData,
       account: accountName.trim()
         ? {
@@ -172,8 +244,10 @@ export default function OnboardingScreen() {
     try {
       const response = await onboardingService.complete(buildPayload());
       if (!response?.success) {
+        setErrors({ form: response?.error || "Could not finish setting up. Please try again." });
         return;
       }
+      AsyncStorage.removeItem(PROFILE_SAVED_KEY).catch(() => {});
       analyticsService.logEvent('tutorial_complete');
       await checkAuthStatus();
       if (destination) {
@@ -191,6 +265,7 @@ export default function OnboardingScreen() {
     setSubmitting(true);
     try {
       await onboardingService.skip();
+      AsyncStorage.removeItem(PROFILE_SAVED_KEY).catch(() => {});
       analyticsService.logEvent('onboarding_skipped');
       await checkAuthStatus();
       router.replace("/(tabs)");
@@ -302,6 +377,7 @@ export default function OnboardingScreen() {
                   </Text>
                   <MaterialCommunityIcons name="chevron-down" size={18} color={subtle} />
                 </TouchableOpacity>
+                {errors.selectedCurrency && <Text style={styles.errorText}>{errors.selectedCurrency}</Text>}
               </View>
 
               <View style={styles.field}>
@@ -405,34 +481,44 @@ export default function OnboardingScreen() {
                 </View>
               </View>
 
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: subtle }]}>Account name</Text>
-                <TextInput
-                  value={accountName}
-                  onChangeText={(v) => setField("accountName", v)}
-                  placeholder="e.g. Chase Checking"
-                  placeholderTextColor={subtle}
-                  style={[
-                    styles.input,
-                    { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
-                  ]}
-                />
-                {errors.accountName && <Text style={styles.errorText}>{errors.accountName}</Text>}
-              </View>
+              {/* The account uses the default currency from step 1. */}
+              <View style={styles.fieldRow}>
+                <View style={[styles.field, styles.fieldHalf]}>
+                  <Text style={[styles.label, { color: subtle }]}>Account name</Text>
+                  <TextInput
+                    value={accountName}
+                    onChangeText={(v) => setField("accountName", v)}
+                    placeholder="e.g. City Bank"
+                    placeholderTextColor={subtle}
+                    style={[
+                      styles.input,
+                      { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
+                    ]}
+                  />
+                  {errors.accountName && <Text style={styles.errorText}>{errors.accountName}</Text>}
+                </View>
 
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: subtle }]}>Opening balance</Text>
-                <TextInput
-                  value={openingBalance}
-                  onChangeText={(v) => setField("openingBalance", v)}
-                  placeholder="0.00"
-                  placeholderTextColor={subtle}
-                  keyboardType="decimal-pad"
-                  style={[
-                    styles.input,
-                    { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
-                  ]}
-                />
+                <View style={[styles.field, styles.fieldHalf]}>
+                  <Text
+                    style={[styles.label, { color: subtle }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
+                    Opening balance ({selectedCurrency})
+                  </Text>
+                  <TextInput
+                    value={openingBalance}
+                    onChangeText={(v) => setField("openingBalance", v)}
+                    placeholder="0.00"
+                    placeholderTextColor={subtle}
+                    keyboardType="decimal-pad"
+                    style={[
+                      styles.input,
+                      { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
+                    ]}
+                  />
+                </View>
               </View>
 
               <View
@@ -518,36 +604,45 @@ export default function OnboardingScreen() {
             </View>
           )}
 
+          {errors.form && <Text style={[styles.errorText, styles.formError]}>{errors.form}</Text>}
+
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: cardBorder }]}>
             {step < 3 ? (
               <>
-                <TouchableOpacity onPress={handleSkipAll} disabled={submitting}>
-                  <Text style={[styles.ghost, { color: subtle, borderColor: cardBorder }]}>Skip for now</Text>
-                </TouchableOpacity>
-                <View style={styles.footerActions}>
-                  <TouchableOpacity onPress={goBack} disabled={step === 1 || submitting}>
-                    <Text
-                      style={[
-                        styles.secondary,
-                        { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc", opacity: step === 1 ? 0.5 : 1 },
-                      ]}
-                    >
-                      Back
-                    </Text>
+                {/* Step 1 can't be skipped — its details are needed, and saved on Continue. */}
+                {step === 2 ? (
+                  <TouchableOpacity onPress={handleSkipAll} disabled={submitting}>
+                    <Text style={[styles.ghost, { color: subtle, borderColor: cardBorder }]}>Skip for now</Text>
                   </TouchableOpacity>
+                ) : (
+                  <View />
+                )}
+                <View style={styles.footerActions}>
+                  {step > 1 && (
+                    <TouchableOpacity onPress={goBack} disabled={submitting}>
+                      <Text
+                        style={[
+                          styles.secondary,
+                          { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
+                        ]}
+                      >
+                        Back
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     onPress={() => {
                       if (step === 2) {
                         if (validateStep(2)) setStep(3);
                       } else {
-                        goNext();
+                        saveProfileAndContinue();
                       }
                     }}
                     disabled={submitting}
                   >
                     <Text style={[styles.primary, { backgroundColor: colors.primary }]}>
-                      {submitting ? "…" : step === 2 ? "Add account" : "Continue"}
+                      {submitting ? "Saving…" : step === 2 ? "Add account" : "Continue"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -703,6 +798,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: "700", marginTop: 4 },
   subtitle: { fontSize: 13.5, lineHeight: 19, marginTop: -4 },
   field: { gap: 6 },
+  fieldRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  fieldHalf: { flex: 1, minWidth: 0 },
   label: { fontSize: 12.5, fontWeight: "500" },
   input: {
     borderWidth: 1,
@@ -721,6 +818,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   errorText: { color: "#ef4444", fontSize: 12, marginTop: 2 },
+  formError: { marginTop: 12 },
   radioRow: { flexDirection: "row", gap: 10 },
   radioCard: {
     flex: 1,

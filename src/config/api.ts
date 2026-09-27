@@ -102,6 +102,7 @@ const API_CONFIG = {
 
     // Onboarding (first-time login wizard)
     ONBOARDING_STATUS: '/onboarding/status',
+    ONBOARDING_PROFILE: '/onboarding/profile',
     ONBOARDING_COMPLETE: '/onboarding/complete',
     ONBOARDING_SKIP: '/onboarding/skip',
 
