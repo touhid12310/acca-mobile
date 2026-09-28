@@ -79,8 +79,7 @@ export default function BillingScreen() {
     await queryClient.invalidateQueries({ queryKey: ["billing-coupon-offers"] });
   };
 
-  // On Android, Play Store policy requires digital subscriptions to be sold
-  // through Play Billing, so it takes over the buy button from EPS there.
+  // Store prices and availability are loaded independently of EPS pricing.
   const play = useGooglePlayBilling({
     onEntitlementGranted: async () => {
       toast.success("Purchase verified. Premium is active.");
@@ -144,7 +143,8 @@ export default function BillingScreen() {
     setBusy(invoice.uuid);
     try {
       const returnUrl = Linking.createURL("/billing");
-      const response = await billingService.checkout(invoice.uuid, returnUrl);
+      const code = appliedCoupon && appliedCoupon.plan_slug === invoice.plan?.slug ? appliedCoupon.code : null;
+      const response = await billingService.checkout(invoice.uuid, returnUrl, code);
       const checkoutData = unwrapData(response.data);
 
       // A coupon covering the full price leaves nothing to charge — the
@@ -217,33 +217,9 @@ export default function BillingScreen() {
     );
   }, [gatewayFor, plansQuery.data]);
 
-  /**
-   * Open the chooser when both rails can take the money, otherwise go straight
-   * to the only one that can — a one-option dialog is just a wasted tap.
-   */
+  // Keep the promised chooser visible, including while Play is loading.
   const startPurchase = (target: { kind: "plan"; plan: BillingPlan } | { kind: "invoice"; invoice: SubscriptionInvoice }) => {
-    const plan = target.kind === "plan" ? target.plan : (plansQuery.data || []).find((p) => p.slug === target.invoice.plan?.slug);
-    // Play must be able to sell the cycle being paid for. Without this the
-    // sheet offered a monthly product against a yearly plan. An invoice
-    // already names its cycle; the toggle only applies to a new purchase.
-    const planCycle = target.kind === "invoice" ? target.invoice.billing_cycle || "monthly" : plan ? cycleFor(plan) : "monthly";
-    // A coupon rides on the EPS invoice only, so offering Play here would mean
-    // offering to drop the user's discount. Go straight to the rail that honours it.
-    const couponApplies = Boolean(plan && appliedCoupon?.plan_slug === plan.slug);
-
-    const playReady =
-      !couponApplies &&
-      play.available &&
-      play.connected &&
-      !play.expoGoBlocked &&
-      Boolean(plan && play.displayPriceFor(plan.slug, planCycle));
-
-    if (!playReady) {
-      if (target.kind === "plan") buyPlan(target.plan);
-      else checkout(target.invoice);
-      return;
-    }
-
+    if (busy || couponBusy || play.purchasing) return;
     setGatewayFor(target);
   };
 
@@ -268,6 +244,23 @@ export default function BillingScreen() {
     setGatewayFor(null);
     if (plan) play.purchase(plan.slug, cycle);
   };
+
+  const storeUnavailable = play.expoGoBlocked
+    ? "Google Play payments need an installed development or store build."
+    : !play.available
+      ? "Google Play is unavailable. Close this sheet and try again later."
+      : !gatewayPlan || !play.supportsCycle(gatewayPlan.slug, gatewayCycle)
+        ? `Google Play does not have a ${gatewayCycle} option for this plan.`
+        : null;
+  const gatewayCoupon = appliedCoupon?.plan_slug === gatewayPlan?.slug ? appliedCoupon : null;
+  const gatewayHasCoupon = Boolean(gatewayCoupon || (gatewayFor?.kind === "invoice" && gatewayFor.invoice.coupon_code));
+  const gatewaySubtotal = gatewayFor?.kind === "invoice"
+    ? Number(gatewayFor.invoice.subtotal)
+    : Number(gatewayPlan ? pricingFor(gatewayPlan)?.price ?? gatewayPlan.price : 0);
+  const gatewayDiscount = gatewayCoupon
+    ? Math.round(Math.min(gatewaySubtotal, gatewayCoupon.discount_type === "percent"
+      ? gatewaySubtotal * gatewayCoupon.discount_value / 100 : gatewayCoupon.discount_value) * 100) / 100
+    : gatewayFor?.kind === "invoice" ? Number(gatewayFor.invoice.discount_total) : 0;
 
   const paidPlans = useMemo(
     () =>
@@ -306,7 +299,7 @@ export default function BillingScreen() {
     let lastError = "That coupon code is not valid.";
 
     for (const plan of candidates) {
-      const response = await billingService.previewCoupon(plan.slug, trimmed);
+      const response = await billingService.previewCoupon(plan.slug, trimmed, cycleFor(plan));
       const preview = unwrapData(response.data);
       if (response.success && preview) {
         setAppliedCoupon({ ...preview, plan_slug: plan.slug, plan_name: plan.name });
@@ -320,6 +313,31 @@ export default function BillingScreen() {
 
     setCouponBusy(false);
     toast.error(lastError);
+  };
+
+  const changeBillingCycle = async (cycle: BillingCycle) => {
+    if (couponBusy || busy) return;
+    if (!appliedCoupon) {
+      setBillingCycle(cycle);
+      return;
+    }
+    const plan = paidPlans.find((item) => item.slug === appliedCoupon.plan_slug);
+    if (!plan?.pricing?.cycles?.[cycle]) {
+      setBillingCycle(cycle);
+      return;
+    }
+    setCouponBusy(true);
+    try {
+      const response = await billingService.previewCoupon(plan.slug, appliedCoupon.code, cycle);
+      const preview = unwrapData(response.data);
+      if (!response.success || !preview) throw new Error(apiMessage(response, "Could not update the coupon price."));
+      setAppliedCoupon({ ...preview, plan_slug: plan.slug, plan_name: plan.name });
+      setBillingCycle(cycle);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update the coupon price.");
+    } finally {
+      setCouponBusy(false);
+    }
   };
 
   const copyCode = async (code: string) => {
@@ -479,7 +497,7 @@ export default function BillingScreen() {
                           <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
                             {offer.description || `${offer.plan_name} plan`}
                             {offer.duration === "forever" ? " · every renewal" : " · first invoice"} ·{" "}
-                            {money(offer.total, offer.currency)}
+                            {money(offer.total, offer.currency)}/{offer.billing_cycle === "yearly" ? "yr" : "mo"}
                           </Text>
                         </View>
                         <View style={styles.couponOfferActions}>
@@ -509,7 +527,8 @@ export default function BillingScreen() {
                   return (
                     <Pressable
                       key={option}
-                      onPress={() => setBillingCycle(option)}
+                      disabled={couponBusy || Boolean(busy)}
+                      onPress={() => changeBillingCycle(option)}
                       style={[styles.cycleOption, active && { backgroundColor: colors.primary }]}
                     >
                       <Text
@@ -619,6 +638,7 @@ export default function BillingScreen() {
                       label={planCoupon?.covers_full_amount ? "Redeem coupon & activate" : "Choose how to pay"}
                       fullWidth
                       loading={busy === plan.slug || play.purchasing === plan.slug}
+                      disabled={couponBusy || Boolean(busy) || Boolean(play.purchasing)}
                       onPress={() => startPurchase({ kind: "plan", plan })}
                     />
                   ) : null}
@@ -649,12 +669,15 @@ export default function BillingScreen() {
             <Text style={[styles.sheetTitle, { color: colors.onSurface }]}>Choose how to pay</Text>
             <Text style={[styles.sheetSub, { color: colors.onSurfaceVariant }]}>
               {gatewayPlan?.name ? `${gatewayPlan.name} · ` : ""}
-              Both options give the same access.
+              {gatewayCycle === "yearly" ? "Yearly" : "Monthly"} access. Choose your payment method.
             </Text>
 
             <Pressable
               style={[styles.gateway, { borderColor: colors.outlineVariant }]}
               onPress={payWithStore}
+              disabled={Boolean(storeUnavailable)}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: Boolean(storeUnavailable) }}
               android_ripple={{ color: colors.surfaceVariant }}
             >
               <View style={[styles.gatewayIcon, { backgroundColor: colors.primaryContainer }]}>
@@ -663,10 +686,10 @@ export default function BillingScreen() {
               <View style={styles.flex}>
                 <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Google Play</Text>
                 <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
-                  {gatewayPlan && play.displayPriceFor(gatewayPlan.slug, gatewayCycle)
+                  {storeUnavailable || (gatewayPlan && play.displayPriceFor(gatewayPlan.slug, gatewayCycle)
                     ? `${play.displayPriceFor(gatewayPlan.slug, gatewayCycle)}/${gatewayCycle === "yearly" ? "yr" : "mo"} · renews automatically`
-                    : "Renews automatically"}
-                  . Manage or cancel in the Play Store.
+                    : "Tap to connect and load the Google Play price.")}
+                  {gatewayHasCoupon ? " Your AccountE coupon does not apply to Google Play." : ""}
                 </Text>
 
               </View>
@@ -682,9 +705,10 @@ export default function BillingScreen() {
                 <CreditCard size={20} color={colors.secondary} />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Card or mobile banking</Text>
+                <Text style={[styles.gatewayName, { color: colors.onSurface }]}>Card or mobile banking (EPS)</Text>
                 <Text style={[styles.gatewaySub, { color: colors.onSurfaceVariant }]}>
-                  Card, bKash or bank. Coupons apply here.
+                  {money(gatewaySubtotal - gatewayDiscount, gatewayFor?.kind === "invoice" ? gatewayFor.invoice.currency : gatewayPlan?.currency || "BDT")}
+                  {gatewayHasCoupon ? " · coupon included" : " · card, bKash or bank"}
                 </Text>
               </View>
               <ChevronRight size={18} color={colors.onSurfaceVariant} />

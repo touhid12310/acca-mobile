@@ -59,6 +59,7 @@ export type SubscriptionInvoice = {
 };
 
 export type CouponPreview = {
+  billing_cycle: BillingCycle;
   code: string;
   description: string | null;
   discount_type: 'percent' | 'fixed';
@@ -130,12 +131,12 @@ const billingService = {
       },
     }),
   getAvailableCoupons: () => apiRequest<CouponOffer[]>('/billing/coupons/available'),
-  previewCoupon: (planSlug: string, couponCode: string) =>
+  previewCoupon: (planSlug: string, couponCode: string, billingCycle: BillingCycle) =>
     apiRequest<CouponPreview>('/billing/coupons/preview', {
       method: 'POST',
-      body: { plan_slug: planSlug, coupon_code: couponCode },
+      body: { plan_slug: planSlug, coupon_code: couponCode, billing_cycle: billingCycle },
     }),
-  checkout: (invoiceUuid: string, returnUrl?: string | null) =>
+  checkout: (invoiceUuid: string, returnUrl?: string | null, couponCode?: string | null) =>
     apiRequest<{
       payment_uuid?: string;
       redirect_url: string | null;
@@ -149,6 +150,7 @@ const billingService = {
         // URL and blocked checkout entirely.
         channel: Platform.OS === 'ios' ? 'ios' : Platform.OS === 'android' ? 'android' : 'web',
         return_url: Platform.OS === 'web' ? null : returnUrl ?? null,
+        coupon_code: couponCode ?? null,
       },
     }),
   verifyPayment: (paymentUuid: string) =>

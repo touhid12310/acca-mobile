@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import NetInfo from '@react-native-community/netinfo';
 
-import { buildApiUrl, getAuthToken } from '../config/api';
+import { buildApiUrl, getAuthToken, RETRYABLE_HEADER } from '../config/api';
 
 /**
  * Sends the errors people run into to the backend, where admins see them
@@ -182,6 +182,16 @@ const requestInfo = (input: RequestInfo | URL, init?: RequestInit) => {
 const isOurApi = (url: string) => url.startsWith(buildApiUrl('').replace(/\/+$/, ''));
 
 /** Watch requests to our API: thrown fetches and 5xx answers. */
+// Background polls that already tolerate a dropped request; a blip there is
+// the network, not a bug.
+const QUIET_NETWORK_PATHS = ['/sessions/validate'];
+
+/** The caller retries a gateway error once, so only the retry is worth reporting. */
+const willBeRetried = (init?: RequestInit) => {
+  const headers = init?.headers as Record<string, string> | undefined;
+  return Boolean(headers && !(headers instanceof Headers) && headers[RETRYABLE_HEADER]);
+};
+
 function wrapFetch() {
   if (typeof globalThis.fetch !== 'function') return;
   nativeFetch = globalThis.fetch.bind(globalThis);
@@ -192,7 +202,7 @@ function wrapFetch() {
 
     try {
       const response = await (nativeFetch as typeof fetch)(input, init);
-      if (watched && response.status >= 500) {
+      if (watched && response.status >= 500 && !(willBeRetried(init) && [502, 503, 504].includes(response.status))) {
         response
           .clone()
           .text()
@@ -212,7 +222,7 @@ function wrapFetch() {
       }
       return response;
     } catch (error) {
-      if (watched && online) {
+      if (watched && online && !QUIET_NETWORK_PATHS.some((quiet) => path.endsWith(quiet))) {
         reportError('network_error', error, { location: `${method} ${path}`, context: { method } });
       }
       throw error;

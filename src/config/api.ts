@@ -219,6 +219,15 @@ export const getAuthHeaders = async (token?: string | null): Promise<Record<stri
 // spinners, dead-locked pagination, and permanently-disabled submit buttons.
 const DEFAULT_TIMEOUT_MS = 20000;
 
+// 502/503/504 come from the proxy while the API restarts (a deploy) or is
+// briefly overloaded — the request never reached Laravel, so one retry is safe
+// for reads and sign-in. The first attempt is tagged so the error reporter
+// only logs it if the retry fails too.
+const GATEWAY_STATUSES = [502, 503, 504];
+const GATEWAY_RETRY_DELAY_MS = 1500;
+export const RETRYABLE_HEADER = 'X-Accounte-Retryable';
+const isRetryable = (method: string, endpoint: string) => method === 'GET' || endpoint === '/login';
+
 // API request options
 interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -234,6 +243,21 @@ interface ApiRequestOptions {
 export const apiRequest = async <T = unknown>(
   endpoint: string,
   options: ApiRequestOptions = {}
+): Promise<ApiResponse<T>> => {
+  const method = options.method || 'GET';
+  const isForm = options.isFormData || (typeof FormData !== 'undefined' && options.body instanceof FormData);
+  if (isForm || !isRetryable(method, endpoint)) return sendApiRequest<T>(endpoint, options);
+
+  const first = await sendApiRequest<T>(endpoint, options, true);
+  if (!GATEWAY_STATUSES.includes(first.status ?? 0)) return first;
+  await new Promise((resolve) => setTimeout(resolve, GATEWAY_RETRY_DELAY_MS));
+  return sendApiRequest<T>(endpoint, options);
+};
+
+const sendApiRequest = async <T = unknown>(
+  endpoint: string,
+  options: ApiRequestOptions,
+  willRetry = false
 ): Promise<ApiResponse<T>> => {
   const url = buildApiUrl(endpoint);
   const {
@@ -262,6 +286,7 @@ export const apiRequest = async <T = unknown>(
           Accept: 'application/json',
         }
       : { ...defaultHeaders, ...(customHeaders as Record<string, string> | undefined) };
+    if (willRetry) headers[RETRYABLE_HEADER] = '1';
 
     const fetchOptions: RequestInit = {
       method,
@@ -299,7 +324,10 @@ export const apiRequest = async <T = unknown>(
       data: data as T,
       message: dataObj?.message,
       error: !response.ok
-        ? dataObj?.message || `Request failed (HTTP ${response.status})`
+        ? dataObj?.message ||
+          (GATEWAY_STATUSES.includes(response.status)
+            ? 'AccountE is busy for a moment. Please try again shortly.'
+            : `Request failed (HTTP ${response.status})`)
         : undefined,
     };
   } catch (error) {
