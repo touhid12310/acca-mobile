@@ -27,6 +27,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
+import { pickFromLibrary } from '../../utils/imagePicker';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
@@ -729,7 +730,7 @@ export default function TransactionFormContent({
 
   // Handle receipt selection for AI processing
   const handleScanReceipt = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync(compatibleImagePickerOptions);
+    const result = await pickFromLibrary(compatibleImagePickerOptions);
 
     if (!result.canceled && result.assets[0]) {
       const file = uploadFileFromAsset(result.assets[0], 'receipt.jpg');

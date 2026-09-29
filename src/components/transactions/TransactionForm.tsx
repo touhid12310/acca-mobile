@@ -23,6 +23,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
+import { pickFromLibrary, takeWithCamera } from '../../utils/imagePicker';
 import { useQuery } from '@tanstack/react-query';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -213,7 +214,7 @@ export default function TransactionForm({
   };
 
   const handlePickReceipt = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickFromLibrary({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
       preferredAssetRepresentationMode:
@@ -237,7 +238,7 @@ export default function TransactionForm({
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await takeWithCamera({
       quality: 0.8,
     });
 

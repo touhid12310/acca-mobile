@@ -24,6 +24,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Crown, Sparkles } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import { pickFromLibrary, takeWithCamera } from "../../src/utils/imagePicker";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { ThemedDatePicker } from "../../src/components/ui/ThemedDatePicker";
@@ -1215,7 +1216,7 @@ export default function ChatScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync(
+    const result = await pickFromLibrary(
       compatibleImagePickerOptions,
     );
 
@@ -1236,7 +1237,7 @@ export default function ChatScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await takeWithCamera({
       quality: 0.8,
     });
 

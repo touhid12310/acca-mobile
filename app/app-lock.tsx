@@ -137,27 +137,42 @@ export default function AppLockScreen() {
               {LOCK_TIMEOUT_OPTIONS.map((option, index) => {
                 const selected = settings.timeout === option.value;
                 return (
+                  // Styled on an inner View: the style-function form of
+                  // Pressable left these rows unstyled on some Android builds
+                  // (no padding, the check wrapped onto its own line).
                   <Pressable
                     key={option.value}
                     onPress={() => void setLockTimeout(option.value)}
-                    style={({ pressed }) => [
-                      styles.optionRow,
-                      {
-                        borderBottomColor: colors.outlineVariant,
-                        borderBottomWidth: index === LOCK_TIMEOUT_OPTIONS.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                        opacity: pressed ? 0.6 : 1,
-                      },
-                    ]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    android_ripple={{ color: colors.surfaceVariant }}
                   >
-                    <Text
-                      style={[
-                        styles.optionLabel,
-                        { color: selected ? colors.primary : colors.onSurface, fontWeight: selected ? '700' : '500' },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                    {selected && <Check size={18} color={colors.primary} strokeWidth={2.4} />}
+                    {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.optionRow,
+                          {
+                            borderBottomColor: colors.outlineVariant,
+                            borderBottomWidth:
+                              index === LOCK_TIMEOUT_OPTIONS.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                            opacity: pressed ? 0.6 : 1,
+                          },
+                        ]}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.optionLabel,
+                            { color: selected ? colors.primary : colors.onSurface, fontWeight: selected ? '700' : '500' },
+                          ]}
+                        >
+                          {option.label}
+                        </Text>
+                        <View style={styles.optionCheck}>
+                          {selected && <Check size={18} color={colors.primary} strokeWidth={2.4} />}
+                        </View>
+                      </View>
+                    )}
                   </Pressable>
                 );
               })}
@@ -237,12 +252,18 @@ const styles = StyleSheet.create({
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.md,
+    minHeight: 52,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
   optionLabel: {
+    flex: 1,
     fontSize: 15,
+  },
+  optionCheck: {
+    width: 22,
+    alignItems: 'flex-end',
   },
   footnote: {
     fontSize: 12,

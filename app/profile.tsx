@@ -19,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { pickFromLibrary } from "../src/utils/imagePicker";
 import { SvgXml } from "react-native-svg";
 
 import { useAuth } from "../src/contexts/AuthContext";
@@ -259,7 +260,7 @@ export default function ProfileScreen() {
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const result = await pickFromLibrary({
       ...compatibleImagePickerOptions,
       allowsEditing: true,
       aspect: [1, 1],
