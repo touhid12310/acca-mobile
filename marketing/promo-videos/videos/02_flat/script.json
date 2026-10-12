@@ -1,0 +1,54 @@
+{
+ "voice": "af_bella",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Receipts. Texts. Emails. Voice notes."
+  },
+  {
+   "t": 2.9,
+   "text": "AccountE catches all of it.",
+   "say": "Account E catches all of it."
+  },
+  {
+   "t": 5.8,
+   "text": "Snap a receipt, and it becomes a record."
+  },
+  {
+   "t": 11.3,
+   "text": "Or just type it. Coffee, five forty."
+  },
+  {
+   "t": 14.1,
+   "text": "AI fills in the amount, category and date.",
+   "say": "A.I. fills in the amount, category, and date."
+  },
+  {
+   "t": 16.9,
+   "text": "Say it out loud. Paid sixty for internet."
+  },
+  {
+   "t": 22.5,
+   "text": "Or forward bills and receipts straight from your inbox."
+  },
+  {
+   "t": 28.1,
+   "text": "Got a backlog? Import it from CSV or Excel.",
+   "say": "Got a backlog? Import it from C.S.V., or Excel."
+  },
+  {
+   "t": 33.7,
+   "text": "Four ways in. One clean ledger."
+  },
+  {
+   "t": 42.1,
+   "text": "Capture it however you like."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

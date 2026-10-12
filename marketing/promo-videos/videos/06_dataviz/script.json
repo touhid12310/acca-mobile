@@ -1,0 +1,48 @@
+{
+ "voice": "am_michael",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Where did your money actually go?"
+  },
+  {
+   "t": 2.9,
+   "text": "AccountE turns it into reports that make sense.",
+   "say": "Account E turns it into reports that make sense."
+  },
+  {
+   "t": 6.4,
+   "text": "Income and expenses."
+  },
+  {
+   "t": 11.3,
+   "text": "Cash flow."
+  },
+  {
+   "t": 16.9,
+   "text": "Spending by category."
+  },
+  {
+   "t": 22.5,
+   "text": "Net worth over time."
+  },
+  {
+   "t": 28.1,
+   "text": "Account balances, and your monthly summary."
+  },
+  {
+   "t": 33.7,
+   "text": "Even profit and loss, and a balance sheet."
+  },
+  {
+   "t": 42.1,
+   "text": "Every report, built from your real records, and updated as you go."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

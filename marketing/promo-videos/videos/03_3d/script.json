@@ -1,0 +1,51 @@
+{
+ "voice": "am_michael",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Your money doesn't live in just one currency."
+  },
+  {
+   "t": 2.9,
+   "text": "So your money app shouldn't either."
+  },
+  {
+   "t": 5.7,
+   "text": "More than 160 currencies.",
+   "say": "More than one hundred and sixty currencies."
+  },
+  {
+   "t": 8.5,
+   "text": "US dollars, taka, pounds, euros, dirhams, and many more.",
+   "say": "U.S. dollars, taka, pounds, euros, dirhams, and many more."
+  },
+  {
+   "t": 14.1,
+   "text": "Track every account in its own currency…",
+   "say": "Track every account, in its own currency,"
+  },
+  {
+   "t": 22.5,
+   "text": "…all in one clean dashboard.",
+   "say": "all in one clean dashboard."
+  },
+  {
+   "t": 25.3,
+   "text": "Pick your default currency, and see every account side by side."
+  },
+  {
+   "t": 33.7,
+   "text": "Whether you manage money at home, or across countries."
+  },
+  {
+   "t": 42.1,
+   "text": "One app. Every account. Every currency."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

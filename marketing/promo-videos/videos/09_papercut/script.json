@@ -1,0 +1,45 @@
+{
+ "voice": "af_bella",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Plans don't keep themselves."
+  },
+  {
+   "t": 2.9,
+   "text": "AccountE helps you keep them on track.",
+   "say": "Account E helps you keep them on track."
+  },
+  {
+   "t": 5.7,
+   "text": "Set budgets, and get an alert before you overspend."
+  },
+  {
+   "t": 14.1,
+   "text": "Save toward goals, and watch your progress grow."
+  },
+  {
+   "t": 22.5,
+   "text": "Track loans with payoff projections."
+  },
+  {
+   "t": 30.9,
+   "text": "Keep tabs on money you've lent, and money you've borrowed."
+  },
+  {
+   "t": 36.5,
+   "text": "And schedule recurring bills, income and payments, with reminders before they're due.",
+   "say": "And schedule recurring bills, income, and payments, with reminders before they're due."
+  },
+  {
+   "t": 44.9,
+   "text": "Plan it. Track it. Reach it."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

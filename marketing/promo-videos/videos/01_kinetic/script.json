@@ -1,0 +1,56 @@
+{
+ "voice": "af_heart",
+ "lines": [
+  {
+   "t": 0.25,
+   "text": "Your money has answers."
+  },
+  {
+   "t": 3.0,
+   "text": "So talk to it. AccountE lets AI do the books.",
+   "say": "So talk to it. Account E lets A.I. do the books."
+  },
+  {
+   "t": 8.4,
+   "text": "Ask how much you spent on groceries this month."
+  },
+  {
+   "t": 11.5,
+   "text": "Get the answer, instantly."
+  },
+  {
+   "t": 14.1,
+   "text": "Over budget last month? Just ask."
+  },
+  {
+   "t": 19.7,
+   "text": "Your balance? Your biggest expenses this week?"
+  },
+  {
+   "t": 25.3,
+   "text": "Plain-English questions, straight answers."
+  },
+  {
+   "t": 30.9,
+   "text": "No menus. No spreadsheets. Just ask."
+  },
+  {
+   "t": 36.5,
+   "text": "Every answer is backed by your real records."
+  },
+  {
+   "t": 42.1,
+   "text": "From budgets to subscriptions, ask anything."
+  },
+  {
+   "t": 44.9,
+   "text": "Talk to your money."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

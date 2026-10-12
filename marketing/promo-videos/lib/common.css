@@ -1,0 +1,100 @@
+/* AccountE promo video system — shared tokens, fonts, captions, end card */
+@font-face { font-family: "Urbanist"; src: url("../node_modules/@fontsource-variable/urbanist/files/urbanist-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+@font-face { font-family: "Bricolage Grotesque"; src: url("../node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2") format("woff2"); font-weight: 200 800; font-style: normal; }
+@font-face { font-family: "Roboto"; src: url("../node_modules/@fontsource/roboto/files/roboto-latin-400-normal.woff2") format("woff2"); font-weight: 400; }
+@font-face { font-family: "Roboto"; src: url("../node_modules/@fontsource/roboto/files/roboto-latin-500-normal.woff2") format("woff2"); font-weight: 500; }
+@font-face { font-family: "Roboto"; src: url("../node_modules/@fontsource/roboto/files/roboto-latin-700-normal.woff2") format("woff2"); font-weight: 600 900; }
+@font-face { font-family: "JetBrains Mono"; src: url("../node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2") format("woff2"); font-weight: 100 800; }
+
+:root {
+  /* Brand (sampled from the AccountE logo) */
+  --brand-1: #0181fa;      /* logo gradient start (azure) */
+  --brand-2: #0204f5;      /* logo gradient end (electric blue) */
+  --brand-grad: linear-gradient(90deg, #0181fa, #0204f5);
+  --ink: #0b1220;          /* near-black text */
+  --ink-2: #334155;        /* slate-700 */
+  --muted: #64748b;        /* slate-500 */
+  --line: #e2e8f0;         /* slate-200 */
+  --bg: #f8fafc;           /* slate-50 */
+  --paper: #ffffff;
+  /* App UI (from acca-mobile theme.ts / Tailwind) */
+  --indigo: #6366f1; --violet: #8b5cf6; --blue: #3b82f6;
+  --green: #10b981; --red: #ef4444; --amber: #f59e0b; --sky: #0ea5e9; --pink: #ec4899; --teal: #14b8a6;
+  --navy: #0b1830; --navy-2: #0f213d;
+  --font: "Urbanist", system-ui, sans-serif;
+  --ui: "Roboto", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+body { font-family: var(--font); -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; font-variant-numeric: tabular-nums; }
+#stage { position: absolute; left: 0; top: 0; overflow: hidden; background: var(--bg); }
+.ar-16x9 #stage { width: 1920px; height: 1080px; }
+.ar-9x16 #stage { width: 1080px; height: 1920px; }
+.scene { position: absolute; inset: 0; visibility: hidden; overflow: hidden; }  /* visibility (not display) so GSAP never has to re-parent nodes to measure */
+.abs { position: absolute; }
+.center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.fill { position: absolute; inset: 0; }
+svg { display: block; }
+img { display: block; }
+
+/* ---------- Captions (burned-in, AA contrast: white on rgba(11,18,32,.82)) ---------- */
+#captions { position: absolute; left: 0; right: 0; z-index: 900; display: flex; justify-content: center; pointer-events: none; }
+.ar-16x9 #captions { bottom: 58px; }
+.ar-9x16 #captions { bottom: 470px; }   /* clear of TikTok/Reels bottom UI (safe zone) */
+#captions .cap { font-family: var(--font); font-weight: 700; color: #fff; background: rgba(11, 18, 32, 0.82); border-radius: 14px; text-align: center; line-height: 1.22; letter-spacing: 0.005em; opacity: 0; }
+.ar-16x9 #captions .cap { font-size: 38px; padding: 10px 26px 12px; max-width: 1400px; }
+.ar-9x16 #captions .cap { font-size: 44px; padding: 12px 26px 14px; max-width: 900px; }
+#captions.light .cap { background: rgba(255, 255, 255, 0.92); color: var(--ink); box-shadow: 0 6px 24px rgba(15, 23, 42, 0.12); }
+
+/* ---------- Shared end card ---------- */
+.endcard { background: radial-gradient(1200px 800px at 15% 10%, #e6eeff 0%, rgba(230,238,255,0) 60%), radial-gradient(1000px 900px at 90% 95%, #dfe7ff 0%, rgba(223,231,255,0) 60%), #f7f9ff; }
+.endcard .blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.55; }
+.endcard .wm { position: absolute; color: #000; }
+.endcard .wm svg { width: 100%; height: auto; overflow: visible; }
+.endcard .tag { position: absolute; left: 0; right: 0; text-align: center; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; line-height: 1.08; }
+
+.endcard .pill { position: absolute; left: 50%; white-space: nowrap; font-weight: 700; color: #102a83; background: #e3eaff; border: 2px solid #c9d6ff; border-radius: 999px; }
+.endcard .badge { position: absolute; left: 50%; }
+.endcard .url { position: absolute; left: 0; right: 0; text-align: center; font-weight: 700; color: #0204f5; letter-spacing: 0.01em; }
+.ar-16x9 .endcard .wm { width: 880px; left: 520px; top: 230px; }
+.ar-16x9 .endcard .tag { top: 428px; font-size: 76px; }
+.ar-16x9 .endcard .pill { top: 548px; font-size: 36px; padding: 12px 34px 14px; }
+.ar-16x9 .endcard .badge { top: 680px; height: 112px; }
+.ar-16x9 .endcard .url { top: 822px; font-size: 40px; }
+.ar-9x16 .endcard .wm { width: 860px; left: 110px; top: 470px; }
+.ar-9x16 .endcard .tag { top: 690px; font-size: 84px; padding: 0 80px; }
+.ar-9x16 .endcard .pill { top: 920px; font-size: 38px; padding: 14px 34px 16px; }
+.ar-9x16 .endcard .badge { top: 1060px; height: 132px; }
+.ar-9x16 .endcard .url { top: 1236px; font-size: 46px; }
+
+/* ---------- Phone frame (generic Android flagship, drawn in CSS) ---------- */
+.phone { position: absolute; border-radius: 64px; background: linear-gradient(145deg, #2b2f36, #0d0f12 40%, #22262c); padding: 14px; box-shadow: 0 40px 80px rgba(15, 23, 42, 0.28), 0 12px 24px rgba(15, 23, 42, 0.18), inset 0 0 0 2px #3a3f47; }
+.phone .screen { position: relative; width: 100%; height: 100%; border-radius: 52px; overflow: hidden; background: #f3f4f8; }
+.phone .punch { position: absolute; top: 18px; left: 50%; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; background: #05070a; box-shadow: inset 0 0 0 4px #15181d; z-index: 50; }
+.phone .btn { position: absolute; right: -5px; width: 5px; border-radius: 3px; background: #2a2e35; }
+
+/* ---------- Mobile UI recreation (AccountE Android app) ---------- */
+.m { position: absolute; inset: 0; font-family: var(--ui); color: #0f172a; background: #f3f4f8; font-size: 30px; }
+.m .status { height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 44px; font-size: 26px; font-weight: 500; color: #0f172a; }
+.m .hdr { height: 92px; display: flex; align-items: center; justify-content: center; }
+.m .hdr .logo { width: 330px; color: #000; }
+.m .tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: #fff; border-top: 1px solid #e5e7eb; display: flex; align-items: flex-start; justify-content: space-around; padding-top: 22px; }
+.m .tab { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 22px; color: #64748b; width: 120px; }
+.m .tab svg { width: 40px; height: 40px; stroke: #64748b; }
+.m .tab.on { color: #4f46e5; } .m .tab.on svg { stroke: #4f46e5; }
+.m .fab { width: 104px; height: 104px; margin-top: -48px; border-radius: 50%; background: linear-gradient(145deg, #6366f1, #7c3aed); display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 24px rgba(99, 102, 241, 0.45); }
+.m .fab svg { width: 50px; height: 50px; stroke: #fff; }
+.m .card { background: #fff; border-radius: 30px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06); }
+.m .eyebrow { font-size: 21px; letter-spacing: 0.08em; font-weight: 600; color: #64748b; text-transform: uppercase; }
+.m .h1 { font-size: 46px; font-weight: 700; color: #0f172a; }
+
+/* ---------- Desktop browser frame + web app recreation ---------- */
+.browser { position: absolute; border-radius: 22px; background: #fff; overflow: hidden; box-shadow: 0 50px 100px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(15, 23, 42, 0.06); }
+.browser .chrome { height: 54px; background: #eef1f6; display: flex; align-items: center; gap: 12px; padding: 0 22px; }
+.browser .dot { width: 15px; height: 15px; border-radius: 50%; }
+.browser .addr { margin-left: 24px; height: 32px; flex: 1; max-width: 560px; border-radius: 16px; background: #fff; font: 500 18px var(--ui); color: #475569; display: flex; align-items: center; padding: 0 18px; }
+.web { position: absolute; left: 0; right: 0; bottom: 0; top: 54px; font-family: var(--ui); color: #0f172a; background: #f4f6fb; }
+
+/* utility */
+.grad-text { background: linear-gradient(90deg, #0181fa, #0204f5); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nowrap { white-space: nowrap; }

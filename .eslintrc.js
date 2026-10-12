@@ -5,7 +5,7 @@
 module.exports = {
   root: true,
   extends: 'expo',
-  ignorePatterns: ['/dist/*', '/.expo/*', '/android/*', '/ios/*', 'expo-env.d.ts'],
+  ignorePatterns: ['/dist/*', '/.expo/*', '/android/*', '/ios/*', '/marketing/*', 'expo-env.d.ts'],
   rules: {
     // React Compiler checks added in eslint-plugin-react-hooks v7. The app
     // doesn't run the React Compiler (no `experiments.reactCompiler` in

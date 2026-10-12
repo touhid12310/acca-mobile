@@ -1,0 +1,50 @@
+{
+ "voice": "af_bella",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Don't type receipts. Snap them."
+  },
+  {
+   "t": 3.0,
+   "text": "Open AccountE and tap Scan Receipt.",
+   "say": "Open Account E, and tap Scan Receipt."
+  },
+  {
+   "t": 8.5,
+   "text": "AI reads the whole receipt:",
+   "say": "A.I. reads the whole receipt."
+  },
+  {
+   "t": 11.3,
+   "text": "merchant, date, total, every line item, and a suggested category and account.",
+   "say": "Merchant, date, total, every line item, and a suggested category, and account."
+  },
+  {
+   "t": 19.7,
+   "text": "You review the details, and confirm before anything is saved."
+  },
+  {
+   "t": 25.3,
+   "text": "The receipt stays attached to the record, and your budget updates."
+  },
+  {
+   "t": 33.7,
+   "text": "Café, hardware store, pharmacy. Snap, snap, snap."
+  },
+  {
+   "t": 42.1,
+   "text": "Fewer missing expenses."
+  },
+  {
+   "t": 44.9,
+   "text": "Snap. Check. Saved."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

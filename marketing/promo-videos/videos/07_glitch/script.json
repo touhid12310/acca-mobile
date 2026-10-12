@@ -1,0 +1,50 @@
+{
+ "voice": "af_heart",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Meet your AI bookkeeper.",
+   "say": "Meet your A.I. bookkeeper."
+  },
+  {
+   "t": 2.9,
+   "text": "It works in real time."
+  },
+  {
+   "t": 5.7,
+   "text": "Every transaction that comes in gets categorized, automatically."
+  },
+  {
+   "t": 16.9,
+   "text": "Fix a category once, and it learns from your correction."
+  },
+  {
+   "t": 22.5,
+   "text": "Possible duplicates get flagged for review."
+  },
+  {
+   "t": 28.1,
+   "text": "So do unusual amounts."
+  },
+  {
+   "t": 33.7,
+   "text": "Smart insights spot trends and recurring payments."
+  },
+  {
+   "t": 39.3,
+   "text": "And on the web, AI helps you reconcile your bank statements.",
+   "say": "And on the web, A.I. helps you reconcile your bank statements."
+  },
+  {
+   "t": 44.9,
+   "text": "Live updates. AI-powered. Audit-ready.",
+   "say": "Live updates. A.I. powered. Audit ready."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

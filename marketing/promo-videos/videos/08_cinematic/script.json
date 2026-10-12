@@ -1,0 +1,44 @@
+{
+ "voice": "am_michael",
+ "lines": [
+  {
+   "t": 0.3,
+   "text": "Four very different money lives."
+  },
+  {
+   "t": 2.9,
+   "text": "One AI bookkeeper.",
+   "say": "One A.I. bookkeeper."
+  },
+  {
+   "t": 5.7,
+   "text": "For freelancers: track invoices, keep business and personal separate, and tag tax-deductibles all year.",
+   "say": "For freelancers. Track invoices, keep business and personal separate, and tag tax deductibles all year."
+  },
+  {
+   "t": 15.5,
+   "text": "For small business owners: real profit and loss, balance sheets, and cash flow, without hiring an accountant.",
+   "say": "For small business owners. Real profit and loss, balance sheets, and cash flow, without hiring an accountant."
+  },
+  {
+   "t": 25.3,
+   "text": "For online sellers: revenue, fees and refunds in many currencies, and big CSV exports, auto-categorized.",
+   "say": "For online sellers. Revenue, fees, and refunds, in many currencies. And big C.S.V. exports, auto categorized."
+  },
+  {
+   "t": 35.1,
+   "text": "And for households: every wallet and card in one place, with alerts before you overspend.",
+   "say": "And for households. Every wallet and card in one place, with alerts before you overspend."
+  },
+  {
+   "t": 44.9,
+   "text": "Built for every kind of money life."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

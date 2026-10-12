@@ -1,0 +1,56 @@
+{
+ "voice": "bf_emma",
+ "lines": [
+  {
+   "t": 0.3,
+   "text": "Your money is personal."
+  },
+  {
+   "t": 2.9,
+   "text": "Your data should be, too."
+  },
+  {
+   "t": 5.7,
+   "text": "Your records, receipts and accounts stay in your private workspace.",
+   "say": "Your records, receipts, and accounts, stay in your private workspace."
+  },
+  {
+   "t": 11.3,
+   "text": "Protected with two-factor authentication and secure sign-in.",
+   "say": "Protected with two factor authentication, and secure sign in."
+  },
+  {
+   "t": 16.9,
+   "text": "Encrypted in transit. Never shared with third parties."
+  },
+  {
+   "t": 22.5,
+   "text": "And privacy mode can hide your balances."
+  },
+  {
+   "t": 28.1,
+   "text": "And AccountE is free to start.",
+   "say": "And Account E is free to start."
+  },
+  {
+   "t": 30.9,
+   "text": "A free forever plan. No credit card. No time limit."
+  },
+  {
+   "t": 36.5,
+   "text": "Add AI whenever you're ready, with a free trial on paid plans.",
+   "say": "Add A.I. whenever you're ready, with a free trial on paid plans."
+  },
+  {
+   "t": 44.9,
+   "text": "Built by an accountant. Powered by AI.",
+   "say": "Built by an accountant. Powered by A.I."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}

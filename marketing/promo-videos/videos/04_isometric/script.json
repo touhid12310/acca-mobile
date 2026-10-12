@@ -1,0 +1,45 @@
+{
+ "voice": "af_heart",
+ "lines": [
+  {
+   "t": 0.2,
+   "text": "Drowning in receipts?"
+  },
+  {
+   "t": 2.9,
+   "text": "Get clean books in three simple steps."
+  },
+  {
+   "t": 5.7,
+   "text": "One. Capture it however you like: a photo, your voice, an email, or a CSV.",
+   "say": "One. Capture it however you like. A photo, your voice, an email, or a C.S.V."
+  },
+  {
+   "t": 14.1,
+   "text": "Two. AI does the boring part. It reads the details and sorts every transaction.",
+   "say": "Two. A.I. does the boring part. It reads the details, and sorts every transaction."
+  },
+  {
+   "t": 22.5,
+   "text": "It flags duplicates, and learns from your corrections."
+  },
+  {
+   "t": 28.1,
+   "text": "Three. See clarity, and ask anything about your money."
+  },
+  {
+   "t": 39.3,
+   "text": "No accounting degree. No spreadsheets. No setup fees."
+  },
+  {
+   "t": 44.9,
+   "text": "Start in sixty seconds."
+  },
+  {
+   "t": 50.6,
+   "text": "AccountE. Your AI bookkeeper in your pocket. Start free on Google Play.",
+   "say": "Account E. Your A.I. bookkeeper, in your pocket. Start free, on Google Play.",
+   "nocap": true
+  }
+ ]
+}
