@@ -1,14 +1,22 @@
-# AccountE prompt-to-website reveal
+# AccountE promo films
 
-A 7.5 s, 1920x1080, 30 fps film (226 frames). A prompt is typed, the send button is pressed, and the prompt box becomes the AccountE landing page.
+There are two cuts, both built from the same frame-pure HTML scene:
 
-- `index.html`: the whole scene. Every style is a pure function of the frame number, set by `seekFrame(f)` or `seek(seconds)`. Motion comes from `kf()` keyframe tables.
-- `render.js`: renders frames with Playwright. Run `node render.js <outDir> [frames...]`, and leave out the frame list to render all 226.
-- `assets/`: the hero phone comes from the AccountE Play Store listing and the hand-held phone from accounte.com. Also included are the AccountE logo and the Inter fonts.
+- **Long film (2:52, 5,160 frames):** the prompt reveal followed by ten chapters (intro, Chat to Record, Receipt Scan AI, Email to Record, Ask your books, Dashboard, Budgets/Goals/Loans plus Schedules, AI Reports, "Everything AccountE can do", and a finale). It's at `out/accounte-film.mp4`.
+- **Prompt reveal (7.5 s, 226 frames):** a prompt is typed, sent, and the box becomes the AccountE landing page. It's at `out/accounte-prompt-reveal.mp4`.
 
-## Build
+## Files
 
-Run `./build.sh [workdir]` to render frames, build the soundtrack, master it to −14 LUFS / −1 dBTP, and encode H.264 at 30 fps.
+- `index.html`: the reveal scene. Every style is a pure function of the frame, set by `seekFrame(f)`. Motion comes from `kf()` keyframe tables.
+- `chapters.js`: the chapters. They only run with `index.html?long`. The file also exports `window.SFX_CUES`, the sound cues in sync with the picture.
+- `render.js`: renders frames with Playwright. Run `node render.js <outDir> [--long] [--jpg] [--workers N] [--range a-b] [frames...]`.
+- `audio.py`: builds the soundtrack:
+  - It cuts "Voxscape" by Eugenio Mininni (Mixkit Stock Music Free License) so source 38.76 s lands at 1.72 s, and source 47.36 s lands at 4.11 s after the splice at 3.41 s.
+  - It applies the low-pass sweeps and synthesises every sound effect, including the chapter cues.
+- `build.sh [short|long]`: renders, builds the audio, masters it to −14 LUFS / −1 dBTP, and encodes H.264 at 30 fps.
 
-- `audio.py`: cuts Mixkit's "Voxscape" by Eugenio Mininni (Mixkit Stock Music Free License) so that source 38.76 s lands at 1.72 s and, after the splice at 3.41 s, source 47.36 s lands at 4.11 s. It applies the low-pass sweeps and synthesises every sound effect.
-- `out/accounte-prompt-reveal.mp4`: the rendered film.
+## Asset sources
+
+- **AccountE Play Store listing:** the phone screenshots in `assets/phones` (cut out along the device bezel) and the app icon.
+- **accounte.com:** the feature UI images in `assets/ui`, the hand-held phone, the logo, the currency flags, and the store badges.
+- **Rebuilt as HTML from the AccountE web app:** the dashboard, accounts, budgets, goals, loans, schedules, reports, and assistant UI.

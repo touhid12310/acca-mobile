@@ -1,16 +1,22 @@
 """Builds the 7.5 s soundtrack: cut Voxscape, low-pass sweeps, synthesized SFX, then master.
 
-Usage: python3 audio.py <voxscape.mp3> <out.wav>
+Usage: python3 audio.py <voxscape.mp3> <out.wav> [cues.json total_frames]
+With cues (written by `node render.js <dir> --long`) it builds the full-length film's soundtrack:
+the reveal's hand-placed sounds plus every chapter cue, with the music running to the end.
 Voxscape (Eugenio Mininni) — Mixkit Stock Music Free License: https://assets.mixkit.co/music/571/571.mp3
 Mastering to -14 LUFS / -1 dBTP is done afterwards with ffmpeg loudnorm (see build.sh).
 """
 import subprocess
 import sys
 
+import json
+
 import numpy as np
 
 SR = 48000
-DUR = 226 / 30  # match the 226-frame picture
+CUES = json.load(open(sys.argv[3])) if len(sys.argv) > 4 else []
+FRAMES = int(sys.argv[4]) if len(sys.argv) > 4 else 226
+DUR = FRAMES / 30  # match the picture
 N = int(round(DUR * SR))
 t = np.arange(N) / SR
 rng = np.random.default_rng(7)
@@ -47,17 +53,21 @@ fc = np.exp(env_ramp(cut_t, cut_v))
 g = np.tan(np.pi * np.minimum(fc, SR * 0.45) / SR)
 k = 1 / 0.85  # Q ≈ 0.85, a touch of resonance on the sweep
 a1 = 1 / (1 + g * (g + k)); a2 = g * a1; a3 = g * a2
-out = np.zeros_like(music)
+out = music.copy()
+NF = min(N, int(4.2 * SR))
 for ch in range(2):
     ic1 = ic2 = 0.0
     x = music[:, ch]; y = out[:, ch]
-    for i in range(N):
+    for i in range(NF):
         v3 = x[i] - ic2
         v1 = a1[i] * ic1 + a2[i] * v3
         v2 = ic2 + a2[i] * ic1 + a3[i] * v3
         ic1 = 2 * v1 - ic1; ic2 = 2 * v2 - ic2
         y[i] = v2
-music = out * env_ramp([0, 6.6, 7.5, DUR], [1, 1, 0, 0])[:, None]
+if FRAMES == 226:
+    music = out * env_ramp([0, 6.6, 7.5, DUR], [1, 1, 0, 0])[:, None]
+else:  # long film: music runs on, dips a touch under the finale sign-off, fades on the last black
+    music = out * env_ramp([0, DUR - 7.0, DUR - 3.6, DUR - 0.6, DUR], [1, 1, .8, 0, 0])[:, None]
 music *= env_ramp([0, 0.08], [0, 1])[:, None]  # de-click the head
 
 # ---------------- SFX ----------------
@@ -188,6 +198,77 @@ n = int(1.0 * SR); tt = np.arange(n) / SR
 bell = sum(np.sin(2 * np.pi * fr * tt) * a for fr, a in [(196, .6), (293.7, .35), (392, .25), (587, .1)])
 bell *= np.exp(-tt / 0.35) * np.clip(tt / 0.01, 0, 1)
 place(bell, 6.54, gain=0.18)
+
+# ---------------- chapter cues (long film) ----------------
+def cue_tick(q):
+    place(tick(int(q['t'] * 1e4)), q['t'], pan=(h(int(q['t'] * 100), 5) - .5) * .5, gain=q.get('gain', .3))
+
+
+def cue_pop(q):
+    p = q.get('pitch', 1.0)
+    n = int(0.12 * SR); tt = np.arange(n) / SR
+    f = (340 + 520 * np.exp(-tt / 0.012)) * p
+    sig = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-tt / 0.035) * np.clip(tt / 0.001, 0, 1)
+    place(sig, q['t'], pan=(h(int(q['t'] * 100), 9) - .5) * .4, gain=q.get('gain', .3))
+
+
+def cue_click(q):
+    place(click, q['t'], pan=.1, gain=.75)
+
+
+def cue_whoosh(q):
+    whoosh(q['t'] + q.get('dur', .6) * .6, q.get('dur', .6), q.get('f0', 300), q.get('f1', 4000), q.get('gain', .4), seed=int(q['t'] * 10))
+
+
+def cue_swish(q):  # cursor glide: short, soft, high
+    whoosh(q['t'] + .2, .35, 2600, 900, .18, .6, 0, seed=int(q['t'] * 10) + 3)
+
+
+def cue_boom(q):
+    place(boom, q['t'], gain=q.get('gain', .8))
+
+
+def shimmer_sig(dur):
+    n = int((dur + 0.25) * SR); tt = np.arange(n) / SR
+    y = np.zeros(n)
+    for j, base in enumerate([1320, 1760, 2217, 2637, 3520]):
+        f = base * np.exp(np.log(1.5) * np.clip(tt / dur, 0, 1))
+        y += np.sin(2 * np.pi * np.cumsum(f) / SR + j) * (0.6 + 0.4 * np.sin(2 * np.pi * (11 + 3 * j) * tt))
+    return y * (np.clip(tt / dur, 0, 1) ** 2.4) * np.exp(-np.clip(tt - dur, 0, None) / 0.05) / 5
+
+
+def cue_shimmerTo(q):
+    d = (q['lf'] - q['from']) / 30
+    place(shimmer_sig(d), q['t'] - d, gain=.2)
+
+
+def cue_shimmer(q):
+    d = q.get('dur', 1.2)
+    sig = shimmer_sig(d); tt = np.arange(len(sig)) / SR
+    place(sig * np.sin(np.pi * np.clip(tt / (d + .25), 0, 1)), q['t'], gain=q.get('gain', .15))
+
+
+def cue_rise(q):  # soft tonal swell under growing charts
+    d = q.get('dur', 1.5); n = int(d * SR); tt = np.arange(n) / SR
+    f = 220 * np.exp(np.log(2) * tt / d)
+    sig = sum(np.sin(2 * np.pi * np.cumsum(f * m) / SR) * a for m, a in [(1, .6), (1.5, .3), (2, .2)])
+    place(sig * np.sin(np.pi * tt / d) ** 2, q['t'], gain=q.get('gain', .2))
+
+
+def cue_scan(q):  # scanner sweep: band-passed noise rising + a light hum
+    d = q.get('dur', 2)
+    y = bandnoise(d, 500, 6000, int(q['t'] * 7), q=2.5); tt = np.arange(len(y)) / SR
+    y = y / (np.abs(y).max() + 1e-9) * np.sin(np.pi * tt / d) ** .8
+    y += np.sin(2 * np.pi * 880 * tt) * .08 * np.sin(np.pi * tt / d)
+    place(y, q['t'], gain=.28)
+
+
+def cue_settle(q):
+    place(air, q['t'] - 0.35, gain=0.22); place(bell, q['t'], gain=0.18)
+
+
+for q in CUES:
+    globals()['cue_' + q['type']](q)
 
 mix = music * 0.9 + sfx
 mix *= np.clip((DUR - t) / 0.01, 0, 1)[:, None]  # frame 225 is black and silent at the very end
