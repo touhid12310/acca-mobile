@@ -10,7 +10,7 @@ This folder holds the source for ten 56-second promo spots for AccountE (AI Mone
 | [`docs/04_DELIVERABLES.md`](docs/04_DELIVERABLES.md) | Per video: file names, one-line concept, title, caption, hashtags, QA result |
 | [`docs/05_QA_REPORT.md`](docs/05_QA_REPORT.md) | Technical QA, pacing, claims rules, fonts, WCAG contrast, captions, safe zones and audio |
 
-The rendered MP4s (`AccountE_NN_<Style>_<16x9|9x16>.mp4`, about 10–20 MB each) are delivered separately and are not committed.
+The rendered MP4s (`AccountE_NN_<Style>_<16x9|9x16>.mp4`, 10–26 MiB each) are delivered separately and are not committed.
 
 ## How it works
 
@@ -23,6 +23,7 @@ The rendered MP4s (`AccountE_NN_<Style>_<16x9|9x16>.mp4`, about 10–20 MB each)
 3. **Music and SFX.** `tools/music.py` composes an original track per style using `tools/synth.py` and `tools/instruments.py` (pure numpy). `tools/sfx.py` renders the sound cues each page registers with `E.cue()`.
 4. **Frames.** `tools/render.mjs` opens the page in headless Chromium, seeks to every frame (30 fps) and pipes the frames into ffmpeg (H.264, yuv420p).
 5. **Mix and mux.** `tools/mix.py` mixes VO, ducked music and SFX, loudness-normalizes to −16 LUFS / −1.5 dBTP, and writes `deliver/AccountE_NN_<Style>_<ar>.mp4`.
+   Any file over 28 MiB is re-encoded two-pass to 26 MiB by `tools/fit.sh`, so every spot fits social and messaging upload limits.
 6. **QA.**
    - `tools/qa.py` checks resolution, fps, duration, loudness, true peak and freezes, and writes contact strips.
    - `tools/contrast.py` checks the WCAG pairs.
@@ -47,7 +48,7 @@ ffmpeg (with libx264 and the `ebur128`/`loudnorm` filters) must be on `PATH`.
 python3 tools/vo.py 10_minimal                    # VO + captions
 python3 tools/music.py 10_minimal                 # music
 node tools/render.mjs --still 1.5,24.5 10_minimal:16x9 10_minimal:9x16   # spot-check stills
-tools/queue.sh 10_minimal                         # full render (both ARs) → mix → QA
+tools/queue.sh 10_minimal                         # full render (both ARs) → mix → size fit → QA
 python3 tools/deliverables.py docs                # refresh docs 04 and 05
 ```
 

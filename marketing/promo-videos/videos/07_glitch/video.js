@@ -21,13 +21,13 @@
   const glow = E.div('abs', bgS, null, { left: cx - 700 + 'px', top: L(380, 760) + 'px', width: '1400px', height: '420px', background: 'radial-gradient(closest-side, rgba(47,123,255,.28), transparent)', filter: 'blur(10px)' });
   E.frame((t) => { floor.style.backgroundPosition = `0px ${((t * 120) % 90).toFixed(1)}px`; });
   // noise texture (seeded)
-  const nc = document.createElement('canvas'); nc.width = nc.height = 256; const ng = nc.getContext('2d'); const id = ng.createImageData(256, 256);
-  for (let i = 0; i < 256 * 256; i++) { const v = Math.floor(rnd(i + 1) * 255); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 22; }
+  const nc = document.createElement('canvas'); nc.width = nc.height = 160; const ng = nc.getContext('2d'); const id = ng.createImageData(160, 160);
+  for (let i = 0; i < 160 * 160; i++) { const v = Math.floor(rnd(i + 1) * 255); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 16; }
   ng.putImageData(id, 0, 0);
-  const noise = E.div('fill', E.stage, null, { backgroundImage: `url(${nc.toDataURL()})`, zIndex: 850, pointerEvents: 'none', mixBlendMode: 'screen' });
+  const noise = E.div('fill', E.stage, null, { backgroundImage: `url(${nc.toDataURL()})`, backgroundSize: '320px 320px', zIndex: 850, pointerEvents: 'none', mixBlendMode: 'screen' });
   const scan = E.div('fill', E.stage, null, { backgroundImage: 'repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0px, rgba(0,0,0,.22) 2px, transparent 2px, transparent 4px)', zIndex: 851, pointerEvents: 'none' });
   const vig = E.div('fill', E.stage, null, { background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%)', zIndex: 852, pointerEvents: 'none' });
-  E.frame((t) => { const show = t < 50.4; noise.style.display = scan.style.display = vig.style.display = show ? '' : 'none'; const f = Math.floor(t * 30); noise.style.backgroundPosition = `${Math.floor(rnd(f) * 256)}px ${Math.floor(rnd(f + 7) * 256)}px`; });
+  E.frame((t) => { const show = t < 50.4; noise.style.display = scan.style.display = vig.style.display = show ? '' : 'none'; const f = Math.floor(t * 6); noise.style.backgroundPosition = `${Math.floor(rnd(f) * 320)}px ${Math.floor(rnd(f + 7) * 320)}px`; });
 
   /* ---------- glitch system ---------- */
   const GW = [[0.0, 0.5], [2.75, 3.0], [5.55, 5.75], [11.15, 11.4], [16.75, 17.0], [22.35, 22.6], [24.6, 24.9], [28.0, 28.25], [33.55, 33.8], [39.15, 39.4], [44.75, 45.05], [47.55, 47.8], [50.0, 50.4]];

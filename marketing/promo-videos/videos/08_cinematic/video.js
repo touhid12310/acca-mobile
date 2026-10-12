@@ -220,12 +220,12 @@
   const lbH = L(138, 96);
   const lb1 = E.div('abs', E.stage, null, { left: 0, right: 0, top: 0, height: lbH + 'px', background: '#000', zIndex: 860 });
   const lb2 = E.div('abs', E.stage, null, { left: 0, right: 0, bottom: 0, height: lbH + 'px', background: '#000', zIndex: 860 });
-  const nc = document.createElement('canvas'); nc.width = nc.height = 256; const ng = nc.getContext('2d'); const id = ng.createImageData(256, 256);
-  for (let i = 0; i < 65536; i++) { const v = Math.floor(rnd(i + 3) * 255); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 30; }
+  const nc = document.createElement('canvas'); nc.width = nc.height = 160; const ng = nc.getContext('2d'); const id = ng.createImageData(160, 160);
+  for (let i = 0; i < 160 * 160; i++) { const v = Math.floor(rnd(i + 3) * 255); id.data[i * 4] = id.data[i * 4 + 1] = id.data[i * 4 + 2] = v; id.data[i * 4 + 3] = 22; }
   ng.putImageData(id, 0, 0);
-  const grain = E.div('fill', E.stage, null, { backgroundImage: `url(${nc.toDataURL()})`, zIndex: 855, mixBlendMode: 'overlay', opacity: 0.9 });
+  const grain = E.div('fill', E.stage, null, { backgroundImage: `url(${nc.toDataURL()})`, backgroundSize: '320px 320px', zIndex: 855, mixBlendMode: 'overlay', opacity: 0.7 });
   const vig = E.div('fill', E.stage, null, { background: 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,.6) 100%)', zIndex: 854 });
-  E.frame((t) => { const on = t < 50.4; [lb1, lb2, grain, vig].forEach((e) => (e.style.display = on ? '' : 'none')); const f = Math.floor(t * 24); grain.style.backgroundPosition = `${Math.floor(rnd(f) * 256)}px ${Math.floor(rnd(f + 5) * 256)}px`; });
+  E.frame((t) => { const on = t < 50.4; [lb1, lb2, grain, vig].forEach((e) => (e.style.display = on ? '' : 'none')); const f = Math.floor(t * 8); grain.style.backgroundPosition = `${Math.floor(rnd(f) * 320)}px ${Math.floor(rnd(f + 5) * 320)}px`; });
   // captions sit inside the picture area (above the bottom letterbox)
   E.css(`.ar-16x9 #captions{bottom:${lbH + 24}px} .ar-9x16 #captions{bottom:470px}`);
 

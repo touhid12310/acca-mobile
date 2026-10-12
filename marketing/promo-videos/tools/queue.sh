@@ -7,6 +7,11 @@ for v in "$@"; do
   echo "=== $v $(date +%T)" >> out/queue.log
   node tools/render.mjs --jobs 2 $v:16x9 $v:9x16 2>&1 | grep -E "done|ERR|FAIL|PAGEERROR" >> out/queue.log
   python3 -I tools/mix.py $v 2>&1 | grep -v Warn >> out/queue.log
+  # keep every deliverable under the 28 MiB budget (social uploads, messaging); two-pass re-encode if over
+  for ar in 16x9 9x16; do
+    f=deliver/AccountE_${v:0:2}_${NAME[$v]}_$ar.mp4
+    if [ "$(stat -c %s $f)" -gt $((28*1048576)) ]; then tools/fit.sh $v $ar 26 >> out/queue.log 2>&1; fi
+  done
   python3 -I tools/qa.py deliver/AccountE_${v:0:2}_${NAME[$v]}_16x9.mp4 deliver/AccountE_${v:0:2}_${NAME[$v]}_9x16.mp4 2>&1 | cut -c1-700 >> out/queue.log
 done
 echo "QUEUE DONE $(date +%T)" >> out/queue.log

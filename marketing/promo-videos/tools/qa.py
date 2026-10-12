@@ -12,7 +12,7 @@ def probe(f):
     num, den = map(int, v['r_frame_rate'].split('/'))
     return {'w': v['width'], 'h': v['height'], 'fps': round(num / den, 3), 'vcodec': v['codec_name'], 'pix': v['pix_fmt'],
             'acodec': a['codec_name'] if a else None, 'ar': int(a['sample_rate']) if a else None, 'ch': a['channels'] if a else None,
-            'dur': round(float(j['format']['duration']), 2), 'size_mb': round(int(j['format']['size']) / 1e6, 1), 'kbps': round(int(j['format']['bit_rate']) / 1000)}
+            'dur': round(float(j['format']['duration']), 2), 'size_mb': round(int(j['format']['size']) / 1048576, 1), 'kbps': round(int(j['format']['bit_rate']) / 1000)}
 
 def loudness(f):
     e = run(['ffmpeg', '-hide_banner', '-nostats', '-i', f, '-map', '0:a', '-af', 'ebur128=peak=true', '-f', 'null', '-']).stderr
@@ -39,6 +39,7 @@ if __name__ == '__main__':
         gaps = [round(b - a, 2) for a, b in zip([0] + c, c + [p['dur']])]
         checks = {
             'resolution_ok': (p['w'], p['h']) in ((1920, 1080), (1080, 1920)),
+            'size_ok': p['size_mb'] <= 28,
             'fps_ok': p['fps'] in (30.0, 60.0), 'duration_ok': 50 <= p['dur'] <= 60,
             'loudness_ok': abs(I + 16) <= 1.0, 'truepeak_ok': TP <= -1.0,
             'no_freeze_over_1_2s': len(fr) == 0,

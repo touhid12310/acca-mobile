@@ -90,8 +90,8 @@ def main():
               f"- **Hashtags ({len(v['tags'])}):** {' '.join(v['tags'])}",
               f"- **Fonts:** {v['fonts']} · **VO:** Kokoro `{v['voice']}`"]
         if r16 and r9:
-            D.append(f"- **QA:** 16:9 {fmt_check(r16)} ({r16['dur']} s, {r16['lufs']} LUFS, {r16['true_peak']} dBTP, {r16['size_mb']} MB) · "
-                     f"9:16 {fmt_check(r9)} ({r9['dur']} s, {r9['lufs']} LUFS, {r9['true_peak']} dBTP, {r9['size_mb']} MB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓")
+            D.append(f"- **QA:** 16:9 {fmt_check(r16)} ({r16['dur']} s, {r16['lufs']} LUFS, {r16['true_peak']} dBTP, {r16['size_mb']} MiB) · "
+                     f"9:16 {fmt_check(r9)} ({r9['dur']} s, {r9['lufs']} LUFS, {r9['true_peak']} dBTP, {r9['size_mb']} MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓")
         else:
             D.append('- **QA:** pending render')
         D.append('')
@@ -108,8 +108,12 @@ def main():
         for ar in ('16x9', '9x16'):
             fn = f"AccountE_{v['n']}_{NAMES[v['n']]}_{ar}.mp4"; r = q.get(fn)
             if not r: R.append(f'| `{fn}` | pending | | | | | | | |'); continue
-            R.append(f"| `{fn}` | {r['w']}×{r['h']} | {r['fps']:g} | {r['dur']} s | {r['lufs']} LUFS | {r['true_peak']} dBTP | {'none' if not r['freezes'] else len(r['freezes'])} | {r['size_mb']} MB | {fmt_check(r)} |")
-    R += ['', 'Targets: ≥ 1080p, 30 fps, 50–60 s, −16 LUFS ±1 integrated, true peak ≤ −1 dBTP, no frozen stretch over 1.2 s.', '',
+            R.append(f"| `{fn}` | {r['w']}×{r['h']} | {r['fps']:g} | {r['dur']} s | {r['lufs']} LUFS | {r['true_peak']} dBTP | {'none' if not r['freezes'] else len(r['freezes'])} | {r['size_mb']} MiB | {fmt_check(r)} |")
+    fit = json.load(open(os.path.join(ROOT, 'out', 'fit.json'))) if os.path.exists(os.path.join(ROOT, 'out', 'fit.json')) else {}
+    R += ['', '| Size-fitted file | Size | Video bitrate | SSIM vs. high-quality render |', '|---|---|---|---|']
+    R += [f"| `{k}` | {v['mib']} MiB | {v['video_kbps']} kb/s | {v['ssim']} |" for k, v in sorted(fit.items())]
+    R += ['', 'Targets: ≥ 1080p, 30 fps, 50–60 s, −16 LUFS ±1 integrated, true peak ≤ −1 dBTP, no frozen stretch over 1.2 s, file ≤ 28 MiB.', '',
+          'Spots rendered over 28 MiB (03 3D, 07 glitch, 08 cinematic) were re-encoded two-pass to 26 MiB from the high-quality render (`tools/fit.sh`). SSIM against that render is in the table above (1.0 = identical; above 0.98 is visually transparent).', '',
           '## 2. Pacing and hook', '',
           '- **Hook within 3 s:** each spot opens on its hook line (VO starts by 0.3 s) and a full-frame visual event inside the first 1.5 s.',
           '- **Scene change every 2–4 s:** every timeline is built on a 2.8 s beat; each beat brings a new scene, layout or reveal (see the storyboards in `02_VIDEO_BRIEFS.md`). Every scene also carries a slow camera drift, so no frame is static.',
