@@ -5,7 +5,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import {
   Text,
@@ -21,10 +20,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
+import { ConfirmDialog } from "../src/components/ui";
 import categoryService from "../src/services/categoryService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
@@ -121,6 +122,10 @@ export default function CategoriesScreen() {
   const [subcategoryModalVisible, setSubcategoryModalVisible] = useState(false);
   const [selectedParentCategory, setSelectedParentCategory] =
     useState<Category | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    item: Category | Subcategory;
+    isSubcategory: boolean;
+  } | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     type: "income" as CategoryType,
@@ -210,10 +215,14 @@ export default function CategoriesScreen() {
       return result;
     },
     onSuccess: (_result, variables) => {
+      setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["categories"] });
       toast.success(variables.isSubcategory ? "Subcategory deleted" : "Category deleted");
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete category"),
+    onError: (error: Error) => {
+      setDeleteTarget(null);
+      toast.error(error.message || "Could not delete category");
+    },
   });
 
   const openModal = (type?: CategoryType) => {
@@ -273,23 +282,13 @@ export default function CategoriesScreen() {
       toast.error("Default categories cannot be deleted");
       return;
     }
-    const itemType = isSubcategory ? "subcategory" : "category";
-    const hasSubcats =
-      !isSubcategory && (item as Category).subcategories?.length;
-    Alert.alert(
-      `Delete ${itemType}`,
-      `Are you sure you want to delete "${item.name}"?${hasSubcats ? "\n\nWarning: This will also delete all subcategories." : ""}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () =>
-            deleteCategoryMutation.mutate({ id: item.id, isSubcategory }),
-        },
-      ],
-    );
+    setDeleteTarget({ item, isSubcategory });
   };
+
+  const deleteItemType = deleteTarget?.isSubcategory ? "subcategory" : "category";
+  const deleteSubcatCount = deleteTarget?.isSubcategory
+    ? 0
+    : (deleteTarget?.item as Category | undefined)?.subcategories?.length || 0;
 
   // Calculate stats
   const viewCategories: Category[] = categories || [];
@@ -860,6 +859,29 @@ export default function CategoriesScreen() {
           </View>
         </Modal>
       </Portal>
+
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        title={`Delete ${deleteItemType}?`}
+        message={
+          `"${deleteTarget?.item.name ?? ""}" will be permanently removed.` +
+          (deleteSubcatCount > 0
+            ? ` Its ${deleteSubcatCount} subcategor${deleteSubcatCount === 1 ? "y" : "ies"} will be deleted too.`
+            : "") +
+          " This action cannot be undone."
+        }
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteCategoryMutation.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() =>
+          deleteTarget &&
+          deleteCategoryMutation.mutate({
+            id: deleteTarget.item.id,
+            isSubcategory: deleteTarget.isSubcategory,
+          })
+        }
+      />
     </SafeAreaView>
   );
 }

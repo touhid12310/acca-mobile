@@ -12,6 +12,7 @@ import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import socialAuthService from '../../src/services/socialAuthService';
 import analyticsService from '../../src/services/analyticsService';
+import metaEvents from '../../src/services/metaEvents';
 import { NativeTextInput as TextInput } from '../../src/components/ui/SafeTextInput';
 
 // Codes already processed in this app session — prevents double-exchange if
@@ -91,6 +92,7 @@ export default function AuthCallback() {
           setMessage('Welcome back!');
           await loginWithToken(result.accessToken, result.user);
           analyticsService.logLogin('google');
+          if (result.isNewUser) metaEvents.logRegistration('google');
           router.replace('/(tabs)');
           return;
         }

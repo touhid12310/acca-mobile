@@ -7,7 +7,6 @@ import {
   Switch,
   Pressable,
   Modal,
-  Alert,
   Linking,
   RefreshControl,
   KeyboardAvoidingView,
@@ -30,7 +29,7 @@ import {
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
-import { Button, Card, IconBadge, ScreenHeader } from '../src/components/ui';
+import { Button, Card, ConfirmDialog, IconBadge, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
 import smsService, { SmsOverview, SmsSenderSetting } from '../src/services/smsService';
@@ -90,6 +89,8 @@ export default function SmsImportScreen() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  // SMS permission was denied with "don't ask again" — only Settings can fix it.
+  const [permissionBlocked, setPermissionBlocked] = useState(false);
   const [accountPickerFor, setAccountPickerFor] = useState<SmsSenderSetting | null>(null);
   // "first" right after switching import on; "again" from the Import past
   // messages button. null when closed.
@@ -201,14 +202,7 @@ export default function SmsImportScreen() {
 
     const permission = await requestSmsPermission();
     if (permission === 'blocked') {
-      Alert.alert(
-        'Allow SMS access',
-        'SMS permission is turned off for AccountE. Open settings → Permissions → SMS and choose Allow.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open settings', onPress: () => Linking.openSettings() },
-        ],
-      );
+      setPermissionBlocked(true);
       return;
     }
     if (permission !== 'granted') {
@@ -554,6 +548,21 @@ export default function SmsImportScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmDialog
+        visible={permissionBlocked}
+        tone="primary"
+        title="Allow SMS access"
+        message="SMS permission is turned off for AccountE. Open settings → Permissions → SMS and choose Allow."
+        icon={ShieldCheck}
+        confirmLabel="Open settings"
+        cancelLabel="Not now"
+        onCancel={() => setPermissionBlocked(false)}
+        onConfirm={() => {
+          setPermissionBlocked(false);
+          void Linking.openSettings();
+        }}
+      />
     </View>
   );
 }

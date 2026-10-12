@@ -13,12 +13,13 @@ import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
-import { AppLockProvider } from '../src/contexts/AppLockContext';
+import { AppLockProvider, useAppLock } from '../src/contexts/AppLockContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
 import { AppLockOverlay } from '../src/components/AppLockOverlay';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
+import metaEvents from '../src/services/metaEvents';
 import { installErrorReporting, setCurrentScreen } from '../src/services/errorReporter';
 import { Notifications } from '../src/services/notifications';
 
@@ -93,8 +94,28 @@ onlineManager.setEventListener((setOnline) =>
 function RootLayoutNav() {
   const { theme, paperTheme, isDark } = useTheme();
   const { isAuthenticated, user, loading } = useAuth();
+  const { locked } = useAppLock();
   const segments = useSegments();
   const pathname = usePathname();
+
+  // Meta SDK: match its tracking flag to the iOS ATT choice made earlier.
+  useEffect(() => {
+    metaEvents.init();
+  }, []);
+
+  // iOS: ask once for App Tracking Transparency (Meta ad measurement) after
+  // the user reaches the app proper — never during sign-in or onboarding,
+  // where the notification prompt appears, nor over the app lock. A no-op
+  // once answered, and on Android.
+  const onMainTabs = (segments as readonly string[])[0] === '(tabs)';
+  const onboarded = Boolean(user?.onboarding_completed_at);
+  useEffect(() => {
+    if (!isAuthenticated || !onboarded || !onMainTabs || locked) return;
+    const timer = setTimeout(() => {
+      metaEvents.requestTrackingPermission();
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, onboarded, onMainTabs, locked]);
 
   // Error reports name the screen they happened on.
   useEffect(() => {

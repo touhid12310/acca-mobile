@@ -20,6 +20,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   confirmLabel: string;
   loading?: boolean;
+  /** "danger" (default) for deletes / archives; "primary" for neutral prompts. */
+  tone?: "danger" | "primary";
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -32,10 +34,17 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirmLabel,
   loading,
+  tone = "danger",
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
   const { colors } = useTheme();
+  const isDanger = tone === "danger";
+  const accent = isDanger ? colors.error : colors.primary;
+  const accentContainer = isDanger
+    ? colors.errorContainer
+    : colors.primaryContainer;
+  const confirmBackground = isDanger ? "#ef4444" : "#6366f1";
 
   return (
     <Modal
@@ -50,12 +59,9 @@ export function ConfirmDialog({
           onPress={(event) => event.stopPropagation()}
         >
           <View
-            style={[
-              styles.iconWrap,
-              { backgroundColor: colors.errorContainer },
-            ]}
+            style={[styles.iconWrap, { backgroundColor: accentContainer }]}
           >
-            <Icon size={28} color={colors.error} strokeWidth={2.2} />
+            <Icon size={28} color={accent} strokeWidth={2.2} />
           </View>
 
           <Text style={[styles.title, { color: colors.onSurface }]}>
@@ -77,7 +83,13 @@ export function ConfirmDialog({
                 },
               ]}
             >
-              <View pointerEvents="none" style={styles.confirmButtonSurface}>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.confirmButtonSurface,
+                  { backgroundColor: confirmBackground },
+                ]}
+              >
                 {loading ? (
                   <ActivityIndicator size="small" color="#ffffff" />
                 ) : (
@@ -159,7 +171,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.md,
     overflow: "hidden",
-    backgroundColor: "#ef4444",
   },
   confirmButtonLabel: {
     color: "#ffffff",

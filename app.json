@@ -2,7 +2,7 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.8.6",
+    "version": "1.8.7",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
@@ -43,9 +43,7 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
-        "android.permission.READ_SMS"
-      ],
-      "blockedPermissions": [
+        "android.permission.READ_SMS",
         "com.google.android.gms.permission.AD_ID"
       ]
     },
@@ -137,6 +135,24 @@
           "ios": {
             "withoutAdIdSupport": true
           }
+        }
+      ],
+      [
+        "react-native-fbsdk-next",
+        {
+          "appID": "2184683119596514",
+          "clientToken": "f9cda80b03c87416b0ff8c5c9f0411f3",
+          "displayName": "AccountE",
+          "scheme": "fb2184683119596514",
+          "isAutoInitEnabled": true,
+          "autoLogAppEventsEnabled": true,
+          "advertiserIDCollectionEnabled": true
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "AccountE uses this to measure which of our ads brought you here. Your financial data is never shared."
         }
       ]
     ],

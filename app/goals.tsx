@@ -5,7 +5,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import {
   Text,
@@ -21,11 +20,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
+import { ConfirmDialog } from "../src/components/ui";
 import goalService from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
@@ -66,6 +67,7 @@ export default function GoalsScreen() {
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
   // The goal being edited, or null when the goal modal is creating one.
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
   const [amountToAdd, setAmountToAdd] = useState("");
   const [formData, setFormData] = useState({
     name: "",
@@ -197,10 +199,14 @@ export default function GoalsScreen() {
       return result;
     },
     onSuccess: () => {
+      setGoalToDelete(null);
       queryClient.invalidateQueries({ queryKey: ["goals"] });
       toast.success("Goal deleted");
     },
-    onError: (error: Error) => toast.error(error.message || "Could not delete goal"),
+    onError: (error: Error) => {
+      setGoalToDelete(null);
+      toast.error(error.message || "Could not delete goal");
+    },
   });
 
   const openModal = () => {
@@ -274,18 +280,7 @@ export default function GoalsScreen() {
   };
 
   const handleDelete = (goal: Goal) => {
-    Alert.alert(
-      "Delete Goal",
-      `Are you sure you want to delete "${goal.name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMutation.mutate(goal.id),
-        },
-      ],
-    );
+    setGoalToDelete(goal);
   };
 
   const getDaysRemaining = (targetDate?: string | null) => {
@@ -992,6 +987,17 @@ export default function GoalsScreen() {
           </View>
         </Modal>
       </Portal>
+
+      <ConfirmDialog
+        visible={!!goalToDelete}
+        title="Delete goal?"
+        message={`"${goalToDelete?.name ?? "This goal"}" will be permanently removed. This action cannot be undone.`}
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setGoalToDelete(null)}
+        onConfirm={() => goalToDelete && deleteMutation.mutate(goalToDelete.id)}
+      />
     </SafeAreaView>
   );
 }

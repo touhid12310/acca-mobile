@@ -27,6 +27,8 @@ interface ExchangeResult {
   requiresPasswordLogin?: boolean;
   requiresTwoFactor?: boolean;
   pendingToken?: string;
+  /** The backend created the account on this call (a social sign-up). */
+  isNewUser?: boolean;
 }
 
 interface VerifyTwoFactorResult {
@@ -150,6 +152,7 @@ const socialAuthService = {
           user,
           message,
           status: response.status,
+          isNewUser: readField<boolean>(inner, 'is_new_user') === true,
         };
       }
 
@@ -209,7 +212,14 @@ const socialAuthService = {
     }
 
     if (response.success && apiSuccess && accessToken) {
-      return { success: true, accessToken, user, message, status: response.status };
+      return {
+        success: true,
+        accessToken,
+        user,
+        message,
+        status: response.status,
+        isNewUser: readField<boolean>(inner, 'is_new_user') === true,
+      };
     }
 
     return {
@@ -256,7 +266,14 @@ const socialAuthService = {
     }
 
     if (response.success && apiSuccess && accessToken) {
-      return { success: true, accessToken, user, message, status: response.status };
+      return {
+        success: true,
+        accessToken,
+        user,
+        message,
+        status: response.status,
+        isNewUser: readField<boolean>(inner, 'is_new_user') === true,
+      };
     }
 
     return {

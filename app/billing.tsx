@@ -16,6 +16,7 @@ import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice, BillingC
 import { useGooglePlayBilling } from "../src/hooks/useGooglePlayBilling";
 import { radius, spacing, typography } from "../src/constants/theme";
 import { maybeAskForReview } from "../src/services/appReviewService";
+import metaEvents from "../src/services/metaEvents";
 import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 const money = (amount: string | number, currency: string) => {
@@ -33,6 +34,13 @@ const unwrapData = <T,>(value: T | { data: T; message?: string } | undefined): T
   if (!value) return undefined;
   return typeof value === "object" && "data" in value ? value.data : value;
 };
+
+/**
+ * What each open EPS checkout charges, by payment id, so the purchase can be
+ * reported to Meta with its value once the return URL confirms it. Module
+ * level: the return replaces the route and may remount this screen.
+ */
+const epsCheckouts = new Map<string, { planSlug: string; cycle?: string; value: number | null; currency: string | null }>();
 
 export default function BillingScreen() {
   const { colors } = useTheme();
@@ -80,8 +88,13 @@ export default function BillingScreen() {
   };
 
   // Store prices and availability are loaded independently of EPS pricing.
+  useEffect(() => {
+    metaEvents.logViewPremium();
+  }, []);
+
   const play = useGooglePlayBilling({
-    onEntitlementGranted: async () => {
+    onEntitlementGranted: async (granted) => {
+      if (granted) metaEvents.logSubscription(granted);
       toast.success("Purchase verified. Premium is active.");
       await refresh();
       void maybeAskForReview("premium_activated");
@@ -106,6 +119,11 @@ export default function BillingScreen() {
       } else {
         const response = await billingService.verifyPayment(params.payment!);
         if (response.success) {
+          const paid = epsCheckouts.get(params.payment!);
+          if (paid) {
+            metaEvents.logSubscription({ orderKey: `eps:${params.payment}`, ...paid });
+            epsCheckouts.delete(params.payment!);
+          }
           toast.success("Payment confirmed. Premium is active.");
           void maybeAskForReview("premium_activated");
         } else {
@@ -124,7 +142,8 @@ export default function BillingScreen() {
       if (!response.success) throw new Error(apiMessage(response, "Could not start trial."));
       return response;
     },
-    onSuccess: async () => {
+    onSuccess: async (_response, plan) => {
+      metaEvents.logStartTrial(plan.slug);
       toast.success("Your Premium trial has started.");
       await refresh();
     },
@@ -161,6 +180,17 @@ export default function BillingScreen() {
 
       if (!response.success || !checkoutData?.redirect_url) {
         throw new Error(apiMessage(response, "Could not open EPS checkout."));
+      }
+      if (checkoutData.payment_uuid && invoice.plan?.slug) {
+        const charged = Number(checkoutData.provider_amount ?? invoice.total);
+        const paid = {
+          planSlug: invoice.plan.slug,
+          cycle: invoice.billing_cycle,
+          value: Number.isFinite(charged) ? charged : null,
+          currency: checkoutData.provider_currency || invoice.currency || null,
+        };
+        epsCheckouts.set(checkoutData.payment_uuid, paid);
+        metaEvents.logCheckout(paid.planSlug, paid.cycle, paid.value, paid.currency);
       }
       const result = await WebBrowser.openAuthSessionAsync(checkoutData.redirect_url, returnUrl);
       if (result.type === "success" && result.url) {
@@ -242,7 +272,10 @@ export default function BillingScreen() {
     const plan = gatewayPlan;
     const cycle = gatewayCycle;
     setGatewayFor(null);
-    if (plan) play.purchase(plan.slug, cycle);
+    if (!plan) return;
+    const amount = play.amountFor(plan.slug, cycle);
+    metaEvents.logCheckout(plan.slug, cycle, amount?.value, amount?.currency);
+    play.purchase(plan.slug, cycle);
   };
 
   const storeUnavailable = play.expoGoBlocked

@@ -22,6 +22,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import onboardingService from "../src/services/onboardingService";
 import analyticsService from "../src/services/analyticsService";
+import metaEvents from "../src/services/metaEvents";
 import { detectTimeZone } from "../src/utils/timezone";
 import { detectCurrency } from "../src/utils/detectCurrency";
 import { BrandText } from "../src/components";
@@ -249,6 +250,7 @@ export default function OnboardingScreen() {
       }
       AsyncStorage.removeItem(PROFILE_SAVED_KEY).catch(() => {});
       analyticsService.logEvent('tutorial_complete');
+      metaEvents.logOnboardingComplete();
       await checkAuthStatus();
       if (destination) {
         router.replace(destination as any);

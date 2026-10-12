@@ -7,7 +7,6 @@ import {
   Pressable,
   Switch,
   Modal,
-  Alert,
   ActivityIndicator,
   RefreshControl,
   KeyboardAvoidingView,
@@ -29,13 +28,14 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  TriangleAlert,
   Wand2,
   X,
 } from 'lucide-react-native';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
-import { Button, Card, EmptyState, ScreenHeader } from '../src/components/ui';
+import { Button, Card, ConfirmDialog, EmptyState, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
 import ruleService, {
@@ -134,6 +134,7 @@ export default function RulesScreen() {
   const [preview, setPreview] = useState<RulePreview | null>(null);
   const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [patternFocused, setPatternFocused] = useState(false);
+  const [ruleToDelete, setRuleToDelete] = useState<CategorizationRule | null>(null);
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['categorization-rules'],
@@ -202,10 +203,14 @@ export default function RulesScreen() {
       return result.data as any;
     },
     onSuccess: (body) => {
+      setRuleToDelete(null);
       toast.success(body?.message || 'Rule deleted');
       invalidate();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error) => {
+      setRuleToDelete(null);
+      toast.error(error.message);
+    },
   });
 
   // Live "would match N transactions" while the sheet is open.
@@ -298,11 +303,7 @@ export default function RulesScreen() {
     router.push('/categories' as never);
   };
 
-  const confirmDelete = (rule: CategorizationRule) =>
-    Alert.alert('Delete rule?', `“${rule.pattern}” → ${rule.category_label}. Transactions it already filed keep their category.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate(rule) },
-    ]);
+  const confirmDelete = (rule: CategorizationRule) => setRuleToDelete(rule);
 
   return (
     <View
@@ -753,6 +754,21 @@ export default function RulesScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ConfirmDialog
+        visible={!!ruleToDelete}
+        title="Delete rule?"
+        message={
+          ruleToDelete
+            ? `“${ruleToDelete.pattern}” → ${ruleToDelete.category_label}. Transactions it already filed keep their category.`
+            : ''
+        }
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setRuleToDelete(null)}
+        onConfirm={() => ruleToDelete && deleteMutation.mutate(ruleToDelete)}
+      />
     </View>
   );
 }

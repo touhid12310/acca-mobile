@@ -1,6 +1,6 @@
-import { Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
+import { notifyToast } from '../contexts/NotificationContext';
 import { reportError } from '../services/errorReporter';
 
 const CANCELED: ImagePicker.ImagePickerResult = { canceled: true, assets: null };
@@ -32,11 +32,10 @@ const launchSafely = async (
     } else {
       reportError('js_error', first, { location: `ImagePicker ${what}` });
     }
-    Alert.alert(
-      `Couldn't open ${what}`,
+    notifyToast.error(
       isStaleLauncher(first)
-        ? 'Please try again. If it keeps happening, close and reopen AccountE.'
-        : 'Please try again.',
+        ? `Couldn't open ${what}. Please try again. If it keeps happening, close and reopen AccountE.`
+        : `Couldn't open ${what}. Please try again.`,
     );
     return CANCELED;
   }

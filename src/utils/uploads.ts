@@ -1,9 +1,9 @@
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-export const compatibleImagePickerOptions = {
-  mediaTypes: ImagePicker.MediaTypeOptions.Images,
-  quality: 0.8 as const,
+export const compatibleImagePickerOptions: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  quality: 0.8,
   preferredAssetRepresentationMode:
     ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
 };

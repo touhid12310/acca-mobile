@@ -141,6 +141,9 @@ const billingService = {
       payment_uuid?: string;
       redirect_url: string | null;
       settled_without_payment?: boolean;
+      /** What EPS will charge, after any coupon. */
+      provider_amount?: string | number | null;
+      provider_currency?: string | null;
     }>(`/billing/invoices/${invoiceUuid}/checkout`, {
       method: 'POST',
       body: {

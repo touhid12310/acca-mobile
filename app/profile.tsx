@@ -4,7 +4,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Image,
 } from "react-native";
 import {
@@ -21,11 +20,13 @@ import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { pickFromLibrary } from "../src/utils/imagePicker";
 import { SvgXml } from "react-native-svg";
+import { ImageOff } from "lucide-react-native";
 
 import { useAuth } from "../src/contexts/AuthContext";
 import { useTheme } from "../src/contexts/ThemeContext";
 import { notifyToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
+import { ConfirmDialog } from "../src/components/ui";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
 import {
@@ -49,6 +50,8 @@ export default function ProfileScreen() {
   });
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
+  const [removePhotoConfirm, setRemovePhotoConfirm] = useState(false);
+  const [isRemovingPicture, setIsRemovingPicture] = useState(false);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(
     null,
   );
@@ -309,42 +312,37 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleRemoveProfilePicture = async () => {
-    Alert.alert(
-      "Remove Photo",
-      "Are you sure you want to remove your profile photo?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await getAuthToken();
-              const response = await fetch(buildApiUrl("/profile/picture"), {
-                method: "DELETE",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-              });
+  const handleRemoveProfilePicture = () => {
+    setRemovePhotoConfirm(true);
+  };
 
-              const data = await response.json();
-
-              if (response.ok && data.success) {
-                notifyToast.success("Profile picture removed");
-                setProfilePictureUrl(null);
-                await checkAuthStatus();
-              } else {
-                notifyToast.error(data.message || "Failed to remove picture");
-              }
-            } catch (error) {
-              notifyToast.error("An error occurred");
-            }
-          },
+  const handleConfirmRemovePicture = async () => {
+    setIsRemovingPicture(true);
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(buildApiUrl("/profile/picture"), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      ],
-    );
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        notifyToast.success("Profile picture removed");
+        setProfilePictureUrl(null);
+        await checkAuthStatus();
+      } else {
+        notifyToast.error(data.message || "Failed to remove picture");
+      }
+    } catch (error) {
+      notifyToast.error("An error occurred");
+    } finally {
+      setIsRemovingPicture(false);
+      setRemovePhotoConfirm(false);
+    }
   };
 
   const handleSetupTwoFactor = async () => {
@@ -1128,6 +1126,17 @@ export default function ProfileScreen() {
           </View>
         </Modal>
       </Portal>
+
+      <ConfirmDialog
+        visible={removePhotoConfirm}
+        title="Remove photo?"
+        message="Your profile photo will be removed and your initials shown instead. You can upload a new one any time."
+        icon={ImageOff}
+        confirmLabel="Remove"
+        loading={isRemovingPicture}
+        onCancel={() => setRemovePhotoConfirm(false)}
+        onConfirm={handleConfirmRemovePicture}
+      />
     </SafeAreaView>
   );
 }

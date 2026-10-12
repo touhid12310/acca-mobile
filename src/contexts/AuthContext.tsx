@@ -20,6 +20,7 @@ import { detectTimeZone, setActiveTimeZone } from '../utils/timezone';
 import { notifyToast } from './NotificationContext';
 import { startReviewTracking } from "../services/appReviewService";
 import analyticsService from '../services/analyticsService';
+import metaEvents from '../services/metaEvents';
 
 // Session validation interval (30 seconds)
 const SESSION_CHECK_INTERVAL = 30000;
@@ -153,6 +154,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (loading) return;
     analyticsService.setUserId(analyticsUserId);
   }, [loading, analyticsUserId]);
+
+  // Meta ad attribution: user id plus the email, which the Meta SDK hashes
+  // on the device. Cleared on logout.
+  const metaUserEmail = isAuthenticated ? user?.email ?? null : null;
+  useEffect(() => {
+    if (loading) return;
+    metaEvents.setUser(analyticsUserId === null ? null : { id: analyticsUserId, email: metaUserEmail });
+  }, [loading, analyticsUserId, metaUserEmail]);
 
   // Days the app is used, for the rating prompt's "3 separate days" rule.
   useEffect(() => {

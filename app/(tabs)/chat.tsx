@@ -22,7 +22,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Crown, Sparkles } from "lucide-react-native";
+import { Crown, Mic, Paperclip, ScanLine, SendHorizontal, Sparkles, Square } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { pickFromLibrary, takeWithCamera } from "../../src/utils/imagePicker";
 import * as DocumentPicker from "expo-document-picker";
@@ -33,7 +33,10 @@ import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { notifyToast } from "../../src/contexts/NotificationContext";
-import { BrandedHeader, BrandText } from "../../src/components";
+import { BrandStrip, BrandText } from "../../src/components";
+import { ASSISTANT_NAME, AssistantHeader } from "../../src/components/chat/AssistantHeader";
+import { AssistantStart } from "../../src/components/chat/AssistantStart";
+import { useAssistantSuggestions, type AssistantSuggestion } from "../../src/hooks/useAssistantSuggestions";
 import {
   compatibleImagePickerOptions,
   uploadFileFromAsset,
@@ -49,7 +52,6 @@ import {
   Account,
 } from "../../src/types";
 import {
-  formatDate,
   toDateInputValue,
   todayDateInputValue,
 } from "../../src/utils/date";
@@ -481,19 +483,6 @@ const splitSourceLine = (
   return { body: (text || "").slice(0, match.index).trimEnd(), source: match[1] };
 };
 
-const DEFAULT_WELCOME_MESSAGE: ChatMessage = {
-  id: "welcome",
-  is_user: false,
-  message:
-    "Hello! I'm your AccountE assistant. You can upload receipts, CSVs, or ask me for quick reports.",
-  metadata: {
-    suggested_actions: [
-      "Show me a report for the last 3 days",
-      "Help me record a new expense",
-    ],
-  },
-};
-
 const TEXT_SEND_STATUSES = [
   "Sending to AI...",
   "Reading your message...",
@@ -525,7 +514,7 @@ const SEND_STATUS_INTERVAL_MS = 3000;
 
 export default function ChatScreen() {
   const { colors, isDark } = useTheme();
-  const { formatAmount } = useCurrency();
+  const { formatAmount, currencySymbol } = useCurrency();
   const { token, user } = useAuth();
   const profilePictureUri = (() => {
     if (!user) return null;
@@ -549,9 +538,9 @@ export default function ChatScreen() {
   );
   const lastHistoryErrorRef = useRef<string | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    DEFAULT_WELCOME_MESSAGE,
-  ]);
+  // Empty = the assistant start screen (greeting + starter cards).
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { suggestions, remember } = useAssistantSuggestions(user?.id, currencySymbol);
   // Kept out of `messages` on purpose: a history refetch replaces that array
   // wholesale, which would blow the notice away moments after it appears.
   const [upgradeNotice, setUpgradeNotice] = useState<ChatMessage | null>(null);
@@ -980,7 +969,7 @@ export default function ChatScreen() {
       return;
     }
 
-    setMessages([DEFAULT_WELCOME_MESSAGE]);
+    setMessages([]);
   }, [messagesData]);
 
   useEffect(() => {
@@ -1146,11 +1135,12 @@ export default function ChatScreen() {
   );
 
   // Handle sending message
-  const handleSend = async () => {
-    if (isSending || (!inputText.trim() && !selectedFile)) return;
-
-    const messageText = inputText.trim();
-    const file = selectedFile;
+  /** Send the box, or — from a starter card — a given text and/or file. */
+  const handleSend = async (override?: { text?: string; file?: typeof selectedFile }) => {
+    const messageText = (override?.text ?? inputText).trim();
+    const file = override && "file" in override ? override.file ?? null : selectedFile;
+    if (isSending || (!messageText && !file)) return;
+    if (messageText && !file) remember(messageText);
     setSendingHasFile(Boolean(file));
     setSendStatusIndex(0);
     setIsSending(true);
@@ -1228,24 +1218,43 @@ export default function ChatScreen() {
   };
 
   // Handle camera
-  const handleTakePhoto = async () => {
+  const capturePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
       notifyToast.warning("Please grant camera access to take photos.", {
         title: "Permission needed",
       });
-      return;
+      return null;
     }
 
     const result = await takeWithCamera({
       quality: 0.8,
     });
 
-    if (!result.canceled && result.assets[0]) {
-      setSelectedFile(
-        uploadFileFromAsset(result.assets[0], `photo-${Date.now()}.jpg`),
-      );
+    return !result.canceled && result.assets[0]
+      ? uploadFileFromAsset(result.assets[0], `photo-${Date.now()}.jpg`)
+      : null;
+  };
+
+  const handleTakePhoto = async () => {
+    const photo = await capturePhoto();
+    if (photo) setSelectedFile(photo);
+  };
+
+  // "Scan a receipt" card: one tap from camera to reading it.
+  const handleScanReceipt = async () => {
+    const photo = await capturePhoto();
+    if (photo) void handleSend({ text: "Read this receipt", file: photo });
+  };
+
+  // Questions go straight to the assistant; a log example lands in the box to edit,
+  // so a stock "Lunch 450" is never recorded by accident.
+  const handleSuggestion = (suggestion: AssistantSuggestion) => {
+    if (suggestion.action === "send") {
+      void handleSend({ text: suggestion.prompt, file: null });
+      return;
     }
+    handleQuickAction(suggestion.prompt);
   };
 
   // Handle document picker
@@ -1355,8 +1364,11 @@ export default function ChatScreen() {
 
   const isTodayChatDate = selectedChatDate === todayDateInputValue();
   const selectedChatDateLabel = isTodayChatDate
-    ? `Today - ${formatDate(selectedChatDate)}`
-    : formatDate(selectedChatDate);
+    ? "Today"
+    : new Date(`${selectedChatDate}T00:00:00`).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+      });
 
   const handleOpenChatDatePicker = () => {
     setShowChatDatePicker(true);
@@ -2016,55 +2028,14 @@ export default function ChatScreen() {
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandedHeader
-        title="AccountE Assistant"
-        subtitle="Ask about expenses, reports, or scan receipts"
-        right={
-          <View style={[styles.statusDot, { backgroundColor: "#34a853" }]} />
-        }
+      <BrandStrip />
+      <AssistantHeader
+        dateLabel={selectedChatDateLabel}
+        isToday={isTodayChatDate}
+        loading={isFetchingHistory && !isLoadingHistory}
+        onPickDate={handleOpenChatDatePicker}
+        onToday={handleResetChatDateToToday}
       />
-
-      <View
-        style={[
-          styles.chatDateRow,
-          { borderBottomColor: colors.outlineVariant },
-        ]}
-      >
-        <TouchableOpacity
-          style={[
-            styles.chatDateButton,
-            { backgroundColor: colors.surfaceVariant },
-          ]}
-          onPress={handleOpenChatDatePicker}
-        >
-          <MaterialCommunityIcons
-            name="calendar-month-outline"
-            size={18}
-            color={colors.primary}
-          />
-          <Text style={[styles.chatDateText, { color: colors.onSurface }]}>
-            {selectedChatDateLabel}
-          </Text>
-        </TouchableOpacity>
-
-        {!isTodayChatDate && (
-          <TouchableOpacity
-            style={[
-              styles.chatDateTodayButton,
-              { borderColor: colors.outlineVariant },
-            ]}
-            onPress={handleResetChatDateToToday}
-          >
-            <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-              Today
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {isFetchingHistory && (
-          <ActivityIndicator size="small" color={colors.primary} />
-        )}
-      </View>
 
       {/* Messages */}
       <KeyboardAvoidingView
@@ -2082,7 +2053,17 @@ export default function ChatScreen() {
             data={threadMessages}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderMessage}
-            contentContainerStyle={styles.messagesList}
+            contentContainerStyle={[
+              styles.messagesList,
+              threadMessages.length === 0 && styles.messagesListEmpty,
+            ]}
+            ListEmptyComponent={
+              <AssistantStart
+                suggestions={suggestions}
+                onScanReceipt={handleScanReceipt}
+                onSuggestion={handleSuggestion}
+              />
+            }
             showsVerticalScrollIndicator={false}
             onContentSizeChange={scrollToBottom}
           />
@@ -2167,66 +2148,6 @@ export default function ChatScreen() {
           style={[styles.inputContainer, { backgroundColor: colors.surface }]}
           elevation={2}
         >
-          {/* Quick actions */}
-          <View style={styles.quickActionsRow}>
-            <TouchableOpacity
-              style={[
-                styles.quickActionChip,
-                { backgroundColor: `${colors.error}15` },
-              ]}
-              onPress={() => handleQuickAction("Help me record a new expense")}
-            >
-              <MaterialCommunityIcons
-                name="minus-circle"
-                size={14}
-                color={colors.error}
-              />
-              <Text
-                style={{ color: colors.error, fontSize: 11, marginLeft: 4 }}
-              >
-                Expense
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.quickActionChip,
-                { backgroundColor: `${colors.tertiary}15` },
-              ]}
-              onPress={() => handleQuickAction("Help me record new income")}
-            >
-              <MaterialCommunityIcons
-                name="plus-circle"
-                size={14}
-                color={colors.tertiary}
-              />
-              <Text
-                style={{ color: colors.tertiary, fontSize: 11, marginLeft: 4 }}
-              >
-                Income
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.quickActionChip,
-                { backgroundColor: `${colors.primary}15` },
-              ]}
-              onPress={() =>
-                handleQuickAction("Show me a report for the last week")
-              }
-            >
-              <MaterialCommunityIcons
-                name="chart-bar"
-                size={14}
-                color={colors.primary}
-              />
-              <Text
-                style={{ color: colors.primary, fontSize: 11, marginLeft: 4 }}
-              >
-                Report
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           <View style={styles.inputRow}>
             {/* WhatsApp-style pill: input + paperclip + camera */}
             <View
@@ -2238,7 +2159,7 @@ export default function ChatScreen() {
               <RNTextInput
                 ref={inputRef}
                 style={[styles.pillTextInput, { color: colors.onSurface }]}
-                placeholder="Message"
+                placeholder={`Ask ${ASSISTANT_NAME} anything…`}
                 placeholderTextColor={colors.onSurfaceVariant}
                 value={inputText}
                 onChangeText={setInputText}
@@ -2246,62 +2167,56 @@ export default function ChatScreen() {
                 maxLength={2000}
               />
 
-              <IconButton
-                icon="paperclip"
-                size={22}
+              <TouchableOpacity
                 onPress={handlePickImage}
-                iconColor={colors.onSurfaceVariant}
                 style={styles.pillIconButton}
-              />
-              <IconButton
-                icon="camera"
-                size={22}
+                accessibilityRole="button"
+                accessibilityLabel="Attach a photo or file"
+              >
+                <Paperclip size={20} color={colors.onSurfaceVariant} strokeWidth={2} />
+              </TouchableOpacity>
+              <TouchableOpacity
                 onPress={handleTakePhoto}
-                iconColor={colors.onSurfaceVariant}
                 style={styles.pillIconButton}
-              />
+                accessibilityRole="button"
+                accessibilityLabel="Scan a receipt with the camera"
+              >
+                <ScanLine size={20} color={colors.onSurfaceVariant} strokeWidth={2} />
+              </TouchableOpacity>
             </View>
 
-            {/* Round green send/mic button (outside pill) */}
-            <View style={styles.sendButtonWrapper}>
-              {isRecording ||
-              isTranscribing ||
-              (!inputText.trim() && !selectedFile) ? (
-                <IconButton
-                  icon={
-                    isRecording
-                      ? "stop"
-                      : isTranscribing
-                        ? "loading"
-                        : "microphone"
+            {/* Mic while the box is empty, send once there is something to send */}
+            {(() => {
+              const showMic = isRecording || isTranscribing || (!inputText.trim() && !selectedFile);
+              const busy = showMic ? isTranscribing : isSending;
+              return (
+                <TouchableOpacity
+                  onPress={showMic ? toggleRecording : () => handleSend()}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    showMic ? (isRecording ? "Stop voice input" : "Speak your message") : "Send"
                   }
-                  size={24}
-                  onPress={toggleRecording}
-                  iconColor="#ffffff"
                   style={[
                     styles.sendButton,
                     {
-                      backgroundColor: isRecording
-                        ? colors.error
-                        : "#22c55e",
+                      backgroundColor: isRecording ? colors.error : colors.primary,
+                      opacity: busy ? 0.6 : 1,
                     },
                   ]}
-                  disabled={isTranscribing}
-                />
-              ) : (
-                <IconButton
-                  icon="send"
-                  size={24}
-                  onPress={handleSend}
-                  iconColor="#ffffff"
-                  style={[
-                    styles.sendButton,
-                    { backgroundColor: "#22c55e" },
-                  ]}
-                  disabled={isSending}
-                />
-              )}
-            </View>
+                >
+                  {busy ? (
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  ) : !showMic ? (
+                    <SendHorizontal size={21} color="#ffffff" strokeWidth={2.3} />
+                  ) : isRecording ? (
+                    <Square size={16} color="#ffffff" fill="#ffffff" />
+                  ) : (
+                    <Mic size={22} color="#ffffff" strokeWidth={2.2} />
+                  )}
+                </TouchableOpacity>
+              );
+            })()}
           </View>
 
           {/* Recording indicator */}
@@ -2493,35 +2408,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
   },
-  chatDateRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 0,
-    paddingBottom: 6,
-    marginTop: -10,
-    borderBottomWidth: 1,
-  },
-  chatDateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    flex: 1,
-  },
-  chatDateText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  chatDateTodayButton: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
   headerContent: {
     flexDirection: "row",
     alignItems: "center",
@@ -2534,11 +2420,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 12,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -2547,6 +2428,10 @@ const styles = StyleSheet.create({
   messagesList: {
     padding: 16,
     paddingBottom: 8,
+  },
+  messagesListEmpty: {
+    flexGrow: 1,
+    padding: 0,
   },
   messageContainer: {
     flexDirection: "row",
@@ -2731,19 +2616,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 6,
   },
-  quickActionsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 8,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  quickActionChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -2753,14 +2625,15 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 26,
-    paddingHorizontal: 4,
-    minHeight: 48,
+    borderRadius: 18,
+    paddingRight: 6,
+    minHeight: 52,
   },
   pillIconButton: {
-    margin: 0,
     width: 36,
-    height: 36,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   pillTextInput: {
     flex: 1,
@@ -2777,10 +2650,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendButton: {
-    margin: 0,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
   },
   attachButtons: {
     flexDirection: "row",

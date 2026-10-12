@@ -5,7 +5,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  Alert,
   FlatList,
   Pressable,
 } from "react-native";
@@ -23,13 +22,21 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Edit3, Star, Trash2, Wallet } from "lucide-react-native";
+import {
+  Archive,
+  Edit3,
+  Eraser,
+  Star,
+  Trash2,
+  TriangleAlert,
+  Wallet,
+} from "lucide-react-native";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { radius, shadow, spacing } from "../src/constants/theme";
-import { HeroCard } from "../src/components/ui";
+import { ConfirmDialog, HeroCard } from "../src/components/ui";
 import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader } from "../src/components";
@@ -118,6 +125,10 @@ export default function AccountDetailScreen() {
   const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
+  // Confirmation dialogs (same ConfirmDialog as Budgets / Loans / Schedules)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Transaction | null>(null);
+  const [showClearReconcile, setShowClearReconcile] = useState(false);
 
   // Fetch account details
   const {
@@ -253,12 +264,15 @@ export default function AccountDetailScreen() {
       return result;
     },
     onSuccess: () => {
+      setShowDeleteConfirm(false);
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
       toast.success("Account deleted");
       router.back();
     },
-    onError: (error: Error) =>
-      toast.error(error.message || "Could not delete account"),
+    onError: (error: Error) => {
+      setShowDeleteConfirm(false);
+      toast.error(error.message || "Could not delete account");
+    },
   });
 
   // Row actions on the Transactions tab — same swipe-to-Edit/Archive as the
@@ -335,19 +349,12 @@ export default function AccountDetailScreen() {
   };
 
   const handleArchiveTransaction = (item: Transaction) => {
-    const label = item.merchant_name || item.description || "this transaction";
-    Alert.alert(
-      "Archive transaction",
-      `Move "${label}" to Archived? You can restore it from Transactions → Archived.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Archive",
-          style: "destructive",
-          onPress: () => archiveTransactionMutation.mutate(item.id),
-        },
-      ],
-    );
+    setArchiveTarget(item);
+  };
+
+  const handleConfirmArchive = () => {
+    if (archiveTarget) archiveTransactionMutation.mutate(archiveTarget.id);
+    setArchiveTarget(null);
   };
 
   const handleRowPress = (item: Transaction) => {
@@ -402,18 +409,7 @@ export default function AccountDetailScreen() {
       );
       return;
     }
-    Alert.alert(
-      "Delete Account",
-      `Are you sure you want to delete "${account?.account_name}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMutation.mutate(),
-        },
-      ],
-    );
+    setShowDeleteConfirm(true);
   };
 
   const getTransactionIcon = (type: string) => {
@@ -694,22 +690,14 @@ export default function AccountDetailScreen() {
   };
 
   const handleClearReconcile = () => {
-    Alert.alert(
-      "Clear All",
-      "Are you sure you want to clear all reconciliation data?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: () => {
-            setReconcileData([]);
-            setMatchedCount(0);
-            setUnmatchedCount(0);
-          },
-        },
-      ],
-    );
+    setShowClearReconcile(true);
+  };
+
+  const handleConfirmClearReconcile = () => {
+    setReconcileData([]);
+    setMatchedCount(0);
+    setUnmatchedCount(0);
+    setShowClearReconcile(false);
   };
 
   if (accountLoading) {
@@ -1786,6 +1774,37 @@ export default function AccountDetailScreen() {
         onEdit={handleEditTransaction}
         onDelete={handleArchiveTransaction}
         deleteLabel="Archive"
+      />
+
+      <ConfirmDialog
+        visible={showDeleteConfirm}
+        title="Delete account?"
+        message={`"${account?.account_name ?? "This account"}" will be permanently removed. This action cannot be undone.`}
+        icon={TriangleAlert}
+        confirmLabel="Delete"
+        loading={deleteMutation.isPending}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => deleteMutation.mutate()}
+      />
+
+      <ConfirmDialog
+        visible={!!archiveTarget}
+        title="Archive transaction?"
+        message={`"${archiveTarget?.merchant_name || archiveTarget?.description || "This transaction"}" will move to Archived. You can restore it from Transactions → Archived.`}
+        icon={Archive}
+        confirmLabel="Archive"
+        onCancel={() => setArchiveTarget(null)}
+        onConfirm={handleConfirmArchive}
+      />
+
+      <ConfirmDialog
+        visible={showClearReconcile}
+        title="Clear reconciliation?"
+        message="All imported statement rows and match results will be cleared. Saved transactions are not affected."
+        icon={Eraser}
+        confirmLabel="Clear all"
+        onCancel={() => setShowClearReconcile(false)}
+        onConfirm={handleConfirmClearReconcile}
       />
     </SafeAreaView>
   );

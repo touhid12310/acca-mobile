@@ -66,6 +66,7 @@ import {
   Button,
   AlertBar,
   Badge,
+  ConfirmDialog,
   PeriodModal,
   computePeriodRange,
   PeriodRange,
@@ -1510,87 +1511,25 @@ export default function TransactionsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Archive draft confirmation modal */}
-      <Modal
+      <ConfirmDialog
         visible={!!rejectTarget}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRejectTarget(null)}
-      >
-        <Pressable
-          style={[
-            styles.modalBackdrop,
-            { backgroundColor: "rgba(0,0,0,0.55)" },
-          ]}
-          onPress={() => setRejectTarget(null)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            style={[
-              styles.rejectModal,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.outlineVariant,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 36, marginBottom: 8 }}>⚠️</Text>
-            <Text
-              style={[styles.rejectModalTitle, { color: colors.onSurface }]}
-            >
-              Archive draft?
-            </Text>
-            <Text
-              style={[
-                styles.rejectModalText,
-                { color: colors.onSurfaceVariant },
-              ]}
-            >
-              {rejectTarget?.merchant_name
-                ? `Archive the draft for "${rejectTarget.merchant_name}"?`
-                : "Archive this draft?"}
-            </Text>
-            <Text
-              style={[
-                styles.rejectModalNote,
-                { color: colors.onSurfaceVariant },
-              ]}
-            >
-              It won't be added to your ledger. It stays under Archived for 30
-              days, and you can restore it to Pending review until then.
-            </Text>
-            <View style={styles.rejectModalActions}>
-              <Pressable
-                onPress={() => setRejectTarget(null)}
-                style={[
-                  styles.rejectModalBtn,
-                  {
-                    backgroundColor: colors.surfaceVariant,
-                    borderColor: colors.outlineVariant,
-                  },
-                ]}
-              >
-                <Text style={{ color: colors.onSurface, fontWeight: "600" }}>
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  if (rejectTarget) {
-                    rejectDraftMutation.mutate(rejectTarget.id);
-                  }
-                  setRejectTarget(null);
-                }}
-                style={[styles.rejectModalBtn, { backgroundColor: "#dc2626" }]}
-              >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>
-                  Archive
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        title="Archive draft?"
+        message={
+          (rejectTarget?.merchant_name
+            ? `The draft for "${rejectTarget.merchant_name}" won't be added to your ledger.`
+            : "This draft won't be added to your ledger.") +
+          " It stays under Archived for 30 days, and you can restore it to Pending review until then."
+        }
+        icon={Archive}
+        confirmLabel="Archive"
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={() => {
+          if (rejectTarget) {
+            rejectDraftMutation.mutate(rejectTarget.id);
+          }
+          setRejectTarget(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -2055,43 +1994,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
-  },
-  rejectModal: {
-    width: "100%",
-    maxWidth: 360,
-    padding: 24,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-  rejectModalTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 6,
-  },
-  rejectModalText: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: "center",
-    marginBottom: 6,
-  },
-  rejectModalNote: {
-    fontSize: 12,
-    lineHeight: 16,
-    textAlign: "center",
-    marginBottom: 18,
-  },
-  rejectModalActions: {
-    flexDirection: "row",
-    gap: 10,
-    width: "100%",
-  },
-  rejectModalBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    borderWidth: 1,
   },
   filterShell: {
     height: 54,

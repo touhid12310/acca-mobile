@@ -215,7 +215,7 @@ export default function TransactionForm({
 
   const handlePickReceipt = async () => {
     const result = await pickFromLibrary({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.8,
       preferredAssetRepresentationMode:
         ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,

@@ -12,9 +12,22 @@ import type { Purchase, ProductSubscription } from 'expo-iap';
 
 import billingService, { StoreProduct } from '../services/billingService';
 
+/** A store purchase the backend has just verified, priced from the store listing. */
+export type GrantedPurchase = {
+  /** Store transaction id (or purchase token) — the same purchase redelivered keeps it. */
+  orderKey: string;
+  planSlug: string;
+  cycle: string;
+  value: number | null;
+  currency: string | null;
+};
+
 type Options = {
-  /** Called after the backend has verified a purchase and granted Premium. */
-  onEntitlementGranted?: () => void | Promise<void>;
+  /**
+   * Called after the backend has verified a purchase and granted Premium.
+   * `purchase` is null when the purchase cannot be matched to a plan.
+   */
+  onEntitlementGranted?: (purchase: GrantedPurchase | null) => void | Promise<void>;
   onRestoreCompleted?: (active: boolean) => void | Promise<void>;
   /** Play took the order but the payment has not cleared yet (cash, some carriers). */
   onPurchasePending?: () => void;
@@ -31,7 +44,11 @@ type AndroidOffer = {
   offerToken?: string | null;
   displayPrice?: string | null;
   pricingPhasesAndroid?: {
-    pricingPhaseList?: { formattedPrice?: string | null }[] | null;
+    pricingPhaseList?: {
+      formattedPrice?: string | null;
+      priceAmountMicros?: string | null;
+      priceCurrencyCode?: string | null;
+    }[] | null;
   } | null;
 };
 
@@ -86,6 +103,15 @@ const recurringPriceOf = (offer: AndroidOffer | null): string | null => {
   return phases[phases.length - 1]?.formattedPrice || offer?.displayPrice || null;
 };
 
+/** The renewing price as a number plus its currency, for ad conversion values. */
+const recurringAmountOf = (offer: AndroidOffer | null): { value: number; currency: string } | null => {
+  const phases = offer?.pricingPhasesAndroid?.pricingPhaseList || [];
+  const phase = phases[phases.length - 1];
+  const micros = Number(phase?.priceAmountMicros);
+  if (!phase?.priceCurrencyCode || !Number.isFinite(micros) || micros <= 0) return null;
+  return { value: micros / 1_000_000, currency: phase.priceCurrencyCode };
+};
+
 const apiError = (response: { message?: string; error?: string; data?: unknown }, fallback: string) => {
   const data = response.data as { message?: string } | undefined;
   return response.message || response.error || data?.message || fallback;
@@ -116,6 +142,8 @@ export function useGooglePlayBilling({
   // instead of dropping them, and drain once the backend catalogue is known.
   const pendingPurchases = useRef<Purchase[]>([]);
   const processPurchaseRef = useRef<((purchase: Purchase) => Promise<RedeemOutcome>) | null>(null);
+  // Set once the store catalogue is known (below); redeem() runs before that.
+  const grantedPurchaseRef = useRef<((purchase: Purchase) => GrantedPurchase | null) | null>(null);
   const recoveryDone = useRef(false);
 
   const productsQuery = useQuery({
@@ -170,7 +198,15 @@ export function useGooglePlayBilling({
       }
 
       redeemedTokens.current.add(token);
-      if (!silent) await onEntitlementGranted?.();
+      if (!silent) {
+        let granted: GrantedPurchase | null = null;
+        try {
+          granted = grantedPurchaseRef.current?.(purchase) ?? null;
+        } catch {
+          // Pricing is only for reporting — never block the grant on it.
+        }
+        await onEntitlementGranted?.(granted);
+      }
       return 'verified';
     },
     [isIos, onEntitlementGranted, onError, onPurchasePending],
@@ -326,6 +362,43 @@ export function useGooglePlayBilling({
     },
     [catalogue],
   );
+
+  /** Store price of a plan on a cycle as a number, or null when unknown. */
+  const storeAmountFor = useCallback(
+    (planSlug: string, cycle?: string): { value: number; currency: string } | null => {
+      const mapping = productMappingFor(planSlug, cycle);
+      if (!mapping) return null;
+      const product = findStoreProduct(mapping.product_id);
+      if (!product) return null;
+      if (isAndroid) return recurringAmountOf(androidOfferFor(product, mapping.base_plan_id));
+      const { price, currency } = product as { price?: number | null; currency?: string | null };
+      return typeof price === 'number' && price > 0 && currency ? { value: price, currency } : null;
+    },
+    [findStoreProduct, isAndroid, productMappingFor],
+  );
+
+  // Which plan and cycle a store purchase bought. On Android `currentPlanId`
+  // is the base plan, which tells monthly from yearly on a shared product.
+  grantedPurchaseRef.current = (bought: Purchase): GrantedPurchase | null => {
+    const basePlanId = (bought as { currentPlanId?: string | null }).currentPlanId;
+    const mapping =
+      catalogue.find(
+        (item) =>
+          item.product_id === bought.productId &&
+          (!isAndroid || !basePlanId || !item.base_plan_id || item.base_plan_id === basePlanId),
+      ) ?? null;
+    if (!mapping) return null;
+    const cycle = mapping.cycle || 'monthly';
+    const amount = storeAmountFor(mapping.plan_slug, cycle);
+
+    return {
+      orderKey: bought.transactionId || purchaseTokenOf(bought) || `${bought.productId}:${Date.now()}`,
+      planSlug: mapping.plan_slug,
+      cycle,
+      value: amount?.value ?? null,
+      currency: amount?.currency ?? null,
+    };
+  };
 
   const purchase = useCallback(
     async (planSlug: string, cycle?: string) => {
@@ -497,6 +570,8 @@ export function useGooglePlayBilling({
     /** Whether the store can sell this plan on this cycle at all. */
     supportsCycle: (planSlug: string, cycle?: string): boolean =>
       Boolean(productMappingFor(planSlug, cycle)),
+    /** The store price as a number with its currency (for conversion reporting). */
+    amountFor: storeAmountFor,
   };
 }
 
