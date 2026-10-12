@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AccountE Prompt Reveal</title>
+<style>
+@font-face{font-family:InterL;src:url(assets/fonts/Inter-Regular.otf);font-weight:400}
+@font-face{font-family:InterL;src:url(assets/fonts/Inter-Medium.otf);font-weight:500}
+@font-face{font-family:InterL;src:url(assets/fonts/Inter-SemiBold.otf);font-weight:600}
+@font-face{font-family:InterL;src:url(assets/fonts/Inter-Bold.otf);font-weight:700}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
+*{box-sizing:border-box}
+body{font-family:InterL,sans-serif;-webkit-font-smoothing:antialiased}
+.abs{position:absolute;left:0;top:0}
+#stage{position:absolute;inset:0;overflow:hidden;background:#dddddd}
+#world{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;transform-origin:0 0}
+#sky{position:absolute;inset:0;background:linear-gradient(180deg,#294376 0%,#4f6f9e 55%,#769cc2 100%)}
+#bgcam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:960px 1080px}
+#glow{position:absolute;left:1240px;top:-330px;width:1000px;height:640px;border-radius:50%;
+  background:linear-gradient(115deg,#7b5cff 8%,#c77dff 30%,#ffd96a 52%,#7fe3c4 72%,#2fc7c9 92%);
+  filter:blur(90px);opacity:.55;mix-blend-mode:screen}
+#subjA{position:absolute;left:1318px;top:406px;width:690px;height:674px}
+#ascii{position:absolute;left:0;top:0}
+#pageSky{position:absolute;inset:0;background:linear-gradient(180deg,#3b5876 0%,#58809f 55%,#75a2c4 100%)}
+#heroCam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:1480px 1080px}
+#box{position:absolute;left:0;top:0;overflow:hidden;background:#fff;border-radius:18px;transform-origin:50% 50%}
+#boxShadow{position:absolute;left:0;top:0;border-radius:18px;transform-origin:50% 50%}
+#bulge{position:absolute;background:#fff;border-radius:50%}
+#promptLayer{position:absolute;inset:0}
+#ptext{position:absolute;left:30px;top:24px;font-size:34.8px;line-height:44.4px;color:#121212;font-weight:400;letter-spacing:-0.005em;white-space:pre-wrap;word-wrap:break-word}
+#ptext span{white-space:pre-wrap}
+#caret{position:absolute;width:3px;height:40px;background:#121212;border-radius:1px}
+#toolbar{position:absolute;right:16px;bottom:16px;height:75px;display:flex;align-items:center;gap:18px}
+#mlabel{font-size:26px;font-weight:500;color:#8c8c8c;display:flex;align-items:center;gap:8px;letter-spacing:-0.01em}
+#send{width:75px;height:75px;border-radius:22px;background:#000;display:flex;align-items:center;justify-content:center;transform-origin:50% 50%}
+.handle{position:absolute;width:15px;height:15px;background:#fff;border-radius:3px;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#pageContent{position:absolute;left:0;top:0;width:1920px;height:1080px}
+#nav{position:absolute;left:0;top:0;width:1920px;height:1080px}
+.pel{position:absolute;color:#fff;transform-origin:0 0}
+#logo{left:72px;top:44px;height:42px}
+#navlinks{left:0;top:52px;width:1920px;display:flex;justify-content:center;gap:52px;font-size:20px;font-weight:500;color:rgba(255,255,255,.92)}
+#pill{right:72px;top:42px;height:48px;padding:0 24px;border:1.5px solid rgba(255,255,255,.72);border-radius:999px;display:flex;align-items:center;font-size:17px;font-weight:500;color:#fff;letter-spacing:.005em}
+#hl{left:96px;top:300px;font-size:63px;font-weight:700;line-height:70px;letter-spacing:-0.025em;white-space:pre}
+#para{left:98px;top:458px;width:640px;font-size:23px;line-height:34px;color:rgba(255,255,255,.86)}
+#cta{left:98px;top:584px;height:62px;padding:0 36px;background:#fff;color:#121212;border-radius:999px;display:flex;align-items:center;gap:12px;font-size:21px;font-weight:600}
+.feat{left:98px;display:flex;align-items:center;gap:14px;font-size:19px;color:rgba(255,255,255,.66)}
+.feat b{font-weight:600;color:rgba(255,255,255,.8)}
+.wm{top:978px;color:rgba(255,255,255,.5);letter-spacing:.14em}
+.ov{position:absolute;inset:0;pointer-events:none}
+#cursor{position:absolute;left:0;top:0;transform-origin:0 0}
+#grain{position:absolute;left:0;top:0;width:1920px;height:1080px;mix-blend-mode:overlay;opacity:.075}
+#black{position:absolute;inset:0;background:#000}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="world">
+    <!-- ===== prompt scene ===== -->
+    <div id="promptScene" class="abs" style="width:1920px;height:1080px">
+      <div id="sky"></div>
+      <div id="bgcam">
+        <div id="glow"></div>
+        <svg id="lines" class="abs" width="1920" height="1080" viewBox="0 0 1920 1080"></svg>
+        <!-- background subject: opaque cut-out (traced alpha), 2.5px feather -->
+        <svg id="subjA" viewBox="0 0 600 586">
+          <defs>
+            <filter id="featherA" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="1.2"/></filter>
+            <mask id="maskA" maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="586" style="mask-type:alpha">
+              <image href="assets/hand-phone.png" width="600" height="586" filter="url(#featherA)"/>
+            </mask>
+          </defs>
+          <image href="assets/hand-phone.png" width="600" height="586" mask="url(#maskA)"/>
+        </svg>
+      </div>
+      <canvas id="ascii" width="1920" height="1080"></canvas>
+    </div>
+
+    <!-- ===== page scene (hero photo layer) ===== -->
+    <div id="pageScene" class="abs" style="width:1920px;height:1080px">
+      <div id="pageSky"></div>
+      <div id="heroCam">
+        <svg class="abs" width="1920" height="1080" viewBox="0 0 1920 1080" style="overflow:visible">
+          <defs>
+            <!-- hand-traced polygon around the device in hero-phone.png (580x1177 crop) -->
+            <filter id="featherH" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="2.5"/></filter>
+            <mask id="maskH" maskUnits="userSpaceOnUse" x="-20" y="-20" width="620" height="1240">
+              <polygon id="heroPoly" fill="#fff" filter="url(#featherH)" points=""/>
+            </mask>
+            <filter id="smearBlur" x="-60%" y="-10%" width="220%" height="120%"><feGaussianBlur id="smearDev" stdDeviation="40 0"/></filter>
+          </defs>
+          <g id="heroPlace">
+            <g id="smear" filter="url(#smearBlur)">
+              <g id="smearScale">
+                <image href="assets/hero-phone.png" width="580" height="1177" mask="url(#maskH)"/>
+              </g>
+            </g>
+            <image href="assets/hero-phone.png" width="580" height="1177" mask="url(#maskH)"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div id="handles"></div>
+    <div id="boxShadow"></div>
+    <div id="bulge"></div>
+    <div id="box">
+      <div id="promptLayer">
+        <div id="ptext"></div>
+        <div id="caret"></div>
+        <div id="toolbar">
+          <div id="mlabel"><span id="mlabelText"></span>
+            <svg width="20" height="20" viewBox="0 0 20 20"><path d="M5 7.5l5 5 5-5" fill="none" stroke="#8c8c8c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div id="send"><svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+      </div>
+      <div id="pageContent"></div>
+    </div>
+    <div id="nav"></div>
+
+    <div id="solarA" class="ov" style="background:#cfcfcf;mix-blend-mode:difference;opacity:0"></div>
+    <div id="solarB" class="ov" style="background:#7448ff;mix-blend-mode:color;opacity:0"></div>
+  </div>
+
+  <svg id="cursor" width="24" height="24" viewBox="0 0 24 24" style="overflow:visible">
+    <path d="M3 2 L3 20.2 L7.9 15.6 L11.3 22.6 L14.6 21.1 L11.3 14.3 L17.9 14.3 Z" fill="#000" stroke="#fff" stroke-width="1.15" stroke-linejoin="round"/>
+  </svg>
+  <div id="pink" class="ov"></div>
+  <div id="veil" class="ov" style="background:#d9cdff"></div>
+  <canvas id="grain" width="960" height="540"></canvas>
+  <div id="black"></div>
+</div>
+
+<script>
+/* ======================= content ======================= */
+const CFG = {
+  modelLabel: 'AccountE',
+  prompt: 'Build a premium, modern fintech landing page for AccountE, an AI personal accountant app. Create a full-screen cinematic hero featuring the AccountE phone dashboard, positioned on the right side with generous negative space on the left. Use a bold white headline about letting AI do the books, a short supporting paragraph, and a clean rounded “Start Free” CTA.\nAdd a minimal top navigation with logo.',
+  headline: ['Talk to Your Money.', 'Let AI Do the Books.'],
+  para: 'Snap a receipt, forward an email or just ask the Assistant. AccountE records, categorises and reports it all—your books, on autopilot.',
+  cta: 'Start Free',
+  nav: ['Features', 'Pricing', 'FAQ', 'Download'],
+  pill: 'Built by an Accountant · Powered by AI',
+  features: [
+    ['receipt', 'Receipt Scan AI', ' (vendor, date & tax)'],
+    ['target', 'Budgets & goals', ' (real-time tracking)'],
+    ['spark', 'Ask the AI Assistant', ' about any spend, any currency'],
+  ],
+};
+
+/* ======================= helpers ======================= */
+const $ = id => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => Array.isArray(a) ? a.map((v, i) => lerp(v, b[i], t)) : a + (b - a) * t;
+const Ease = {
+  lin: t => t,
+  in: t => t * t * t,
+  out: t => 1 - Math.pow(1 - t, 3),
+  out5: t => 1 - Math.pow(1 - t, 5),
+  inOut: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  sine: t => -(Math.cos(Math.PI * t) - 1) / 2,
+  expo: k => t => (1 - Math.pow(2, -k * t)) / (1 - Math.pow(2, -k)),
+  back: (s = 1.7) => t => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2),
+};
+// kf(frame, [[f, value, ease?], ...], defaultEase) — the ease on a key shapes the segment arriving at it
+function kf(f, keys, ease = Ease.inOut) {
+  if (f <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [f0, v0] = keys[i], [f1, v1, e] = keys[i + 1];
+    if (f <= f1) return lerp(v0, v1, (e || ease)(clamp((f - f0) / (f1 - f0))));
+  }
+  return keys[keys.length - 1][1];
+}
+// monotone cubic (Fritsch–Carlson) through numeric keys: one smooth progress curve
+function kfMono(f, keys) {
+  const n = keys.length, xs = keys.map(k => k[0]), ys = keys.map(k => k[1]);
+  if (f <= xs[0]) return ys[0]; if (f >= xs[n - 1]) return ys[n - 1];
+  const d = [], m = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  let i = 0; while (f > xs[i + 1]) i++;
+  const h = xs[i + 1] - xs[i], t = (f - xs[i]) / h, t2 = t * t, t3 = t2 * t;
+  return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1];
+}
+function hash(...a) { // seeded integer hash → [0,1)
+  let h = 2166136261 >>> 0;
+  for (const v of a) { h ^= (v * 2654435761) >>> 0; h = Math.imul(h ^ (h >>> 15), 2246822519); h = Math.imul(h ^ (h >>> 13), 3266489917); h ^= h >>> 16; }
+  return (h >>> 0) / 4294967296;
+}
+function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+const rgb = (c, a = 1) => `rgba(${c.map(Math.round).join(',')},${a})`;
+
+/* ======================= build static DOM ======================= */
+// line graphics
+(function buildLines() {
+  const s = $('lines'), W = 'rgba(255,255,255,.55)';
+  const sparkle = (x, y, r) => `<path d="M${x} ${y - r} C${x + r * .12} ${y - r * .12} ${x + r * .12} ${y - r * .12} ${x + r} ${y} C${x + r * .12} ${y + r * .12} ${x + r * .12} ${y + r * .12} ${x} ${y + r} C${x - r * .12} ${y + r * .12} ${x - r * .12} ${y + r * .12} ${x - r} ${y} C${x - r * .12} ${y - r * .12} ${x - r * .12} ${y - r * .12} ${x} ${y - r}Z" fill="#fff"/>`;
+  // diagonals: y = 1010 - 0.4583x  and  y = 80 + 0.4948x  → cross at x≈978.6
+  const dx = (1010 - 80) / (0.4583 + 0.4948), dy = 80 + 0.4948 * dx;
+  s.innerHTML = `<g fill="none" stroke="${W}" stroke-width="1.6">
+    <circle cx="1480" cy="430" r="330"/><circle cx="360" cy="770" r="470"/>
+    <line x1="0" y1="250" x2="1920" y2="250"/><line x1="0" y1="905" x2="1920" y2="905"/>
+    <line x1="300" y1="0" x2="300" y2="1080"/><line x1="1600" y1="0" x2="1600" y2="1080"/>
+    <line x1="0" y1="1010" x2="1920" y2="130"/><line x1="0" y1="80" x2="1920" y2="1030"/></g>
+    ${sparkle(300, 250, 20)}${sparkle(1600, 250, 24)}${sparkle(300, 905, 22)}${sparkle(1600, 905, 18)}${sparkle(dx, dy, 16)}`;
+})();
+
+// hero mask polygon: device outline traced on the 580x1177 crop (rounded corners, r≈60)
+(function buildHeroPoly() {
+  const pts = [];
+  const L = 8, R = 571, T = 8, B = 1177, r = 60;
+  const arc = (cx, cy, a0, a1) => { for (let i = 0; i <= 8; i++) { const a = a0 + (a1 - a0) * i / 8; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  arc(L + r, T + r, Math.PI, 1.5 * Math.PI); arc(R - r, T + r, 1.5 * Math.PI, 2 * Math.PI);
+  arc(R - r, B - r, 0, .5 * Math.PI); arc(L + r, B - r, .5 * Math.PI, Math.PI);
+  $('heroPoly').setAttribute('points', pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' '));
+})();
+
+// handles
+for (let i = 0; i < 4; i++) { const d = document.createElement('div'); d.className = 'handle'; $('handles').appendChild(d); }
+
+// prompt text spans
+const PCH = [];
+(function buildPrompt() {
+  const el = $('ptext');
+  for (const ch of CFG.prompt) {
+    const s = document.createElement('span');
+    s.textContent = ch; el.appendChild(s); PCH.push(s);
+  }
+  $('mlabelText').textContent = CFG.modelLabel;
+})();
+const N = PCH.length;
+// keystroke schedule: first 30 chars f4→f26 with a human rhythm, stall, then burst f40→f48
+const T_CHAR = (() => {
+  const gaps = [];
+  for (let i = 1; i < 30; i++) {
+    const c = CFG.prompt[i - 1];
+    let g = 0.55 + 0.9 * hash(i, 17);
+    if (c === ' ') g += 0.55 * hash(i, 3);
+    if (c === ',') g += 0.9;
+    gaps.push(g);
+  }
+  const tot = gaps.reduce((a, b) => a + b, 0), t = [4];
+  for (const g of gaps) t.push(t[t.length - 1] + g * 22 / tot);
+  for (let i = 30; i < N; i++) t.push(40 + 8 * (i - 30 + 1) / (N - 30));
+  return t;
+})();
+
+// page elements
+const ICONS = {
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z M9 8h6 M9 12h6 M9 16h3" />',
+  target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+  spark: '<path d="M12 3c.6 4.6 3.4 7.4 8 8-4.6.6-7.4 3.4-8 8-.6-4.6-3.4-7.4-8-8 4.6-.6 7.4-3.4 8-8z"/>',
+};
+const PEL = []; // {el, x, y, layer}
+function addPel(parent, html, cls, style, fx, fy) {
+  const d = document.createElement('div'); d.className = 'pel ' + (cls || ''); d.innerHTML = html;
+  if (style) d.style.cssText += style; parent.appendChild(d);
+  PEL.push({ el: d, fx, fy }); return d;
+}
+(function buildPage() {
+  const nav = $('nav'), pc = $('pageContent');
+  const logo = document.createElement('img'); logo.src = 'assets/logo.png'; logo.id = 'logo'; logo.className = 'pel';
+  logo.style.filter = 'brightness(0) invert(1)'; nav.appendChild(logo); PEL.push({ el: logo, fx: 72, fy: 44 });
+  const nl = addPel(nav, CFG.nav.map(n => `<span>${n}</span>`).join(''), '', '', 960, 52); nl.id = 'navlinks';
+  const pill = addPel(nav, CFG.pill, '', '', 1600, 42); pill.id = 'pill';
+  const hl = addPel(pc, CFG.headline.map((l, i) => `<div id="hl${i}">${[...l].map(c => `<span>${c}</span>`).join('')}</div>`).join(''), '', '', 96, 300); hl.id = 'hl';
+  const p = addPel(pc, CFG.para, '', '', 98, 458); p.id = 'para';
+  const c = addPel(pc, `${CFG.cta}<svg width="20" height="20" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="#121212" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`, '', '', 98, 584); c.id = 'cta';
+  CFG.features.forEach(([ic, b, t], i) => {
+    addPel(pc, `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.62)" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${ICONS[ic]}</svg><span><b>${b}</b>${t}</span>`, 'feat', `top:${708 + i * 46}px`, 98, 708 + i * 46);
+  });
+  addPel(pc, 'FREE FOREVER', 'wm', 'left:98px;font-size:19px;font-weight:700', 98, 978);
+  addPel(pc, '160+ <span style="font-weight:400">CURRENCIES</span>', 'wm', 'left:330px;font-size:19px;font-weight:600;letter-spacing:.06em', 330, 978);
+  addPel(pc, 'ACCOUNTE<span style="font-weight:300;letter-spacing:.02em">&nbsp;AI</span>', 'wm', 'left:552px;font-size:20px;font-weight:700;font-family:\'DejaVu Sans Mono\',monospace;letter-spacing:.02em', 552, 976);
+})();
+const HL = [0, 1].map(i => [...$('hl' + i).children]);
+
+/* ======================= per-frame drawing helpers ======================= */
+const asciiCtx = $('ascii').getContext('2d');
+function drawAscii(f) {
+  const ctx = asciiCtx; ctx.clearRect(0, 0, 1920, 1080);
+  const E = kf(f, [[29, 0], [32, 1, Ease.out], [39, 1], [47, 0, Ease.in]]);
+  if (E <= 0) return;
+  const G = ['%', '@', '#', '⨸'], cw = 24, ch = 34, band = 300;
+  ctx.font = '600 24px "DejaVu Sans Mono", monospace'; ctx.textBaseline = 'top';
+  for (let gy = 0; gy < 32; gy++) for (let gx = 0; gx < 80; gx++) {
+    const x = gx * cw; const d = Math.min(x, 1920 - cw - x); if (d > band) continue;
+    const p = E * Math.pow(1 - d / band, 1.4);
+    const r = hash(gx, gy, Math.floor(f / 2));
+    if (r > p) continue;
+    const g = G[Math.floor(hash(gx, gy, f, 9) * 4)];
+    ctx.fillStyle = hash(gx, gy, 5) < .35 ? 'rgba(214,196,255,.9)' : 'rgba(255,255,255,.85)';
+    ctx.fillText(g, x + 2, gy * ch + 2);
+  }
+}
+const grainCtx = $('grain').getContext('2d'), grainImg = grainCtx.createImageData(960, 540);
+function drawGrain(f) {
+  const r = mulberry32(f * 7919 + 13), d = grainImg.data;
+  for (let i = 0; i < d.length; i += 4) { const v = 128 + (r() + r() + r() - 1.5) * 120; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+  grainCtx.putImageData(grainImg, 0, 0);
+}
+
+/* ======================= keyframe tables ======================= */
+const EXP8 = Ease.expo(8), EXP36 = Ease.expo(3.6);
+const BOX_KEYS = [ // [x, y, w, h]
+  [0, [884, 635, 709, 112]],
+  [29, [570, 477, 778, 130], EXP8],
+  [36, [541, 425, 833, 190], Ease.out],
+  [44, [541, 227, 833, 640], Ease.inOut],
+  [48, [575, 227, 766, 626], Ease.out],
+];
+const FULL = [0, 0, 1920, 1080];
+function boxRect(f) {
+  if (f <= 63) return kf(f, BOX_KEYS);
+  if (f <= 96) return [575, 227, 766, 626];
+  if (f <= 121) return [576, kf(f, [[97, 60], [110, 245, Ease.out5]]), 763, 596];
+  return kf(f, [[121, [576, 245, 763, 596]], [145, FULL, EXP36]]);
+}
+const BTN_CENTER = [575 + 766 - 16 - 37.5, 227 + 626 - 16 - 37.5]; // send button centre in settle layout
+const ZOOM = 3.19, ZOOM_TARGET = [1100, 560];
+const PAGE_P = f => kfMono(f, [[121, 0], [130, .5], [147, .9], [161, 1]]);
+const PULL_S = f => kfMono(f, [[161, 1], [173, 1634 / 1920], [190, 1404 / 1920], [214, 1344 / 1920], [225, 1344 / 1920]]);
+
+/* ======================= seek ======================= */
+const C_INDIGO = hex('#24249a'), C_BLUE = hex('#2f5be0'), C_MAROON = hex('#7d1f3f'), C_INK = hex('#121212');
+const DARK = [9, 15, 30], CYAN = [94, 231, 255];
+
+function seekFrame(F) {
+  const f = Math.round(F);
+  const zoomShot = f >= 64 && f <= 96, wide = f >= 97;
+
+  /* --- world camera: zoom shot / pull-back --- */
+  let wT = 'none', wFilter = 'none', wRadius = 0, wShadow = 'none';
+  if (zoomShot) {
+    const z = ZOOM * kf(f, [[64, 1], [96, 1.025, Ease.lin]]);
+    wT = `translate(${ZOOM_TARGET[0] - BTN_CENTER[0] * z}px,${ZOOM_TARGET[1] - BTN_CENTER[1] * z}px) scale(${z})`;
+    const b = kf(f, [[92, 0], [96, 6, Ease.in]]); if (b > 0) wFilter = `blur(${b}px)`;
+  }
+  if (f >= 161) {
+    const s = PULL_S(f);
+    wT = `translate(${960 * (1 - s)}px,${540 * (1 - s)}px) scale(${s})`;
+    wRadius = 14 * clamp((1 - s) / .3); wShadow = `0 ${40 * (1 - s)}px ${120 * (1 - s)}px rgba(20,30,50,${.9 * (1 - s)})`;
+  }
+  const W = $('world'); W.style.transform = wT; W.style.filter = wFilter; W.style.borderRadius = wRadius + 'px'; W.style.boxShadow = wShadow;
+
+  /* --- scenes --- */
+  $('promptScene').style.display = wide ? 'none' : 'block';
+  $('pageScene').style.display = wide ? 'block' : 'none';
+
+  // prompt background camera: pull back 7%, punch on the charge, ease toward subject
+  const cam = kf(f, [[0, [1, 0]], [29, [.93, 0], EXP8], [36, [.955, 0], Ease.out], [48, [.93, 0]], [63, [1.0, -70], Ease.inOut]]);
+  $('bgcam').style.transform = `translateX(${cam[1]}px) scale(${cam[0]})`;
+  drawAscii(f);
+
+  // page hero: zooms out 1.1% per frame behind the box, settles at 1
+  const hz = Math.max(1, 1.297 - 0.011 * (f - 97));
+  $('heroCam').style.transform = `scale(${f < 97 ? 1.297 : hz})`;
+  const heroS = .92;
+  $('heroPlace').setAttribute('transform', `translate(1262 168) rotate(5 290 600) scale(${heroS})`);
+  const smearK = f >= 161 ? kf(f, [[161, 0], [214, 1, Ease.out]]) : 0;
+  $('smearScale').setAttribute('transform', `translate(${580} 0) scale(${1.32 + .38 * smearK} 1) translate(${-580} 0)`);
+  $('smear').setAttribute('opacity', (.42 + .3 * smearK).toFixed(3));
+  $('smearDev').setAttribute('stdDeviation', `${40 + 24 * smearK} 0`);
+
+  /* --- box --- */
+  const [bx, by, bw, bh] = boxRect(f);
+  const tilt = kf(f, [[29, 0], [36, 12, Ease.out], [46, 0, Ease.inOut]]);
+  const radius = f <= 121 ? 18 : kf(f, [[121, 18], [140, 0]]);
+  const Bx = $('box'), Sh = $('boxShadow');
+  for (const el of [Bx, Sh]) {
+    el.style.left = bx + 'px'; el.style.top = by + 'px'; el.style.width = bw + 'px'; el.style.height = bh + 'px';
+    el.style.borderRadius = radius + 'px';
+    el.style.transform = tilt > .01 ? `perspective(1500px) rotateX(${tilt}deg)` : 'none';
+  }
+  const shA = f <= 121 ? 1 : kf(f, [[121, 1], [134, 0]]);
+  Sh.style.boxShadow = `0 34px 90px rgba(12,22,52,${.42 * shA}), 0 8px 22px rgba(0,0,0,${.14 * shA})`;
+  Sh.style.display = shA > 0 ? 'block' : 'none';
+
+  // fill: layered gradients driven by band values
+  let bg = '#fff';
+  if (f >= 106 && f <= 121) {
+    const grey = lerp([255, 255, 255], [168, 172, 181], Ease.inOut(clamp((f - 106) / 4)));
+    const D = kf(f, [[111, 0], [121, 100]], Ease.sine);           // dark rising from the bottom (%)
+    const B = kf(f, [[111, -8], [121, 108]], Ease.sine);          // cyan band sweeping down (%)
+    bg = [
+      `linear-gradient(180deg, ${rgb(DARK, .93)} 0%, ${rgb(DARK, .93)} ${B - 7}%, ${rgb(CYAN, .95)} ${B - 1.5}%, ${rgb([235, 255, 255], 1)} ${B}%, ${rgb(CYAN, 0)} ${B + 3}%)`,
+      `linear-gradient(0deg, ${rgb(DARK, .93)} 0%, ${rgb(DARK, .93)} ${D}%, ${rgb(DARK, 0)} ${D + 14}%)`,
+      rgb(grey),
+    ].join(',');
+  } else if (f > 121) {
+    const A = kf(f, [[121, .93], [134, .55], [150, 0]]);
+    const V = kf(f, [[121, 100], [138, 40], [150, 0]]);
+    const B = kf(f, [[121, -6], [149, 135]], Ease.sine);
+    const bandA = kf(f, [[121, 1], [140, .8], [150, 0]]);
+    const Wh = kf(f, [[121, 0], [124, .32, Ease.out], [150, 0]]);
+    bg = [
+      `linear-gradient(180deg, ${rgb(CYAN, 0)} ${B - 22}%, ${rgb(CYAN, .55 * bandA)} ${B - 6}%, ${rgb([255, 255, 255], .85 * bandA)} ${B}%, ${rgb([255, 255, 255], 0)} ${B + 5}%)`,
+      `linear-gradient(180deg, ${rgb(DARK, A)} 0%, ${rgb(DARK, A * .75)} ${V * .6}%, ${rgb(DARK, 0)} ${V}%)`,
+      rgb([255, 255, 255], Wh),
+    ].join(',');
+  }
+  // press flash ripple on the box near the button is handled by #send
+  Bx.style.background = bg;
+
+  // bulge under the button during the press
+  const bulge = kf(f, [[80, 0], [83, 6, Ease.out], [87, 0, Ease.inOut]]);
+  const Bu = $('bulge');
+  Bu.style.display = bulge > .1 ? 'block' : 'none';
+  Bu.style.left = (BTN_CENTER[0] - 62) + 'px'; Bu.style.width = '124px';
+  Bu.style.top = (by + bh - 24) + 'px'; Bu.style.height = (24 + bulge * 2) + 'px';
+
+  /* --- prompt text --- */
+  const PL = $('promptLayer');
+  PL.style.display = f <= 121 ? 'block' : 'none';
+  const pt = $('ptext'); pt.style.width = (bw - 60) + 'px';
+  let last = -1;
+  for (let i = 0; i < N; i++) {
+    const a = f - T_CHAR[i], s = PCH[i];
+    if (a < 0) { s.style.visibility = 'hidden'; continue; }
+    last = i; s.style.visibility = 'visible';
+    s.style.color = a >= 13 ? '#121212' : rgb(kf(a, [[0, C_INDIGO], [4, C_BLUE, Ease.lin], [8, C_MAROON, Ease.lin], [13, C_INK, Ease.lin]]));
+  }
+  // caret: blinks while idle, solid while typing
+  const typing = (f >= 4 && f <= 27) || (f >= 40 && f <= 48);
+  const caretOn = f >= 4 && f < 97 && (typing || Math.floor(f / 8) % 2 === 0);
+  const Ca = $('caret');
+  if (caretOn && last >= 0) {
+    const s = PCH[last];
+    Ca.style.display = 'block';
+    Ca.style.left = (30 + s.offsetLeft + s.offsetWidth + 1) + 'px';
+    Ca.style.top = (24 + s.offsetTop + 2) + 'px';
+  } else Ca.style.display = 'none';
+  // wipe mask during the reveal
+  if (f >= 111 && f <= 121) {
+    const D = kf(f, [[111, 0], [121, 100]], Ease.sine), B = kf(f, [[111, -8], [121, 108]], Ease.sine);
+    const m = `linear-gradient(180deg, transparent 0%, transparent ${B}%, #000 ${B + 4}%, #000 ${100 - D - 6}%, transparent ${100 - D + 4}%)`;
+    PL.style.webkitMaskImage = PL.style.maskImage = m;
+  } else PL.style.webkitMaskImage = PL.style.maskImage = 'none';
+  const greyT = clamp((f - 106) / 4);
+  pt.style.opacity = f >= 106 && f <= 121 ? 1 - .25 * greyT : 1;
+
+  // send button press
+  const btnS = kf(f, [[80, 1], [83, 1.12, Ease.out], [87, 1, Ease.inOut]]);
+  const flash = kf(f, [[80, 0], [81, 1, Ease.lin], [85, 1], [88, 0]]);
+  const sb = $('send');
+  sb.style.transform = `scale(${btnS})`;
+  sb.style.background = rgb(lerp([0, 0, 0], hex('#D97757'), flash));
+
+  /* --- handles --- */
+  const hA = kf(f, [[0, 1], [44, 1], [50, 0]]);
+  const HC = [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]], OUT = [[30, 30], [1890, 30], [30, 1050], [1890, 1050]];
+  const fly = kf(f, [[29, 0], [37, 1, Ease.out5]]);
+  [...$('handles').children].forEach((h, i) => {
+    const dirx = i % 2 ? 1 : -1, diry = i > 1 ? 1 : -1;
+    const hug = [HC[i][0] + dirx * 10, HC[i][1] + diry * 10];
+    const p = lerp(hug, OUT[i], fly);
+    h.style.display = hA > 0 && f < 64 ? 'block' : 'none';
+    h.style.opacity = hA; h.style.left = (p[0] - 7.5) + 'px'; h.style.top = (p[1] - 7.5) + 'px';
+  });
+
+  /* --- page content --- */
+  const P = f >= 121 ? PAGE_P(f) : 0;
+  $('pageContent').style.display = $('nav').style.display = f >= 121 ? 'block' : 'none';
+  $('pageContent').style.left = -bx + 'px'; $('pageContent').style.top = -by + 'px';
+  // each element slides from its spot in a 40% copy of the layout centred in the box (f121 rect)
+  // to its final place; position and scale share one progress curve, so nothing collides
+  const R0 = [576, 245, 763, 596], c0 = [R0[0] + R0[2] / 2, R0[1] + R0[3] / 2], S0 = .4;
+  const sc = lerp(S0, 1, P);
+  for (const p of PEL) {
+    const sx = c0[0] + (p.fx - 960) * S0, sy = c0[1] + (p.fy - 540) * S0;
+    p.el.style.transform = `translate(${(sx - p.fx) * (1 - P)}px,${(sy - p.fy) * (1 - P)}px) scale(${sc})`;
+    p.el.style.opacity = clamp(P / .2);
+  }
+  // headline types both lines at once f122→f158
+  const q = clamp((f - 122) / 36);
+  HL.forEach(line => { const n = Math.round(line.length * q); line.forEach((s, i) => s.style.visibility = i < n ? 'visible' : 'hidden'); });
+
+  /* --- overlays --- */
+  const sol = kf(f, [[29, 0], [36, .85, Ease.out], [45, 0, Ease.inOut]]);
+  $('solarA').style.opacity = (sol * .5).toFixed(3); $('solarB').style.opacity = (sol * .6).toFixed(3);
+  $('pink').style.display = zoomShot ? 'block' : 'none';
+  $('pink').style.background = 'linear-gradient(180deg, rgba(255,206,224,.62) 0%, rgba(255,214,230,.25) 26%, rgba(255,214,230,0) 48%)';
+  $('veil').style.opacity = zoomShot ? kf(f, [[92, 0], [96, .5, Ease.in]]) : 0;
+
+  /* --- cursor --- */
+  const Cu = $('cursor');
+  let cur = null;
+  if (f >= 55 && f <= 63) {
+    const L = kf(f, [[55, 46], [59, 122, Ease.out], [63, 112, Ease.inOut]]);
+    cur = { x: 1455, y: 595, L, rot: 0, s: 1 };
+  } else if (zoomShot) {
+    const pos = kf(f, [[64, [2160, 980, 32]], [68, [1580, 760, 8], Ease.out], [80, [ZOOM_TARGET[0] + 6, ZOOM_TARGET[1] + 10, 0], Ease.inOut]]);
+    cur = { x: pos[0], y: pos[1], L: 150, rot: pos[2], s: kf(f, [[80, 1], [82, .9, Ease.out], [86, 1, Ease.inOut]]) };
+  }
+  if (cur) {
+    const k = cur.L / 24;
+    Cu.style.display = 'block';
+    Cu.style.transform = `translate(${cur.x}px,${cur.y}px) rotate(${cur.rot}deg) scale(${k * cur.s}) translate(-3px,-2px)`;
+    Cu.style.filter = `drop-shadow(0 ${2 / k}px ${3 / k}px rgba(0,0,0,.3))`;
+  } else Cu.style.display = 'none';
+
+  drawGrain(f);
+  $('black').style.display = f >= 225 ? 'block' : 'none';
+  $('stage').style.background = '#dddddd';
+}
+function seek(t) { seekFrame(t * 30); }
+window.seek = seek; window.seekFrame = seekFrame;
+
+// fonts and images must be loaded before any text is measured
+window.ready = (async () => {
+  await document.fonts.load('400 34.8px InterL'); await document.fonts.load('700 63px InterL');
+  await document.fonts.load('500 20px InterL'); await document.fonts.load('600 20px InterL');
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+  $('pageContent').style.display = $('nav').style.display = 'block';
+  for (const p of PEL) { p.el.style.transform = 'none'; p.fx = p.el.offsetLeft; p.fy = p.el.offsetTop; }
+  seekFrame(0);
+  return true;
+})();
+</script>
+</body>
+</html>
