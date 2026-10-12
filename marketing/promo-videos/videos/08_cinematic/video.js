@@ -190,8 +190,13 @@
     const R = 110, C = 2 * Math.PI * R;
     const g1 = glassCard(s, 41.4, `<div class="g8k">SAVINGS GOAL</div><div style="display:flex;align-items:center;gap:30px;margin-top:16px"><svg width="260" height="260"><circle cx="130" cy="130" r="${R}" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="22"/><circle class="arc" cx="130" cy="130" r="${R}" fill="none" stroke="#6EE7B7" stroke-width="22" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}" transform="rotate(-90 130 130)"/><text x="130" y="145" text-anchor="middle" font-family="Roboto" font-weight="700" font-size="52" fill="#fff">62%</text></svg><div><div style="font:700 40px Roboto">Family trip</div><div class="g8k" style="margin-top:8px">$2,480 of $4,000</div></div></div>`, L(cx - 760, 90), L(310, 380), L(700, 900));
     E.ft(g1.querySelector('.arc'), 41.8, { attr: { 'stroke-dashoffset': C } }, { attr: { 'stroke-dashoffset': C * 0.38 }, duration: 1.4, ease: 'power3.out' });
-    glassCard(s, 41.8, `<div class="g8k">NET WORTH</div><div class="g8v" style="margin-top:8px">$59,174 <span style="font-size:32px;color:#6EE7B7">▲</span></div><svg width="520" height="120" style="margin-top:14px"><polyline points="0,110 80,96 160,100 240,72 320,64 400,40 520,18" fill="none" stroke="#93C5FD" stroke-width="5"/></svg>`, L(cx + 20, 90), L(330, 860), L(640, 900));
-    const sub = subLine(s, 'Goals & net worth, in one place'); E.ft(sub, 42.2, { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 0.8 }); }
+    const g2 = glassCard(s, 41.8, `<div class="g8k">NET WORTH</div><div class="g8v" style="margin-top:8px">$59,174 <span style="font-size:32px;color:#6EE7B7">▲</span></div><svg width="520" height="120" style="margin-top:14px;overflow:visible"><polyline class="nw" pathLength="1" stroke-dasharray="1 1" points="0,110 80,96 160,100 240,72 320,64 400,40 520,18" fill="none" stroke="#93C5FD" stroke-width="5"/><circle class="nwd" cx="520" cy="18" r="9" fill="#93C5FD"/></svg>`, L(cx + 20, 90), L(330, 860), L(640, 900));
+    const sub = subLine(s, 'Goals & net worth, in one place'); E.ft(sub, 42.2, { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: 0.8 });
+    // keep the overlays alive to the cut: the net-worth line draws on, its end dot breathes, both cards float up slowly
+    E.ft(g2.querySelector('.nw'), 42.1, { strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 2.2, ease: 'power2.inOut' });
+    const nwd = g2.querySelector('.nwd');
+    E.frame((t) => { if (t < 41.4 || t > 44.8) return; const u = t - 41.4; g1.style.translate = `0 ${(-u * 9).toFixed(1)}px`; g2.style.translate = `0 ${(-u * 6).toFixed(1)}px`;
+      nwd.setAttribute('r', (t < 44.3 ? 0 : 9 + Math.sin((t - 44.3) * 12) * 3).toFixed(1)); nwd.style.opacity = t < 44.3 ? 0 : 1; }); }
 
   /* ---------- montage 44.8–47.6 ---------- */
   { const s = E.scene(44.8, 47.6); s.style.background = '#03050A';

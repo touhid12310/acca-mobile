@@ -113,7 +113,7 @@ def main():
     R += ['', '| Size-fitted file | Size | Video bitrate | SSIM vs. high-quality render |', '|---|---|---|---|']
     R += [f"| `{k}` | {v['mib']} MiB | {v['video_kbps']} kb/s | {v['ssim']} |" for k, v in sorted(fit.items())]
     R += ['', 'Targets: ≥ 1080p, 30 fps, 50–60 s, −16 LUFS ±1 integrated, true peak ≤ −1 dBTP, no frozen stretch over 1.2 s, file ≤ 28 MiB.', '',
-          'Spots rendered over 28 MiB (03 3D, 07 glitch, 08 cinematic) were re-encoded two-pass to 26 MiB from the high-quality render (`tools/fit.sh`). SSIM against that render is in the table above (1.0 = identical; above 0.98 is visually transparent).', '',
+          'Spots rendered over 28 MiB (03 3D, 07 glitch, 08 cinematic) were re-encoded two-pass to 26 MiB from the high-quality render (`tools/fit.sh`). SSIM against that render is in the table above (1.0 = identical). 07 scores lower (0.966) because its film grain and scanline texture are random and the encoder does not reproduce them pixel for pixel. Text, UI and HUD lines were compared side by side at full resolution and are indistinguishable.', '',
           '## 2. Pacing and hook', '',
           '- **Hook within 3 s:** each spot opens on its hook line (VO starts by 0.3 s) and a full-frame visual event inside the first 1.5 s.',
           '- **Scene change every 2–4 s:** every timeline is built on a 2.8 s beat; each beat brings a new scene, layout or reveal (see the storyboards in `02_VIDEO_BRIEFS.md`). Every scene also carries a slow camera drift, so no frame is static.',
@@ -135,9 +135,17 @@ def main():
           'Normal text needs 4.5:1. Large text (≥ 24 px, or ≥ 18.7 px bold) needs 3:1. Captions are measured against the brightest possible frame behind the 82 % box.', '',
           '| Video | Pair | Colours | Size | Ratio | Result |', '|---|---|---|---|---|---|']
     for c in cr: R.append(f"| {c['video']} | {c['pair']} | `{c['fg']}` on `{c['bg']}` | {c['size']} | {c['ratio']}:1 | {'PASS' if c['ok'] else 'FAIL'} |")
-    R += ['', 'Four pairs failed the first pass and were fixed before the final render: “$38” (01), “Saved.” and the success toast (05), “+$1,284” and the calendar day numbers (06), and the sticky-note label (09).',
+    R += ['', 'Six pairs in four spots failed the first pass and were fixed before the final render: “$38” (01), “Saved.” and the success toast (05), “+$1,284” and the calendar day numbers (06), and the sticky-note label (09).',
           'Recreated in-app UI keeps the real app’s colours; the message of every such shot is also carried by a headline and caption that pass.', '',
-          '## 6. Captions, safe zones and audio', '',
+          '## 6. Issues found in QA and fixed', '',
+          '| Spot | Finding | Fix |', '|---|---|---|',
+          '| 01, 05, 06, 09 | Six text/background pairs below WCAG AA | Darker emerald and amber text; re-rendered |',
+          '| 03, 07, 08 | Files over the upload budget (up to 533 MB for 07, caused by full-frame grain re-randomized every frame) | Softer grain updating at 6–8 fps; two-pass fit to 26 MiB (SSIM table in section 1) |',
+          '| 08 (9:16) | 1.2 s near-static stretch at 43.6 s | Net-worth line draws on, cards float, end dot pulses; re-rendered |',
+          '| 10 | 1.2 s static stretch at 48.3 s (lock beat) | Camera drift restored, lock “click” bounce, wordmark brought forward 0.25 s; re-rendered |',
+          '| 06 | Negative bars drawn 3× too long; calendar covering the dots | Honest scale; layering fixed |',
+          '| 09 | Labels touching the 9:16 caption band; overlapping goal labels | Re-laid out for portrait |', '',
+          '## 7. Captions, safe zones and audio', '',
           '- **Burned-in captions** for every VO line (white on an 82 % ink box). The end-card VO repeats the on-screen end-card text, so it is not captioned again.',
           '- **9:16 safe zones:** compositions are rebuilt for portrait, not cropped. Captions sit above the bottom 470 px (platform UI), and key content stays between about 150 px and 1,300 px from the top.',
           '- **16:9:** captions sit 58 px from the bottom; content stays clear of the caption band.',

@@ -13,7 +13,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Your money has answers. Ask AccountE’s AI assistant how much you spent on groceries, whether you went over budget, or what your biggest expenses were, and get straight answers from your real records. No menus. No spreadsheets. Just ask. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #AIBookkeeping #MoneyTracker #PersonalFinance #BudgetingApp #AIAssistant #FinanceTips
 - **Fonts:** Bricolage Grotesque + Urbanist · **VO:** Kokoro `af_heart`
-- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 13.0 MB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 11.9 MB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 12.4 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 11.3 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 02 · 2D flat: Four Ways In, One Clean Ledger
 
@@ -23,7 +23,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Receipts, texts, emails, voice notes: AccountE catches all of it. Snap a receipt, type “Coffee 5.40”, say “Paid 60 for internet”, forward bills from your inbox or import a CSV/Excel backlog. AI fills in the amount, category and date. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #ExpenseTracker #ReceiptScanner #AIBookkeeping #SmallBusiness #Productivity #MoneyTracker
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `af_bella`
-- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.5 dBTP, 11.3 MB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.5 dBTP, 11.3 MB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.5 dBTP, 10.8 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.5 dBTP, 10.8 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 03 · 3D: One App. Every Currency.
 
@@ -33,7 +33,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Your money doesn’t live in just one currency, so your money app shouldn’t either. AccountE supports 160+ currencies. Track every account in its own currency, pick your default, and see everything side by side in one dashboard. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #MultiCurrency #Expats #Freelancers #PersonalFinance #MoneyTracker #GlobalBusiness
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `am_michael`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.2 LUFS, -1.4 dBTP, 26.2 MiB) · 9:16 PASS (56.0 s, -16.2 LUFS, -1.4 dBTP, 26.1 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 04 · Isometric: Messy Receipts → Clean Books in 3 Steps
 
@@ -43,7 +43,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Drowning in receipts? 1) Capture it however you like: photo, voice, email or CSV. 2) AI does the boring part: it reads, sorts, flags duplicates and learns from your corrections. 3) See clarity and ask anything. No accounting degree. No spreadsheets. No setup fees. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #Bookkeeping #AIBookkeeping #SmallBusiness #Freelancer #ExpenseTracking #Automation
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `af_heart`
-- **QA:** 16:9 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 19.6 MB) · 9:16 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 17.7 MB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
+- **QA:** 16:9 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 18.7 MiB) · 9:16 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 16.9 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 05 · UI / device mockup: Snap. Check. Saved.
 
@@ -53,7 +53,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Don’t type receipts. Snap them. AccountE’s AI reads the merchant, date, total, every line item, and suggests a category and account. You review and confirm before anything is saved, and the receipt stays attached to the record. Start free on Google Play · accounte.com
 - **Hashtags (6):** #AccountE #ReceiptScanner #ExpenseTracker #AndroidApp #AIBookkeeping #BudgetingApp
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `af_bella`
-- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.3 dBTP, 16.5 MB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.3 dBTP, 14.2 MB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.3 dBTP, 15.7 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.3 dBTP, 13.5 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 06 · Data viz: Reports That Make Sense
 
@@ -63,7 +63,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Where did your money actually go? AccountE turns everyday transactions into reports that make sense: income & expenses, cash flow, spending by category, net worth, account balances, monthly summary, profit & loss and a balance sheet. All built from your real records. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #FinancialReports #DataViz #CashFlow #ProfitAndLoss #SmallBusiness #PersonalFinance
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `am_michael`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 13.0 MiB) · 9:16 PASS (56.0 s, -16.1 LUFS, -1.4 dBTP, 12.6 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 07 · Glitch / futuristic: Your AI Bookkeeper, Working in Real Time
 
@@ -73,7 +73,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Meet your AI bookkeeper. Every transaction gets categorized automatically, corrections teach it your rules, possible duplicates and unusual amounts get flagged, and smart insights spot trends and recurring payments. On the web, AI helps you reconcile bank statements. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #AI #FinTech #AIBookkeeping #Automation #Reconciliation #FutureOfFinance
 - **Fonts:** JetBrains Mono + Urbanist · **VO:** Kokoro `af_heart`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 26.0 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 26.0 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 08 · Cinematic: Four Money Lives, One AI Bookkeeper
 
@@ -83,7 +83,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Four very different money lives. One AI bookkeeper. Freelancers keep business and personal separate. Small businesses get real P&L and balance sheets. Online sellers auto-categorize big CSV exports in many currencies. Households see every wallet and card in one place. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #Freelancers #SmallBusiness #Ecommerce #FamilyFinance #AIBookkeeping #MoneyTracker
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `am_michael`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.1 LUFS, -1.1 dBTP, 26.4 MiB) · 9:16 PASS (56.0 s, -16.1 LUFS, -1.1 dBTP, 26.0 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 09 · Paper-cut / collage: Plan It. Track It. Reach It.
 
@@ -93,7 +93,7 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Plans don’t keep themselves. AccountE helps: set budgets with alerts before you overspend, save toward goals, track loans with payoff projections, keep tabs on money lent and borrowed, and schedule recurring bills with reminders before they’re due. Start free on Google Play · accounte.com
 - **Hashtags (7):** #AccountE #Budgeting #SavingsGoals #DebtFree #MoneyGoals #PersonalFinance #BudgetingApp
 - **Fonts:** Bricolage Grotesque + Urbanist · **VO:** Kokoro `af_bella`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 19.7 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 20.4 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓
 
 ## 10 · Minimal premium: Free. Private. Secure.
 
@@ -103,4 +103,4 @@ All captions below follow the claims rules: no prices, testimonials, counters, d
 - **Caption:** Your money is personal. Your data should be too. Your private workspace, two-factor authentication, secure sign-in, encryption in transit, never shared with third parties, and a privacy mode that hides balances. Start on the free forever plan: no credit card, no time limit. Start free on Google Play · accounte.com
 - **Hashtags (6):** #AccountE #Privacy #DataSecurity #PersonalFinance #FreeApp #AIBookkeeping
 - **Fonts:** Urbanist + Roboto · **VO:** Kokoro `bf_emma`
-- **QA:** pending render
+- **QA:** 16:9 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 8.5 MiB) · 9:16 PASS (56.0 s, -16.0 LUFS, -1.4 dBTP, 8.2 MiB) · claims ✓ · contrast ✓ · fonts ≤ 2 ✓

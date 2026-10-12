@@ -6,28 +6,38 @@ Every file was checked by `tools/qa.py` (ffprobe, EBU R128 loudness, ffmpeg free
 
 | File | Resolution | fps | Duration | Loudness | True peak | Freeze > 1.2 s | Size | Result |
 |---|---|---|---|---|---|---|---|---|
-| `AccountE_01_KineticType_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 13.0 MB | PASS |
-| `AccountE_01_KineticType_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 11.9 MB | PASS |
-| `AccountE_02_Flat2D_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.5 dBTP | none | 11.3 MB | PASS |
-| `AccountE_02_Flat2D_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.5 dBTP | none | 11.3 MB | PASS |
-| `AccountE_03_3D_16x9.mp4` | pending | | | | | | | |
-| `AccountE_03_3D_9x16.mp4` | pending | | | | | | | |
-| `AccountE_04_Isometric_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 19.6 MB | PASS |
-| `AccountE_04_Isometric_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 17.7 MB | PASS |
-| `AccountE_05_UIDeviceMockup_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.3 dBTP | none | 16.5 MB | PASS |
-| `AccountE_05_UIDeviceMockup_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.3 dBTP | none | 14.2 MB | PASS |
-| `AccountE_06_DataViz_16x9.mp4` | pending | | | | | | | |
-| `AccountE_06_DataViz_9x16.mp4` | pending | | | | | | | |
-| `AccountE_07_GlitchFuturistic_16x9.mp4` | pending | | | | | | | |
-| `AccountE_07_GlitchFuturistic_9x16.mp4` | pending | | | | | | | |
-| `AccountE_08_Cinematic_16x9.mp4` | pending | | | | | | | |
-| `AccountE_08_Cinematic_9x16.mp4` | pending | | | | | | | |
-| `AccountE_09_PaperCutCollage_16x9.mp4` | pending | | | | | | | |
-| `AccountE_09_PaperCutCollage_9x16.mp4` | pending | | | | | | | |
-| `AccountE_10_MinimalPremium_16x9.mp4` | pending | | | | | | | |
-| `AccountE_10_MinimalPremium_9x16.mp4` | pending | | | | | | | |
+| `AccountE_01_KineticType_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 12.4 MiB | PASS |
+| `AccountE_01_KineticType_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 11.3 MiB | PASS |
+| `AccountE_02_Flat2D_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.5 dBTP | none | 10.8 MiB | PASS |
+| `AccountE_02_Flat2D_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.5 dBTP | none | 10.8 MiB | PASS |
+| `AccountE_03_3D_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.2 LUFS | -1.4 dBTP | none | 26.2 MiB | PASS |
+| `AccountE_03_3D_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.2 LUFS | -1.4 dBTP | none | 26.1 MiB | PASS |
+| `AccountE_04_Isometric_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 18.7 MiB | PASS |
+| `AccountE_04_Isometric_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 16.9 MiB | PASS |
+| `AccountE_05_UIDeviceMockup_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.3 dBTP | none | 15.7 MiB | PASS |
+| `AccountE_05_UIDeviceMockup_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.3 dBTP | none | 13.5 MiB | PASS |
+| `AccountE_06_DataViz_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 13.0 MiB | PASS |
+| `AccountE_06_DataViz_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.1 LUFS | -1.4 dBTP | none | 12.6 MiB | PASS |
+| `AccountE_07_GlitchFuturistic_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 26.0 MiB | PASS |
+| `AccountE_07_GlitchFuturistic_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 26.0 MiB | PASS |
+| `AccountE_08_Cinematic_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.1 LUFS | -1.1 dBTP | none | 26.4 MiB | PASS |
+| `AccountE_08_Cinematic_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.1 LUFS | -1.1 dBTP | none | 26.0 MiB | PASS |
+| `AccountE_09_PaperCutCollage_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 19.7 MiB | PASS |
+| `AccountE_09_PaperCutCollage_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 20.4 MiB | PASS |
+| `AccountE_10_MinimalPremium_16x9.mp4` | 1920×1080 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 8.5 MiB | PASS |
+| `AccountE_10_MinimalPremium_9x16.mp4` | 1080×1920 | 30 | 56.0 s | -16.0 LUFS | -1.4 dBTP | none | 8.2 MiB | PASS |
 
-Targets: ≥ 1080p, 30 fps, 50–60 s, −16 LUFS ±1 integrated, true peak ≤ −1 dBTP, no frozen stretch over 1.2 s.
+| Size-fitted file | Size | Video bitrate | SSIM vs. high-quality render |
+|---|---|---|---|
+| `AccountE_03_3D_16x9.mp4` | 26.2 MiB | 3702 kb/s | 0.9971 |
+| `AccountE_03_3D_9x16.mp4` | 26.1 MiB | 3702 kb/s | 0.9983 |
+| `AccountE_07_GlitchFuturistic_16x9.mp4` | 26.0 MiB | 3702 kb/s | 0.9664 |
+| `AccountE_07_GlitchFuturistic_9x16.mp4` | 26.0 MiB | 3702 kb/s | 0.9663 |
+| `AccountE_08_Cinematic_9x16.mp4` | 26.0 MiB | 3702 kb/s | 0.9974 |
+
+Targets: ≥ 1080p, 30 fps, 50–60 s, −16 LUFS ±1 integrated, true peak ≤ −1 dBTP, no frozen stretch over 1.2 s, file ≤ 28 MiB.
+
+Spots rendered over 28 MiB (03 3D, 07 glitch, 08 cinematic) were re-encoded two-pass to 26 MiB from the high-quality render (`tools/fit.sh`). SSIM against that render is in the table above (1.0 = identical). 07 scores lower (0.966) because its film grain and scanline texture are random and the encoder does not reproduce them pixel for pixel. Text, UI and HUD lines were compared side by side at full resolution and are indistinguishable.
 
 ## 2. Pacing and hook
 
@@ -112,10 +122,21 @@ Normal text needs 4.5:1. Large text (≥ 24 px, or ≥ 18.7 px bold) needs 3:1. 
 | 10 | Grey support text on ivory | `#5F6672` on `#FAFAF7` | normal | 5.53:1 | PASS |
 | 10 | Brand blue on ivory | `#0204F5` on `#FAFAF7` | normal | 8.59:1 | PASS |
 
-Four pairs failed the first pass and were fixed before the final render: “$38” (01), “Saved.” and the success toast (05), “+$1,284” and the calendar day numbers (06), and the sticky-note label (09).
+Six pairs in four spots failed the first pass and were fixed before the final render: “$38” (01), “Saved.” and the success toast (05), “+$1,284” and the calendar day numbers (06), and the sticky-note label (09).
 Recreated in-app UI keeps the real app’s colours; the message of every such shot is also carried by a headline and caption that pass.
 
-## 6. Captions, safe zones and audio
+## 6. Issues found in QA and fixed
+
+| Spot | Finding | Fix |
+|---|---|---|
+| 01, 05, 06, 09 | Six text/background pairs below WCAG AA | Darker emerald and amber text; re-rendered |
+| 03, 07, 08 | Files over the upload budget (up to 533 MB for 07, caused by full-frame grain re-randomized every frame) | Softer grain updating at 6–8 fps; two-pass fit to 26 MiB (SSIM table in section 1) |
+| 08 (9:16) | 1.2 s near-static stretch at 43.6 s | Net-worth line draws on, cards float, end dot pulses; re-rendered |
+| 10 | 1.2 s static stretch at 48.3 s (lock beat) | Camera drift restored, lock “click” bounce, wordmark brought forward 0.25 s; re-rendered |
+| 06 | Negative bars drawn 3× too long; calendar covering the dots | Honest scale; layering fixed |
+| 09 | Labels touching the 9:16 caption band; overlapping goal labels | Re-laid out for portrait |
+
+## 7. Captions, safe zones and audio
 
 - **Burned-in captions** for every VO line (white on an 82 % ink box). The end-card VO repeats the on-screen end-card text, so it is not captioned again.
 - **9:16 safe zones:** compositions are rebuilt for portrait, not cropped. Captions sit above the bottom 470 px (platform UI), and key content stays between about 150 px and 1,300 px from the top.

@@ -221,7 +221,7 @@
     const b = ct(s, `Powered by <span style="color:${BLUE};font-weight:500">AI</span>.`, cx, cy + L(80, 110), L(100, 100)); reveal(b, 45.6, 1.2); E.cue(44.9, 'swoosh', { gain: 0.25 }); E.cue(45.6, 'swoosh', { gain: 0.25 }); }
 
   /* ---------- S18 47.6–50.4  mark → lock → mark ---------- */
-  s = sc(47.6, 50.4, { static: true });
+  s = sc(47.6, 50.4);
   { const icS = L(220, 240), iy = L(300, 560);
     const ic = E.logoIcon(s, icS, { left: cx - icS / 2 + 'px', top: iy + 'px' });
     E.ft(ic, 47.65, { autoAlpha: 0, scale: 0.9 }, { autoAlpha: 1, scale: 1, duration: 0.8, ease: 'power2.out' });
@@ -230,11 +230,12 @@
     const shk = svgEl(s, bw, 170, hp(`M${bw * 0.33},170 V${bw * 0.3} A${bw * 0.17},${bw * 0.17} 0 0 1 ${bw * 0.67},${bw * 0.3} V170`, 6), bx, by - 166);
     draw(body.querySelectorAll('path'), 47.9, 0.7); draw(shk.querySelectorAll('path'), 48.2, 0.6); E.cue(48.85, 'click', { gain: 0.45 });
     E.to(shk, 48.85, { y: 14, duration: 0.15, ease: 'power2.in' });
-    E.to([body, shk], 49.4, { autoAlpha: 0, duration: 0.4 });
+    E.to([body, shk], 49.15, { autoAlpha: 0, duration: 0.4 });
+    E.ft(ic, 48.85, { scale: 1 }, { scale: 0.94, duration: 0.25, ease: 'power2.out' }); E.to(ic, 49.1, { scale: 1, duration: 0.5, ease: 'back.out(2)' });
     const wm = E.wordmark(s, { width: L(620, 640), left: cx - L(310, 320), top: iy + icS + L(60, 90), color: INK });
     E.set(wm.glyph('icon'), 47.6, { opacity: 0 });
-    wm.glyphs.filter((g) => g.k !== 'icon').forEach((g, i) => E.ft(g.els, 49.5 + i * 0.05, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }));
-    E.cue(49.5, 'swoosh', { gain: 0.25 }); }
+    wm.glyphs.filter((g) => g.k !== 'icon').forEach((g, i) => E.ft(g.els, 49.25 + i * 0.05, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out' }));
+    E.cue(49.25, 'swoosh', { gain: 0.25 }); }
 
   E.setupCaptions({ hideFrom: 50.4 });
   E.endCard(50.4, 56);
