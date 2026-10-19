@@ -475,12 +475,32 @@ export function useGooglePlayBilling({
 
       setPurchasing(planSlug);
       try {
+        // Already subscribed on Play (monthly -> yearly)? Play holds one base
+        // plan of a subscription at a time, so the new one must replace the
+        // owned purchase or Play answers "already owned". Full price now, and
+        // Play carries the unused days of the old plan over.
+        const owned = await fetchAvailablePurchases()
+          .then((items) =>
+            items.find((item) => isOurProduct(item) && !isPendingPurchase(item) && purchaseTokenOf(item)),
+          )
+          .catch(() => undefined);
+        const ownedToken = owned ? purchaseTokenOf(owned) : undefined;
+
         await requestPurchase({
           type: 'subs',
           request: {
             google: {
               skus: [mapping.product_id],
               subscriptionOffers: [{ sku: mapping.product_id, offerToken }],
+              ...(owned && ownedToken
+                ? {
+                    purchaseToken: ownedToken,
+                    subscriptionProductReplacementParams: {
+                      oldProductId: owned.productId,
+                      replacementMode: 'charge-full-price' as const,
+                    },
+                  }
+                : {}),
             },
           },
         });
@@ -493,6 +513,7 @@ export function useGooglePlayBilling({
       connected,
       findStoreProduct,
       isIos,
+      isOurProduct,
       onError,
       productIds,
       productMappingFor,

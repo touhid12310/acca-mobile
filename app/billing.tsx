@@ -55,6 +55,8 @@ export default function BillingScreen() {
   // null = follow the plan's own default cycle (yearly whenever it is sold).
   const [billingCycle, setBillingCycle] = useState<BillingCycle | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
+  // Read once: render must stay pure, and day precision is all the dates need.
+  const [now] = useState(() => Date.now());
 
   const plansQuery = useQuery({
     queryKey: ["billing-plans"],
@@ -81,6 +83,15 @@ export default function BillingScreen() {
       return unwrapData(response.data) || [];
     },
   });
+
+  const overview = overviewQuery.data;
+  const currentSlug = overview?.current_plan?.slug || "free";
+  const onPaidPlan = currentSlug !== "free";
+  // The cycle the subscriber pays on. The toggle only browses prices — reading
+  // it showed a monthly subscriber the yearly price as their current package.
+  const currentCycle: BillingCycle = overview?.subscription?.billing_cycle === "yearly" ? "yearly" : "monthly";
+  const playManaged = Boolean(overview?.subscription?.managed_by_google_play);
+  const appStoreManaged = Boolean(overview?.subscription?.managed_by_app_store);
 
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
@@ -211,11 +222,15 @@ export default function BillingScreen() {
   const cycleFor = useCallback(
     (plan: BillingPlan): BillingCycle => {
       const cycles = plan?.pricing?.cycles || {};
-      const preferred = billingCycle || plan?.pricing?.default_cycle || "monthly";
+      // Until the user picks one, the plan they are on opens on their own cycle.
+      const preferred =
+        billingCycle ||
+        (onPaidPlan && plan?.slug === currentSlug ? currentCycle : plan?.pricing?.default_cycle) ||
+        "monthly";
 
       return (cycles[preferred] ? preferred : (Object.keys(cycles)[0] as BillingCycle)) || "monthly";
     },
-    [billingCycle],
+    [billingCycle, onPaidPlan, currentSlug, currentCycle],
   );
 
   const pricingFor = useCallback(
@@ -308,7 +323,8 @@ export default function BillingScreen() {
     [paidPlans],
   );
 
-  const activeCycle: BillingCycle = billingCycle || (anyYearly ? "yearly" : "monthly");
+  const activeCycle: BillingCycle =
+    billingCycle || (onPaidPlan ? currentCycle : anyYearly ? "yearly" : "monthly");
 
   const bestYearlySaving = useMemo(
     () =>
@@ -378,8 +394,47 @@ export default function BillingScreen() {
     toast.success(`${code} copied.`);
   };
 
-  const overview = overviewQuery.data;
   const pending = useMemo(() => overview?.invoices?.filter((invoice) => invoice.status === "pending") || [], [overview]);
+
+  const subscription = overview?.subscription;
+  const trialing = subscription?.status === "trialing";
+  const shortDate = (value?: string | null) =>
+    value ? new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+  const cycleWord = currentCycle === "yearly" ? "Yearly" : "Monthly";
+  // What the next renewal charges: the subscriber's own cycle, not the toggle.
+  const renewalPrice = overview?.current_plan?.pricing?.cycles?.[currentCycle]?.price;
+  // A paid switch to yearly starts once the month already paid for runs out.
+  const periodStartsLater = Boolean(
+    subscription?.current_period_starts_at && new Date(subscription.current_period_starts_at).getTime() > now,
+  );
+  // Mirrors how the API dates a yearly invoice raised mid-period.
+  const yearStartsAt =
+    (subscription?.status === "trialing" || subscription?.status === "active") &&
+    subscription?.current_period_ends_at &&
+    new Date(subscription.current_period_ends_at).getTime() > now
+      ? subscription.current_period_ends_at
+      : null;
+  // Billed by the other platform's store: paying here too would charge twice.
+  const billedElsewhere = (playManaged && Platform.OS !== "android") || (appStoreManaged && Platform.OS !== "ios");
+
+  /** Monthly -> yearly on the store that bills this phone (Play replaces the owned plan). */
+  const upgradeWithStore = (plan: BillingPlan) => {
+    const amount = play.amountFor(plan.slug, "yearly");
+    metaEvents.logCheckout(plan.slug, "yearly", amount?.value, amount?.currency);
+    play.purchase(plan.slug, "yearly");
+  };
+
+  const upgradeNote = billedElsewhere
+    ? playManaged
+      ? "Your Premium is billed by Google Play. Switch to yearly in the AccountE Android app."
+      : "Your Premium is billed by the App Store. Switch to yearly on your iPhone."
+    : playManaged
+      ? "Google Play charges the yearly price now and adds the days left on your month."
+      : Platform.OS === "ios"
+        ? "The App Store makes the switch and credits what is left of your current plan."
+        : yearStartsAt
+          ? `Paying by card? Your year starts ${shortDate(yearStartsAt)}, when your ${trialing ? "trial" : "current month"} ends — no days lost.`
+          : "Pay once and your year starts today.";
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["top"]}>
@@ -395,6 +450,18 @@ export default function BillingScreen() {
               <View style={styles.currentTitle}><ShieldCheck size={22} color={colors.primary} /><Text style={[styles.eyebrow, { color: colors.primary }]}>CURRENT PACKAGE</Text></View>
               <Text style={[styles.currentName, { color: colors.onSurface }]}>{overview?.current_plan?.name || "Free Forever"}</Text>
               <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>Status: {overview?.subscription?.status || "free"}</Text>
+              {onPaidPlan && subscription?.current_period_ends_at ? (
+                <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
+                  {trialing
+                    ? `Trial ends ${shortDate(subscription.trial_ends_at || subscription.current_period_ends_at)}`
+                    : periodStartsLater
+                      ? `${cycleWord} plan · starts ${shortDate(subscription.current_period_starts_at)}, renews ${shortDate(subscription.current_period_ends_at)}`
+                      : `${cycleWord} plan · renews ${shortDate(subscription.current_period_ends_at)}`}
+                  {renewalPrice
+                    ? `${trialing ? ", then" : " at"} ${money(renewalPrice, overview!.current_plan.currency)}/${currentCycle === "yearly" ? "yr" : "mo"}`
+                    : ""}
+                </Text>
+              ) : null}
               {overview?.usage?.limit !== null && overview?.usage?.limit !== undefined && (
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{overview.usage.used} of {overview.usage.limit} AI transactions used</Text>
               )}
@@ -591,10 +658,15 @@ export default function BillingScreen() {
             )}
 
             {(plansQuery.data || []).map((plan) => {
-              const current = overview?.current_plan?.slug === plan.slug;
+              const onThisPlan = currentSlug === plan.slug;
               const premium = plan.slug !== "free";
               const planCoupon = appliedCoupon?.plan_slug === plan.slug ? appliedCoupon : null;
               const planCycle = cycleFor(plan);
+              // A paid plan is only "current" on the cycle being paid for.
+              const current = onThisPlan && (!premium || planCycle === currentCycle);
+              const canSwitchToYearly = onThisPlan && premium && !current && planCycle === "yearly";
+              const onYearlyAlready = onThisPlan && premium && !current && planCycle === "monthly";
+              const storeYearlyPrice = canSwitchToYearly ? play.displayPriceFor(plan.slug, "yearly") : null;
               const pricing = pricingFor(plan);
               const canTrial = premium && plan.trial_enabled && overview?.subscription?.can_start_trial && plan.trial_days > 0 && overview?.current_plan?.slug === "free";
               return (
@@ -645,6 +717,26 @@ export default function BillingScreen() {
                   {plan.ai_monthly_limit ? <View style={[styles.quota, { backgroundColor: colors.primaryContainer }]}><Sparkles size={16} color={colors.primary} /><Text style={{ color: colors.onPrimaryContainer, fontWeight: "700" }}>Up to {plan.ai_monthly_limit} AI transactions per period</Text></View> : null}
                   {current ? (
                     <Button label="Current package" icon={ShieldCheck} variant="secondary" fullWidth disabled />
+                  ) : canSwitchToYearly && billedElsewhere ? (
+                    <Button label="Upgrade to yearly" fullWidth disabled />
+                  ) : canSwitchToYearly && (playManaged || Platform.OS === "ios") ? (
+                    <Button
+                      label={storeYearlyPrice ? `Upgrade to yearly · ${storeYearlyPrice}` : "Upgrade to yearly"}
+                      fullWidth
+                      loading={play.purchasing === plan.slug}
+                      disabled={!play.available || play.expoGoBlocked || !play.connected || !storeYearlyPrice}
+                      onPress={() => upgradeWithStore(plan)}
+                    />
+                  ) : canSwitchToYearly ? (
+                    <Button
+                      label={planCoupon?.covers_full_amount ? "Redeem coupon & upgrade" : "Upgrade to yearly"}
+                      fullWidth
+                      loading={busy === plan.slug || play.purchasing === plan.slug}
+                      disabled={couponBusy || Boolean(busy) || Boolean(play.purchasing)}
+                      onPress={() => startPurchase({ kind: "plan", plan })}
+                    />
+                  ) : onYearlyAlready ? (
+                    <Button label="You pay yearly" icon={ShieldCheck} variant="secondary" fullWidth disabled />
                   ) : canTrial ? (
                     <Button label={`Start ${plan.trial_days}-day free trial`} fullWidth loading={trialMutation.isPending} onPress={() => trialMutation.mutate(plan)} />
                   ) : premium && Platform.OS === "ios" ? (
@@ -674,6 +766,13 @@ export default function BillingScreen() {
                       disabled={couponBusy || Boolean(busy) || Boolean(play.purchasing)}
                       onPress={() => startPurchase({ kind: "plan", plan })}
                     />
+                  ) : null}
+                  {canSwitchToYearly || onYearlyAlready ? (
+                    <Text style={[styles.muted, styles.cycleNote, { color: colors.onSurfaceVariant }]}>
+                      {onYearlyAlready
+                        ? `Your yearly plan renews ${shortDate(subscription?.current_period_ends_at)}.`
+                        : upgradeNote}
+                    </Text>
                   ) : null}
                 </Card>
               );
@@ -795,6 +894,7 @@ const styles = StyleSheet.create({
   cycleLabel: { fontSize: 14, fontWeight: "700" },
   cycleSave: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999 },
   cycleSaveText: { fontSize: 11, fontWeight: "800" },
+  cycleNote: { textAlign: "center", marginTop: -spacing.sm },
   saveRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
   saveText: { fontSize: 12.5, fontWeight: "600", flex: 1 },
   strikePrice: { ...typography.caption, textDecorationLine: "line-through" },

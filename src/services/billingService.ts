@@ -97,7 +97,10 @@ export type BillingOverview = {
   subscription: {
     status: string;
     subscribed_plan_slug: string;
+    /** The cycle being paid for (a trial renews on it). Missing from older API builds. */
+    billing_cycle?: BillingCycle;
     trial_ends_at?: string | null;
+    current_period_starts_at?: string | null;
     current_period_ends_at?: string | null;
     grace_ends_at?: string | null;
     in_grace_period: boolean;
