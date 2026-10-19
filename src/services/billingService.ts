@@ -109,6 +109,16 @@ export type BillingOverview = {
     billing_provider: 'eps' | 'google_play' | 'app_store';
     managed_by_google_play: boolean;
     managed_by_app_store?: boolean;
+    /** Google Play / App Store renew it; card / bKash never renews on its own. */
+    auto_renews?: boolean;
+    /** Cancelled: Premium runs to current_period_ends_at, then stops. */
+    cancelled?: boolean;
+    /** Card / bKash and Google Play cancel through the API; Apple only in iOS settings. */
+    can_cancel?: boolean;
+    /** Renew (card / bKash): from the first reminder on, in grace, and through a trial. */
+    can_renew?: boolean;
+    /** Days before the end that card / bKash reminders go out (0 = the last day). */
+    reminder_days?: number[];
   };
   usage: {
     used: number;
@@ -161,6 +171,15 @@ const billingService = {
     }),
   verifyPayment: (paymentUuid: string) =>
     apiRequest(`/billing/payments/${paymentUuid}/verify`, { method: 'POST' }),
+  /** Card / bKash: the invoice for the next period (made only now), ready to pay. */
+  renew: (couponCode?: string | null) =>
+    apiRequest<SubscriptionInvoice>('/billing/renew', {
+      method: 'POST',
+      body: { coupon_code: couponCode ?? null },
+    }),
+  /** Card / bKash stops reminding; Google Play stops renewing. Premium runs to the paid end. */
+  cancel: () => apiRequest<BillingOverview>('/billing/cancel', { method: 'POST' }),
+  resume: () => apiRequest<BillingOverview>('/billing/resume', { method: 'POST' }),
 
   // Google Play in-app subscriptions (Android only). Play takes the payment;
   // the backend only verifies the purchase token and grants entitlement.

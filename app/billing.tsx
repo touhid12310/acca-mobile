@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
@@ -14,6 +14,7 @@ import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import billingService, { BillingPlan, CouponOffer, SubscriptionInvoice, BillingCycle } from "../src/services/billingService";
 import { useGooglePlayBilling } from "../src/hooks/useGooglePlayBilling";
+import { deepLinkToSubscriptions } from "expo-iap";
 import { radius, spacing, typography } from "../src/constants/theme";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import metaEvents from "../src/services/metaEvents";
@@ -436,6 +437,75 @@ export default function BillingScreen() {
           ? `Paying by card? Your year starts ${shortDate(yearStartsAt)}, when your ${trialing ? "trial" : "current month"} ends — no days lost.`
           : "Pay once and your year starts today.";
 
+  // Renewal state. Card / bKash never renews by itself; the stores do unless
+  // the subscriber cancelled.
+  const autoRenews = Boolean(subscription?.auto_renews);
+  const cancelled = Boolean(subscription?.cancelled);
+  const inGrace = Boolean(subscription?.in_grace_period);
+  // After a cancel the one choice is keeping it; Renew returns then. Apple
+  // allows no other payment rail on iOS, so Renew stays off there.
+  const canRenew = Boolean(subscription?.can_renew) && !cancelled && Platform.OS !== "ios";
+  const periodEnd = subscription?.current_period_ends_at;
+  // Calendar days in the phone's timezone, as the reminder email counts them.
+  const daysLeft = periodEnd
+    ? Math.max(0, Math.round((new Date(periodEnd).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / 86400000))
+    : null;
+  const endsWhen = daysLeft === 0 ? "today" : daysLeft === 1 ? "tomorrow" : `in ${daysLeft} days`;
+  const renewPrice = renewalPrice
+    ? `${money(renewalPrice, overview!.current_plan.currency)}/${currentCycle === "yearly" ? "yr" : "mo"}`
+    : "";
+  const storeName = appStoreManaged ? "the App Store" : "Google Play";
+
+  /** Renew: the invoice for the next period (made now), then the usual pay sheet. */
+  const renewNow = async () => {
+    if (busy || couponBusy || play.purchasing) return;
+    setBusy("renew");
+    try {
+      const code = appliedCoupon?.plan_slug === currentSlug ? appliedCoupon.code : null;
+      const response = await billingService.renew(code);
+      const invoice = unwrapData(response.data);
+      if (!response.success || !invoice) throw new Error(apiMessage(response, "Could not start the renewal."));
+      setBusy(null);
+      setGatewayFor({ kind: "invoice", invoice });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not start the renewal.");
+      setBusy(null);
+    }
+  };
+
+  const subscriptionAction = useMutation({
+    mutationFn: async (action: "cancel" | "resume") => {
+      const response = action === "cancel" ? await billingService.cancel() : await billingService.resume();
+      if (!response.success) {
+        throw new Error(apiMessage(response, action === "cancel" ? "Could not cancel." : "Could not keep Premium."));
+      }
+      return response;
+    },
+    onSuccess: async (response) => {
+      toast.success(apiMessage(response, "Done."));
+      await refresh();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  /** Card / bKash stops reminding, Google Play stops renewing; Apple cancels only in its own screen. */
+  const confirmCancel = () => {
+    if (appStoreManaged) {
+      deepLinkToSubscriptions({}).catch(() =>
+        toast.info("Open Settings → your name → Subscriptions to cancel."),
+      );
+      return;
+    }
+    Alert.alert(
+      "Cancel subscription?",
+      `${playManaged ? "Google Play will stop renewing it. " : "We will stop the renewal reminders. "}Premium stays on until ${shortDate(periodEnd)}, then switches to Free — nothing is deleted.`,
+      [
+        { text: "Keep it", style: "cancel" },
+        { text: "Yes, cancel", style: "destructive", onPress: () => subscriptionAction.mutate("cancel") },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]} edges={["top"]}>
       <BrandStrip />
@@ -450,26 +520,86 @@ export default function BillingScreen() {
               <View style={styles.currentTitle}><ShieldCheck size={22} color={colors.primary} /><Text style={[styles.eyebrow, { color: colors.primary }]}>CURRENT PACKAGE</Text></View>
               <Text style={[styles.currentName, { color: colors.onSurface }]}>{overview?.current_plan?.name || "Free Forever"}</Text>
               <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>Status: {overview?.subscription?.status || "free"}</Text>
-              {onPaidPlan && subscription?.current_period_ends_at ? (
+              {onPaidPlan && periodEnd ? (
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
                   {trialing
-                    ? `Trial ends ${shortDate(subscription.trial_ends_at || subscription.current_period_ends_at)}`
-                    : periodStartsLater
-                      ? `${cycleWord} plan · starts ${shortDate(subscription.current_period_starts_at)}, renews ${shortDate(subscription.current_period_ends_at)}`
-                      : `${cycleWord} plan · renews ${shortDate(subscription.current_period_ends_at)}`}
-                  {renewalPrice
-                    ? `${trialing ? ", then" : " at"} ${money(renewalPrice, overview!.current_plan.currency)}/${currentCycle === "yearly" ? "yr" : "mo"}`
-                    : ""}
+                    ? `Trial ends ${shortDate(subscription?.trial_ends_at || periodEnd)}`
+                    : inGrace
+                      ? `${cycleWord} plan · ended ${shortDate(periodEnd)}`
+                      : cancelled
+                        ? `${cycleWord} plan · cancelled, Premium until ${shortDate(periodEnd)}`
+                        : autoRenews
+                          ? `${cycleWord} plan · renews ${shortDate(periodEnd)} through ${storeName}${renewPrice ? `, ${renewPrice}` : ""}`
+                          : periodStartsLater
+                            ? `${cycleWord} plan · starts ${shortDate(subscription?.current_period_starts_at)}, paid until ${shortDate(periodEnd)}`
+                            : `${cycleWord} plan · paid until ${shortDate(periodEnd)}`}
                 </Text>
               ) : null}
               {overview?.usage?.limit !== null && overview?.usage?.limit !== undefined && (
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{overview.usage.used} of {overview.usage.limit} AI transactions used</Text>
               )}
+              {onPaidPlan && (subscription?.can_cancel || (appStoreManaged && autoRenews && Platform.OS === "ios")) ? (
+                <Button
+                  label={appStoreManaged ? "Manage in App Store" : "Cancel subscription"}
+                  variant="ghost"
+                  size="sm"
+                  loading={subscriptionAction.isPending}
+                  onPress={confirmCancel}
+                />
+              ) : null}
             </Card>
 
-            {overview?.subscription?.in_grace_period && (
-              <View style={[styles.notice, { backgroundColor: colors.warningContainer }]}><Clock3 size={20} color={colors.warning} /><View style={styles.flex}><Text style={[styles.noticeTitle, { color: colors.onWarningContainer }]}>Grace period active</Text><Text style={[styles.noticeText, { color: colors.onWarningContainer }]}>Pay before {new Date(overview.subscription.grace_ends_at!).toLocaleDateString()} to keep Premium.</Text></View></View>
-            )}
+            {/* What happens next with this subscription, and the one action that fits. */}
+            {onPaidPlan && (inGrace || cancelled || trialing || canRenew) ? (
+              <View style={[styles.notice, { backgroundColor: inGrace ? colors.warningContainer : colors.primaryContainer }]}>
+                <Clock3 size={20} color={inGrace ? colors.warning : colors.primary} />
+                <View style={[styles.flex, styles.noticeBody]}>
+                  <Text style={[styles.noticeTitle, { color: inGrace ? colors.onWarningContainer : colors.onPrimaryContainer }]}>
+                    {inGrace
+                      ? `Your Premium ended on ${shortDate(periodEnd)}`
+                      : cancelled
+                        ? "Subscription cancelled"
+                        : trialing
+                          ? `Your free trial ends ${endsWhen}`
+                          : `Your Premium ends ${endsWhen}`}
+                  </Text>
+                  <Text style={[styles.noticeText, { color: inGrace ? colors.onWarningContainer : colors.onPrimaryContainer }]}>
+                    {inGrace
+                      ? `It stays on until ${shortDate(subscription?.grace_ends_at)}. Renew before then to keep it — after that you are on Free. Your data stays either way.`
+                      : cancelled
+                        ? `${playManaged ? "Google Play will not charge you again. " : ""}Premium stays on until ${shortDate(periodEnd)}, then switches to Free. Nothing is deleted.`
+                        : trialing
+                          ? `Subscribe any time to keep Premium after ${shortDate(periodEnd)}.`
+                          : `Paid until ${shortDate(periodEnd)}. Card and bKash payments do not renew on their own — renew now to keep it.`}
+                  </Text>
+                  {cancelled && !playManaged && !appStoreManaged ? (
+                    <Button
+                      label="Keep Premium"
+                      size="sm"
+                      loading={subscriptionAction.isPending}
+                      onPress={() => subscriptionAction.mutate("resume")}
+                    />
+                  ) : null}
+                  {cancelled && playManaged ? (
+                    <Button
+                      label="Resubscribe in Google Play"
+                      size="sm"
+                      variant="secondary"
+                      onPress={() => Linking.openURL("https://play.google.com/store/account/subscriptions")}
+                    />
+                  ) : null}
+                  {canRenew ? (
+                    <Button
+                      label={`${trialing ? "Subscribe" : "Renew"}${renewPrice ? ` · ${renewPrice}` : ""}`}
+                      size="sm"
+                      loading={busy === "renew"}
+                      disabled={couponBusy || Boolean(busy) || Boolean(play.purchasing)}
+                      onPress={renewNow}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
 
             {play.available && (
               <Card variant="outlined" style={styles.couponCard}>
@@ -868,6 +998,7 @@ const styles = StyleSheet.create({
   notice: { flexDirection: "row", gap: spacing.md, padding: spacing.lg, borderRadius: radius.lg },
   noticeTitle: { ...typography.bodyStrong },
   noticeText: { ...typography.caption, marginTop: 2 },
+  noticeBody: { gap: spacing.sm },
   planCard: { gap: spacing.lg },
   badge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   badgeText: { ...typography.micro },
