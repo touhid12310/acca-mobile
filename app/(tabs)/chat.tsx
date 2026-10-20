@@ -46,6 +46,7 @@ import {
 import chatService from "../../src/services/chatService";
 import categoryService from "../../src/services/categoryService";
 import accountService from "../../src/services/accountService";
+import { withFlow } from "../../src/services/appExitMonitor";
 import { buildFileUrl } from "../../src/config/api";
 import {
   ChatMessage,
@@ -1270,10 +1271,12 @@ export default function ChatScreen() {
   // Handle document picker
   const handlePickDocument = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/pdf", "text/csv", "image/*"],
-        copyToCacheDirectory: true,
-      });
+      const result = await withFlow("file picker", () =>
+        DocumentPicker.getDocumentAsync({
+          type: ["application/pdf", "text/csv", "image/*"],
+          copyToCacheDirectory: true,
+        }),
+      );
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];

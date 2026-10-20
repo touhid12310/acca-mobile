@@ -21,13 +21,19 @@ import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
 import metaEvents from '../src/services/metaEvents';
 import { installErrorReporting, setCurrentScreen } from '../src/services/errorReporter';
+import crashlytics from '../src/services/crashlytics';
+import { noteScreen, startAppExitMonitor } from '../src/services/appExitMonitor';
 import { Notifications } from '../src/services/notifications';
 
 import '../global.css';
 
 // Errors users hit reach the admin panel's App errors page. First, so
-// problems during start-up are caught too.
+// problems during start-up are caught too. Crashlytics then wraps the same
+// handler (native crashes + stack traces), and appExitMonitor reports how the
+// previous run ended — crashes, freezes, the phone closing the app.
 installErrorReporting();
+crashlytics.init();
+startAppExitMonitor();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -117,9 +123,11 @@ function RootLayoutNav() {
     return () => clearTimeout(timer);
   }, [isAuthenticated, onboarded, onMainTabs, locked]);
 
-  // Error reports name the screen they happened on.
+  // Error and crash reports name the screen they happened on.
   useEffect(() => {
     setCurrentScreen(pathname);
+    noteScreen(pathname);
+    crashlytics.setScreen(pathname);
   }, [pathname]);
 
   // Android: pick up new bank / wallet SMS alerts whenever the app opens.

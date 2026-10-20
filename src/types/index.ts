@@ -118,8 +118,28 @@ export interface Transaction {
   transaction_categories?: TransactionCategory[];
   status?: "approved" | "pending_review" | "archived" | string;
   source?: "manual" | "email" | "chat" | "csv" | "receipt" | string;
+  /** Pending review only: the saved transaction this draft may repeat. */
+  possible_duplicate?: PossibleDuplicate | null;
   created_at?: string;
   updated_at?: string;
+}
+
+/**
+ * A saved transaction that looks like the one being added or reviewed
+ * (API DuplicateTransactionService). Warn-only — saving is never blocked.
+ */
+export interface PossibleDuplicate {
+  id: number;
+  merchant_name: string | null;
+  amount: number;
+  date: string;
+  type: TransactionType;
+  source: string | null;
+  account_name: string | null;
+  confidence: "likely" | "possible";
+  days_apart: number;
+  reasons: string[];
+  explanation: string;
 }
 
 export interface TransactionFormData {

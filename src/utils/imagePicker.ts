@@ -2,6 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 import { notifyToast } from '../contexts/NotificationContext';
 import { reportError } from '../services/errorReporter';
+import { withFlow } from '../services/appExitMonitor';
 
 const CANCELED: ImagePicker.ImagePickerResult = { canceled: true, assets: null };
 
@@ -15,17 +16,20 @@ const CANCELED: ImagePicker.ImagePickerResult = { canceled: true, assets: null }
 const isStaleLauncher = (error: unknown) =>
   error instanceof Error && /unregistered ActivityResultLauncher/i.test(error.message);
 
+// The picker / camera app runs outside AccountE; if the phone closes the app
+// meanwhile, the next launch reports it (flow = `flow`).
 const launchSafely = async (
   launch: () => Promise<ImagePicker.ImagePickerResult>,
   what: string,
+  flow: string,
 ): Promise<ImagePicker.ImagePickerResult> => {
   try {
-    return await launch();
+    return await withFlow(flow, launch);
   } catch (first) {
     if (isStaleLauncher(first)) {
       await new Promise((resolve) => setTimeout(resolve, 400));
       try {
-        return await launch();
+        return await withFlow(flow, launch);
       } catch {
         // Fall through to the message below.
       }
@@ -43,7 +47,11 @@ const launchSafely = async (
 
 /** `launchImageLibraryAsync` that never rejects; a failure reads as a cancel. */
 export const pickFromLibrary = (options?: ImagePicker.ImagePickerOptions) =>
-  launchSafely(() => ImagePicker.launchImageLibraryAsync(options), 'your photos');
+  launchSafely(
+    () => ImagePicker.launchImageLibraryAsync(options),
+    'your photos',
+    options?.allowsEditing ? 'photo gallery (with crop)' : 'photo gallery',
+  );
 
 /**
  * `launchCameraAsync` that never rejects; a failure reads as a cancel.
@@ -53,4 +61,4 @@ export const pickFromLibrary = (options?: ImagePicker.ImagePickerOptions) =>
  * app on Home and the photo is lost.
  */
 export const takeWithCamera = (options?: ImagePicker.ImagePickerOptions) =>
-  launchSafely(() => ImagePicker.launchCameraAsync(options), 'the camera');
+  launchSafely(() => ImagePicker.launchCameraAsync(options), 'the camera', "phone's camera app");

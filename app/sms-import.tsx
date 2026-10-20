@@ -29,6 +29,7 @@ import {
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
+import { useCurrency } from '../src/contexts/CurrencyContext';
 import { Button, Card, ConfirmDialog, IconBadge, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
@@ -36,7 +37,9 @@ import smsService, { SmsOverview, SmsSenderSetting } from '../src/services/smsSe
 import accountService from '../src/services/accountService';
 import {
   getLastSmsSync,
+  isSmsImportAwaitingConsent,
   isSmsImportEnabled,
+  recordSmsConsent,
   requestSmsPermission,
   setSmsImportEnabled,
   smsImportSupported,
@@ -45,6 +48,7 @@ import {
 } from '../src/services/smsSync';
 import { Account } from '../src/types';
 import { radius, shadow, spacing } from '../src/constants/theme';
+import { smsExampleFor } from '../src/utils/smsExamples';
 
 // How far back "Import past messages" may look. A month is the most we offer:
 // older alerts are rarely still worth reviewing one by one.
@@ -69,6 +73,19 @@ const rangeStart = (key: RangeKey): number => {
 const rangeButtonLabel = (key: RangeKey) =>
   key === 'today' ? "Import today's messages" : `Import last ${key} days`;
 
+// Google Play's "prominent disclosure" for reading SMS. It is shown every time
+// import is switched on, before Android's permission prompt and before any
+// message is read, and only "Agree and continue" counts as consent. Keep it
+// complete: what is read, what is uploaded, where it goes and why.
+const SMS_DISCLOSURE_POINTS = [
+  'Personal messages, messages from phone numbers and one-time codes are filtered out on your phone and never uploaded.',
+  "With Premium, alerts our built-in reader can't read are sent to our AI provider, Google Gemini, to be read.",
+  'Uploaded message text is deleted after 90 days, and nothing is added to your books until you approve it.',
+  'You can turn SMS import off at any time on this screen.',
+];
+
+const PRIVACY_URL = 'https://accounte.com/privacy';
+
 const timeAgo = (ms: number | null) => {
   if (!ms) return 'never';
   const minutes = Math.round((Date.now() - ms) / 60000);
@@ -82,6 +99,7 @@ export default function SmsImportScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const toast = useToast();
+  const { currency } = useCurrency();
   const queryClient = useQueryClient();
   const supported = smsImportSupported();
 
@@ -96,10 +114,14 @@ export default function SmsImportScreen() {
   // messages button. null when closed.
   const [rangeSheet, setRangeSheet] = useState<null | 'first' | 'again'>(null);
   const [rangeChoice, setRangeChoice] = useState<RangeKey>('7');
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
+  // Switched on in a version without the disclosure: paused until the user agrees.
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     void (async () => {
       setEnabled(await isSmsImportEnabled());
+      setPaused(await isSmsImportAwaitingConsent());
       setLastSync(await getLastSmsSync());
     })();
   }, []);
@@ -196,17 +218,53 @@ export default function SmsImportScreen() {
     if (!next) {
       await setSmsImportEnabled(false);
       setEnabled(false);
+      setPaused(false);
       toast.info('SMS import is off. Drafts you already have stay in Pending review.');
       return;
     }
 
+    // The disclosure and the user's "Agree" come before Android's
+    // permission prompt and before anything is read.
+    setDisclosureOpen(true);
+  };
+
+  const stayOff = async () => {
+    if (paused) {
+      await setSmsImportEnabled(false);
+      setPaused(false);
+    }
+    toast.info('SMS import stays off. You can still paste messages below.');
+  };
+
+  const declineDisclosure = () => {
+    setDisclosureOpen(false);
+    void stayOff();
+  };
+
+  const acceptDisclosure = async () => {
+    setDisclosureOpen(false);
+    await recordSmsConsent();
+
     const permission = await requestSmsPermission();
     if (permission === 'blocked') {
+      if (paused) {
+        await setSmsImportEnabled(false);
+        setPaused(false);
+      }
       setPermissionBlocked(true);
       return;
     }
     if (permission !== 'granted') {
-      toast.info('SMS import stays off. You can still paste messages below.');
+      await stayOff();
+      return;
+    }
+
+    if (paused) {
+      // Carry on from where it stopped instead of asking about history again.
+      await setSmsImportEnabled(true);
+      setPaused(false);
+      setEnabled(true);
+      toast.info('SMS import is on again.');
       return;
     }
 
@@ -276,9 +334,9 @@ export default function SmsImportScreen() {
             <View style={[styles.introIcon, { backgroundColor: colors.primaryContainer }]}>
               <MessageSquareText size={28} color={colors.primary} strokeWidth={2} />
             </View>
-            <Text style={[styles.introTitle, { color: colors.onSurface }]}>No more typing bKash payments</Text>
+            <Text style={[styles.introTitle, { color: colors.onSurface }]}>No more typing every payment</Text>
             <Text style={[styles.introText, { color: colors.onSurfaceVariant }]}>
-              Alerts from bKash, Nagad, Rocket, your bank and cards turn into drafts in Pending review. Nothing
+              Payment alerts from your bank, cards and mobile wallets turn into drafts in Pending review. Nothing
               is saved to your books until you check it.
             </Text>
             <View style={styles.privacyRow}>
@@ -296,7 +354,11 @@ export default function SmsImportScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.rowTitle, { color: colors.onSurface }]}>Import automatically</Text>
                   <Text style={[styles.rowMeta, { color: colors.onSurfaceVariant }]}>
-                    {enabled ? `Checks when you open AccountE · last ${timeAgo(lastSync)}` : 'Off'}
+                    {enabled
+                      ? `Checks when you open AccountE · last ${timeAgo(lastSync)}`
+                      : paused
+                        ? 'Paused — turn on to confirm and continue'
+                        : 'Off'}
                   </Text>
                 </View>
                 <Switch
@@ -364,7 +426,7 @@ export default function SmsImportScreen() {
               value={pasteText}
               onChangeText={setPasteText}
               multiline
-              placeholder={'Send Money Tk 500.00 to 01712345678 successful. Fee Tk 5.00. TrxID 9IN5ABCDEG\n\nSeparate several messages with a blank line.'}
+              placeholder={`${smsExampleFor(currency)}\n\nSeparate several messages with a blank line.`}
               placeholderTextColor={colors.onSurfaceVariant}
               style={[
                 styles.pasteInput,
@@ -424,12 +486,62 @@ export default function SmsImportScreen() {
 
           {overview && !overview.ai_reading && (
             <Text style={[styles.footnote, { color: colors.onSurfaceVariant }]}>
-              AccountE reads the usual English bank and wallet formats for free. Bangla alerts and unusual formats
+              AccountE reads common English bank and wallet alerts for free. Other languages and unusual formats
               need AI reading, included with Premium.
             </Text>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Back counts as "No thanks"; tapping outside does nothing. */}
+      <Modal visible={disclosureOpen} transparent animationType="fade" onRequestClose={declineDisclosure}>
+        <View style={styles.rangeBackdrop}>
+          <View
+            style={[
+              styles.rangeSheet,
+              styles.disclosureSheet,
+              { backgroundColor: colors.surface, paddingBottom: insets.bottom + spacing.lg },
+              shadow.lg,
+            ]}
+          >
+            <View style={[styles.rangeHandle, { backgroundColor: colors.outlineVariant }]} />
+            <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+              <View style={[styles.introIcon, { backgroundColor: colors.primaryContainer, alignSelf: 'center' }]}>
+                <MessageSquareText size={26} color={colors.primary} strokeWidth={2} />
+              </View>
+              <Text style={[styles.introTitle, { color: colors.onSurface }]}>Allow AccountE to read your SMS?</Text>
+              <Text style={[styles.disclosureIntro, { color: colors.onSurface }]}>
+                AccountE reads the SMS messages on this phone and uploads the ones that look like bank, card or
+                mobile-wallet payment alerts — sender, message text and time — to AccountE&apos;s servers to create
+                transaction drafts for you to review. This happens whenever you open AccountE or tap Scan now while
+                SMS import is on, and for past messages from up to 30 days back if you choose to import them.
+              </Text>
+              {SMS_DISCLOSURE_POINTS.map((point) => (
+                <View key={point} style={styles.disclosurePoint}>
+                  <View style={styles.disclosureTick}>
+                    <Check size={16} color={colors.primary} strokeWidth={2.5} />
+                  </View>
+                  <Text style={[styles.disclosureText, { color: colors.onSurfaceVariant }]}>{point}</Text>
+                </View>
+              ))}
+              <Text
+                onPress={() => void Linking.openURL(PRIVACY_URL)}
+                style={[styles.disclosureLink, { color: colors.primary }]}
+                accessibilityRole="link"
+              >
+                Read our privacy policy
+              </Text>
+            </ScrollView>
+            <Button
+              label="Agree and continue"
+              fullWidth
+              onPress={() => void acceptDisclosure()}
+              style={{ marginTop: spacing.lg }}
+            />
+            <Button label="No thanks" variant="ghost" fullWidth onPress={declineDisclosure} />
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={rangeSheet != null} transparent animationType="fade" onRequestClose={closeRangeSheet}>
         <Pressable style={styles.rangeBackdrop} onPress={closeRangeSheet}>
@@ -715,6 +827,34 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: spacing.md,
+  },
+  disclosureSheet: {
+    maxHeight: '92%',
+  },
+  disclosureIntro: {
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: spacing.xs,
+  },
+  disclosurePoint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  disclosureTick: {
+    marginTop: 2,
+  },
+  disclosureText: {
+    flex: 1,
+    fontSize: 13.5,
+    lineHeight: 20,
+  },
+  disclosureLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.md,
   },
   rangeOption: {
     flexDirection: 'row',

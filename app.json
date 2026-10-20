@@ -129,6 +129,8 @@
         }
       ],
       "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics",
+      "./plugins/withCrashlyticsSymbols",
       [
         "@react-native-firebase/analytics",
         {

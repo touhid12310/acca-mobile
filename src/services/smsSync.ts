@@ -12,6 +12,11 @@ import smsService, { SmsImportSummary } from './smsService';
 // Device-local state. Bump the suffix if the meaning of a key changes.
 const KEYS = {
   enabled: 'accounte_sms_import_enabled_v1',
+  // When the user agreed to the SMS disclosure on the SMS import screen.
+  // Google Play requires that consent before any SMS is read or uploaded
+  // (build 40 was rejected without it), so import counts as off without it —
+  // also for people who switched it on in a version that had no disclosure.
+  consent: 'accounte_sms_import_consent_v1',
   // Newest SMS timestamp (ms) we have already looked at.
   cursor: 'accounte_sms_import_cursor_v1',
   lastRun: 'accounte_sms_import_last_run_v1',
@@ -23,11 +28,27 @@ const UPLOAD_CHUNK = 50;
 // Only messages that already look like completed money movements ever leave
 // the phone. Personal chats, OTPs and anything from a phone number are
 // filtered here, before upload; the server re-checks everything.
-const CURRENCY_AMOUNT =
-  /(?:^|[^\p{L}\p{N}])(?:tk\.?|taka|bdt|৳|টাকা|rs\.?|inr|₹|usd|\$|eur|€|gbp|£)\s*[:.]?\s*[\d০-৯]|[\d০-৯][\d০-৯,.]*\s*(?:tk|taka|bdt|৳|টাকা)(?:[^\p{L}\p{N}]|$)/iu;
+//
+// An amount next to a currency code, word or symbol from anywhere ("Tk 500",
+// "KES 1,500", "RM25.00", "€18.90", "250.00 AED"). Same list as the server's
+// SmsImportService::MONEY_PATTERN — keep them in step.
+const CURRENCY_CODES =
+  'bdt|inr|pkr|npr|lkr|usd|eur|gbp|chf|cad|aud|nzd|sgd|hkd|myr|idr|php|thb|vnd|cny|rmb|jpy|krw|aed|sar|qar|omr|kwd|bhd|egp|ngn|kes|ghs|zar|ugx|tzs|brl|mxn|pln|rub|uah';
+const CURRENCY_AMOUNT = new RegExp(
+  String.raw`(?:^|[^\p{L}\p{N}])(?:tk\.?|taka|টাকা|rs\.?|ksh|rm|rp|[a-z]{1,2}\$|[$৳₹€£¥₩₱฿₫₦₵₺₽₴]|${CURRENCY_CODES})\s*[:.]?\s*[\d০-৯]` +
+    String.raw`|[\d০-৯][\d০-৯,.]*\s*(?:tk|taka|টাকা|tl|[৳€₺₽₴]|${CURRENCY_CODES})(?:[^\p{L}\p{N}]|$)`,
+  'iu',
+);
 const MONEY_WORDS =
   /(debit|credit|sent|send money|received|payment|paid|cash ?out|cash ?in|withdraw|purchase|spent|charged|recharge|transfer|deposit|refund|bill|trx ?id|txn ?id|পেয়েছেন|পাঠিয়েছেন|ক্যাশ|পেমেন্ট|রিচার্জ)/iu;
-const ONE_TIME_CODE = /\b(otp|one[\s-]?time pass(?:word|code)?|verification code|security code|pin code|passcode)\b/i;
+// One-time codes, in the main languages bank alerts come in (Malaysian banks
+// call theirs "TAC"). When in doubt, a message stays on the phone.
+const ONE_TIME_CODE = new RegExp(
+  String.raw`\b(?:otp|tac|one[\s-]?time pass(?:word|code)?|verification code|security code|pin code|passcode)\b` +
+    String.raw`|c[oó]digo de (?:verifica|seguran|seguridad)|contrase[ñn]a|senha|code de (?:v[ée]rification|s[ée]curit[ée])` +
+    '|kode (?:verifikasi|rahasia)|kod pengesahan|doğrulama kodu|şifre|رمز التحقق|كلمة المرور|ओटीपी',
+  'iu',
+);
 // Long digit senders are people ("+8801712345678"); banks and wallets use
 // names ("bKash", "CITYBANK") or short codes ("16216").
 const PERSONAL_NUMBER = /^\+?\d{8,}$/;
@@ -42,20 +63,48 @@ export const looksLikeTransactionAlert = (sender: string, body: string): boolean
 
 export const smsImportSupported = (): boolean => Platform.OS === 'android' && isSmsReaderAvailable();
 
-export const isSmsImportEnabled = async (): Promise<boolean> => {
+const readImportState = async (): Promise<{ switchedOn: boolean; consented: boolean }> => {
   try {
-    return (await AsyncStorage.getItem(KEYS.enabled)) === '1';
+    const [switchedOn, consent] = await Promise.all([
+      AsyncStorage.getItem(KEYS.enabled),
+      AsyncStorage.getItem(KEYS.consent),
+    ]);
+    return { switchedOn: switchedOn === '1', consented: consent != null };
   } catch {
-    return false;
+    return { switchedOn: false, consented: false };
   }
 };
+
+export const isSmsImportEnabled = async (): Promise<boolean> => {
+  const { switchedOn, consented } = await readImportState();
+  return switchedOn && consented;
+};
+
+/** Switched on in an older version, before the disclosure existed: paused until the user agrees. */
+export const isSmsImportAwaitingConsent = async (): Promise<boolean> => {
+  const { switchedOn, consented } = await readImportState();
+  return switchedOn && !consented;
+};
+
+/** Records the user's "Agree and continue" on the SMS disclosure. */
+export const recordSmsConsent = async (): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(KEYS.consent, String(Date.now()));
+  } catch {
+    // Storage unavailable — import stays off, which is the safe side.
+  }
+};
+
+const hasSmsConsent = async (): Promise<boolean> => (await readImportState()).consented;
 
 export const setSmsImportEnabled = async (enabled: boolean): Promise<void> => {
   try {
     if (enabled) {
       await AsyncStorage.setItem(KEYS.enabled, '1');
     } else {
-      await AsyncStorage.multiRemove([KEYS.enabled, KEYS.cursor]);
+      // Switching off withdraws the consent too: turning import on again
+      // shows the disclosure again.
+      await AsyncStorage.multiRemove([KEYS.enabled, KEYS.cursor, KEYS.consent]);
     }
   } catch {
     // Storage unavailable — the toggle simply won't persist.
@@ -88,16 +137,17 @@ export const getLastSmsSync = async (): Promise<number | null> => {
 
 export type SmsPermissionResult = 'granted' | 'denied' | 'blocked' | 'unavailable';
 
-/** Asks Android for READ_SMS, explaining why first. */
+/** Asks Android for READ_SMS — only after the user agreed to the disclosure. */
 export const requestSmsPermission = async (): Promise<SmsPermissionResult> => {
   if (!smsImportSupported()) return 'unavailable';
+  if (!(await hasSmsConsent())) return 'denied';
   if (hasSmsPermission()) return 'granted';
 
   try {
     const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS, {
       title: 'Read bank & wallet SMS',
       message:
-        'AccountE reads transaction alerts from banks and wallets like bKash and Nagad and turns them into drafts for you to review. Personal messages and one-time codes are never uploaded.',
+        'AccountE reads payment alerts from your bank, cards and mobile wallets and turns them into drafts for you to review. Personal messages and one-time codes are never uploaded.',
       buttonPositive: 'Allow',
       buttonNegative: 'Not now',
     });
@@ -137,6 +187,8 @@ export const syncSmsInbox = async (
   options: { since?: number; force?: boolean } = {},
 ): Promise<SmsSyncResult> => {
   if (!smsImportSupported()) return { status: 'unavailable' };
+  // Nothing is read, forced or not, before the user agreed to the disclosure.
+  if (!(await hasSmsConsent())) return { status: 'disabled' };
   if (!options.force && !(await isSmsImportEnabled())) return { status: 'disabled' };
   if (!hasSmsPermission()) return { status: 'no_permission' };
   if (running) return { status: 'busy' };

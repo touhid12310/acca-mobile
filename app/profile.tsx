@@ -29,6 +29,7 @@ import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import authService from "../src/services/authService";
 import { buildApiUrl, getAuthToken } from "../src/config/api";
+import { reportError } from "../src/services/errorReporter";
 import {
   compatibleImagePickerOptions,
   uploadFileFromAsset,
@@ -306,6 +307,7 @@ export default function ProfileScreen() {
         notifyToast.error(data.message || "Failed to upload picture");
       }
     } catch (error) {
+      reportError("js_error", error, { location: "Profile photo upload" });
       notifyToast.error("An error occurred while uploading");
     } finally {
       setIsUploadingPicture(false);

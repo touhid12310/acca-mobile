@@ -8,6 +8,7 @@ import {
   TransactionFormData,
   ApiResponse,
   PaginatedResponse,
+  PossibleDuplicate,
 } from "../types";
 import { uploadPart } from "../utils/uploadPart";
 
@@ -139,6 +140,26 @@ const transactionService = {
     const token = await getAuthToken();
     return apiRequest<unknown>(`/transactions/${id}/reject`, {
       method: "POST",
+      token,
+    });
+  },
+
+  /**
+   * Saved transactions that look like the one in the form ("you may have
+   * added this already"). `transaction_id` = the draft being reviewed, if any.
+   */
+  checkDuplicates: async (payload: {
+    amount: number;
+    date: string;
+    type: string;
+    merchant_name?: string | null;
+    payment_method?: number | null;
+    transaction_id?: number;
+  }): Promise<ApiResponse<{ matches: PossibleDuplicate[] }>> => {
+    const token = await getAuthToken();
+    return apiRequest<{ matches: PossibleDuplicate[] }>(`/transactions/duplicate-check`, {
+      method: "POST",
+      body: JSON.stringify(payload),
       token,
     });
   },

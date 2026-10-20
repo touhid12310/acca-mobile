@@ -173,7 +173,7 @@ export default function MoreScreen() {
           label: "SMS import",
           description:
             Platform.OS === "android"
-              ? "Turn bKash, Nagad & bank SMS into drafts"
+              ? "Turn bank & wallet SMS into drafts"
               : "Paste bank or wallet SMS as drafts",
           onPress: () => router.push("/sms-import" as never),
           tone: "success",

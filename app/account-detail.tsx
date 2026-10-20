@@ -46,6 +46,7 @@ import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import TransactionDetailsSheet from "../src/components/transactions/TransactionDetailsSheet";
 import { getAmountSign } from "../src/utils/transactions";
+import { withFlow } from "../src/services/appExitMonitor";
 import { Account, Transaction } from "../src/types";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
@@ -463,10 +464,12 @@ export default function AccountDetailScreen() {
 
   const handlePickCsv = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/csv", "text/comma-separated-values", "application/csv"],
-        copyToCacheDirectory: true,
-      });
+      const result = await withFlow("file picker", () =>
+        DocumentPicker.getDocumentAsync({
+          type: ["text/csv", "text/comma-separated-values", "application/csv"],
+          copyToCacheDirectory: true,
+        }),
+      );
 
       if (result.canceled || !result.assets?.[0]) {
         return;

@@ -31,6 +31,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
@@ -1705,6 +1706,20 @@ function TransactionRow({
                 {t.category && (
                   <Badge label={t.category.name} tone="neutral" size="sm" />
                 )}
+                {isPending && t.possible_duplicate && (
+                  // A saved transaction looks like this draft; opening it
+                  // shows the match and an "Archive this draft" button.
+                  <Badge
+                    label={
+                      t.possible_duplicate.confidence === "likely"
+                        ? "Likely duplicate"
+                        : "Possible duplicate"
+                    }
+                    tone="warning"
+                    size="sm"
+                    icon={AlertTriangle}
+                  />
+                )}
               </View>
             </View>
             <Text
@@ -2082,15 +2097,17 @@ const styles = StyleSheet.create({
     minHeight: TRANSACTION_ROW_HEIGHT,
     paddingVertical: spacing.sm,
   },
+  // Stretch to the row: a flagged draft wraps its meta line and is taller.
   slideActions: {
     width: ACTION_WIDTH,
     flexDirection: "row",
-    height: TRANSACTION_ROW_HEIGHT,
+    minHeight: TRANSACTION_ROW_HEIGHT,
+    alignSelf: "stretch",
     backgroundColor: "#ef4444",
   },
   slideAction: {
     width: ACTION_WIDTH / 2,
-    height: TRANSACTION_ROW_HEIGHT,
+    minHeight: TRANSACTION_ROW_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -2120,7 +2137,11 @@ const styles = StyleSheet.create({
   txnMetaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    // A draft's "Likely duplicate" flag drops under the date on narrow
+    // phones instead of running under the amount.
+    flexWrap: "wrap",
+    columnGap: spacing.sm,
+    rowGap: 4,
   },
   txnSub: {
     fontSize: 12,

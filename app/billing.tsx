@@ -18,6 +18,7 @@ import { deepLinkToSubscriptions } from "expo-iap";
 import { radius, spacing, typography } from "../src/constants/theme";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import metaEvents from "../src/services/metaEvents";
+import { withFlow } from "../src/services/appExitMonitor";
 import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 const money = (amount: string | number, currency: string) => {
@@ -204,7 +205,10 @@ export default function BillingScreen() {
         epsCheckouts.set(checkoutData.payment_uuid, paid);
         metaEvents.logCheckout(paid.planSlug, paid.cycle, paid.value, paid.currency);
       }
-      const result = await WebBrowser.openAuthSessionAsync(checkoutData.redirect_url, returnUrl);
+      const checkoutUrl = checkoutData.redirect_url;
+      const result = await withFlow("payment page", () =>
+        WebBrowser.openAuthSessionAsync(checkoutUrl, returnUrl),
+      );
       if (result.type === "success" && result.url) {
         const parsed = Linking.parse(result.url);
         const payment = String(parsed.queryParams?.payment || checkoutData.payment_uuid);
@@ -395,7 +399,10 @@ export default function BillingScreen() {
     toast.success(`${code} copied.`);
   };
 
-  const pending = useMemo(() => overview?.invoices?.filter((invoice) => invoice.status === "pending") || [], [overview]);
+  // Paid invoices only: an unpaid one just means a Renew / Upgrade checkout was
+  // left open, and those buttons reopen it. The API sends paid only; filtered
+  // here too for older API builds.
+  const paidInvoices = useMemo(() => overview?.invoices?.filter((invoice) => invoice.status === "paid") || [], [overview]);
 
   const subscription = overview?.subscription;
   const trialing = subscription?.status === "trialing";
@@ -909,8 +916,24 @@ export default function BillingScreen() {
             })}
 
             <Card variant="elevated" style={styles.invoiceCard}>
-              <View style={styles.invoiceHeading}><View><Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>RENEWAL CENTER</Text><Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Invoices</Text></View><FileText size={23} color={colors.primary} /></View>
-              {overview?.invoices?.length ? overview.invoices.map((invoice) => <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}><View style={styles.flex}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{invoice.plan?.name} · {new Date(invoice.created_at).toLocaleDateString()}{Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}</Text></View><View style={styles.invoiceRight}><Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>{invoice.status === "pending" && Platform.OS !== "ios" ? <Button label={busy === invoice.uuid ? "Opening…" : "Pay"} size="sm" loading={busy === invoice.uuid} onPress={() => startPurchase({ kind: "invoice", invoice })} /> : <Text style={{ color: invoice.status === "paid" ? colors.tertiary : colors.onSurfaceVariant, textTransform: "capitalize", fontWeight: "700" }}>{invoice.status}</Text>}</View></View>) : <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No invoices yet. Monthly renewal invoices will appear here.</Text>}
+              <View style={styles.invoiceHeading}><View><Text style={[styles.eyebrow, { color: colors.onSurfaceVariant }]}>PAYMENT HISTORY</Text><Text style={[styles.sectionTitle, { color: colors.onSurface }]}>Invoices</Text></View><FileText size={23} color={colors.primary} /></View>
+              {paidInvoices.length ? paidInvoices.map((invoice) => (
+                <View key={invoice.uuid} style={[styles.invoiceRow, { borderTopColor: colors.outlineVariant }]}>
+                  <View style={styles.flex}>
+                    <Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{invoice.invoice_number}</Text>
+                    <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
+                      {invoice.plan?.name}{invoice.billing_cycle ? ` · ${invoice.billing_cycle === "yearly" ? "Yearly" : "Monthly"}` : ""} · {new Date(invoice.paid_at || invoice.created_at).toLocaleDateString()}
+                      {Number(invoice.discount_total) > 0 ? ` · ${invoice.coupon_code} saved ${money(invoice.discount_total, invoice.currency)}` : ""}
+                    </Text>
+                  </View>
+                  <View style={styles.invoiceRight}>
+                    <Text style={[styles.invoiceNumber, { color: colors.onSurface }]}>{money(invoice.total, invoice.currency)}</Text>
+                    <Text style={{ color: colors.tertiary, fontWeight: "700" }}>Paid</Text>
+                  </View>
+                </View>
+              )) : (
+                <Text style={[styles.empty, { color: colors.onSurfaceVariant }]}>No payments yet. Every Premium payment shows here.</Text>
+              )}
             </Card>
           </>
         )}

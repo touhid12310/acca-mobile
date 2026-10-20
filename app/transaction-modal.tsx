@@ -103,6 +103,10 @@ export default function TransactionModalScreen() {
           items: tx.items, // Include items from API
           receipt_file: tx.receipt_file, // Receipt file path from API
           receipt_path: tx.receipt_file, // Also set as receipt_path for display
+          // A draft (pending_review) gets the "already added?" check and its
+          // Archive action; a saved row being edited does not.
+          status: tx.status,
+          source: tx.source,
         };
       }
 

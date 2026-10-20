@@ -55,6 +55,7 @@ export type SubscriptionInvoice = {
   due_at: string;
   grace_ends_at: string;
   created_at: string;
+  paid_at?: string | null;
   plan?: BillingPlan;
 };
 

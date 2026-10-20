@@ -2,6 +2,7 @@ import * as WebBrowser from "expo-web-browser";
 import * as Linking from "expo-linking";
 
 import socialAuthService from "./socialAuthService";
+import { withFlow } from "./appExitMonitor";
 
 export interface GoogleBrowserAuthResult {
   type: "success" | "cancel" | "error";
@@ -37,7 +38,10 @@ export async function startGoogleBrowserAuth(
     return { type: "error", message: urlResult.message };
   }
 
-  const result = await WebBrowser.openAuthSessionAsync(urlResult.url, RETURN_URL);
+  const authUrl = urlResult.url;
+  const result = await withFlow("Google sign-in page", () =>
+    WebBrowser.openAuthSessionAsync(authUrl, RETURN_URL),
+  );
 
   if (result.type !== "success" || !result.url) {
     // 'cancel' / 'dismiss'. On Android the deep link itself may still open

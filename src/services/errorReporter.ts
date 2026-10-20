@@ -16,9 +16,24 @@ import { buildApiUrl, getAuthToken, RETRYABLE_HEADER } from '../config/api';
  * implementation" upload bug — and 5xx responses. Reports are kept in
  * storage until they are delivered, so a crash is sent on the next launch.
  * Nothing is sent from dev builds unless EXPO_PUBLIC_REPORT_ERRORS=1.
+ *
+ * Native crashes, freezes and the phone closing the app are reported on the
+ * next launch by appExitMonitor.ts (with Firebase Crashlytics for the stack).
  */
 
-export type ErrorKind = 'js_error' | 'unhandled_rejection' | 'render_error' | 'network_error' | 'api_error';
+export type ErrorKind =
+  | 'js_error'
+  | 'unhandled_rejection'
+  | 'render_error'
+  | 'network_error'
+  | 'api_error'
+  // Previous run, reported on the next launch (appExitMonitor.ts).
+  | 'native_crash'
+  | 'app_not_responding'
+  | 'app_closed';
+
+/** Set when a fatal JS error closes the app, so it isn't also reported as a native crash. */
+export const FATAL_JS_CRASH_KEY = 'accounte_fatal_js_crash_v1';
 
 type Report = {
   platform: string;
@@ -132,12 +147,13 @@ async function flush(): Promise<void> {
 
 /**
  * Report one error. `extra.location` names where (a request, a component),
- * `extra.context` adds small key → value details.
+ * `extra.context` adds small key → value details, `extra.url` replaces the
+ * current screen (for a report about an earlier run).
  */
 export function reportError(
   kind: ErrorKind,
   error: unknown,
-  extra: { location?: string; context?: Record<string, string> } = {},
+  extra: { location?: string; url?: string; context?: Record<string, string> } = {},
 ): void {
   if (!ENABLED) return;
 
@@ -156,7 +172,7 @@ export function reportError(
     kind,
     message: message.slice(0, 2000),
     stack: stack ? stack.slice(0, 20000) : undefined,
-    url: currentScreen || undefined,
+    url: extra.url ?? (currentScreen || undefined),
     location: extra.location?.slice(0, 300),
     app_version: APP_VERSION,
     context: {
@@ -265,7 +281,8 @@ export function installErrorReporting(): void {
       if (isFatal) {
         // Give the report a moment to reach storage before the app closes.
         const settle = new Promise((resolve) => setTimeout(resolve, 800));
-        Promise.race([persist(), settle]).finally(() => previous(error, isFatal));
+        const flagged = AsyncStorage.setItem(FATAL_JS_CRASH_KEY, String(Date.now())).catch(() => undefined);
+        Promise.race([Promise.all([persist(), flagged]), settle]).finally(() => previous(error, isFatal));
         return;
       }
       previous(error, isFatal);

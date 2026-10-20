@@ -41,8 +41,11 @@ import transactionService from '../../services/transactionService';
 import ruleService, { RulesPayload } from '../../services/ruleService';
 import { findMatchingRule } from '../../utils/categorizationRules';
 import { buildFileUrl } from '../../config/api';
-import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
-import { formatDate } from '../../utils/date';
+import { reportError } from '../../services/errorReporter';
+import { markFlow } from '../../services/appExitMonitor';
+import { Transaction, TransactionType, Category, Account, AccountType, PossibleDuplicate } from '../../types';
+import { formatDate, toDateInputValue } from '../../utils/date';
+import PossibleDuplicateNotice from './PossibleDuplicateNotice';
 import { compatibleImagePickerOptions, uploadFileFromAsset } from '../../utils/uploads';
 import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
@@ -778,9 +781,14 @@ export default function TransactionFormContent({
       updateField('receipt', file);
       await processReceiptWithAI(file);
     } catch (error) {
+      reportError('js_error', error, { location: 'Receipt camera' });
       toast.error('Failed to capture photo. Please try again.');
     }
   };
+
+  // If the phone closes AccountE while the receipt camera is open, the next
+  // launch reports it (admin → App errors).
+  useEffect(() => (cameraVisible ? markFlow('receipt camera') : undefined), [cameraVisible]);
 
   // Fetch merchant suggestions while user types
   useEffect(() => {
@@ -999,6 +1007,107 @@ export default function TransactionFormContent({
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
+  // --- Possible duplicates (web parity: TransactionManager) ---
+  // "You may have added this already": the API compares the form with saved
+  // transactions — e.g. a photo/chat entry plus the bank's SMS or email for
+  // the same purchase. Checked while adding or reviewing a draft, never when
+  // editing a saved row. It only warns; Save keeps working.
+  const isDraft = initialData?.status === 'pending_review';
+  const duplicateCheckEnabled =
+    formData.type !== 'transfer' && (!initialData?.id || isDraft);
+  const duplicateDate = formData.date instanceof Date ? toDateInputValue(formData.date) : String(formData.date);
+  const [duplicateInput, setDuplicateInput] = useState<{
+    amount: number;
+    date: string;
+    type: string;
+    merchant_name: string | null;
+    payment_method: number | null;
+    transaction_id?: number;
+  } | null>(null);
+  const [dismissedDuplicateKey, setDismissedDuplicateKey] = useState('');
+  const duplicateAmount = parseFloat(String(formData.amount)) || 0;
+  const canCheckDuplicates = duplicateCheckEnabled && duplicateAmount > 0;
+
+  useEffect(() => {
+    if (!canCheckDuplicates) return undefined;
+    const timer = setTimeout(() => {
+      setDuplicateInput({
+        amount: Math.round(duplicateAmount * 100) / 100,
+        date: duplicateDate,
+        type: formData.type,
+        merchant_name: formData.merchant_name.trim() || null,
+        payment_method: formData.account_id ?? null,
+        ...(isDraft && initialData?.id ? { transaction_id: initialData.id } : {}),
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [
+    canCheckDuplicates,
+    isDraft,
+    initialData?.id,
+    duplicateAmount,
+    duplicateDate,
+    formData.type,
+    formData.merchant_name,
+    formData.account_id,
+  ]);
+
+  // Cleared amount / switched to a transfer → no check, without waiting.
+  const activeDuplicateInput = canCheckDuplicates ? duplicateInput : null;
+
+  const { data: duplicateData } = useQuery({
+    queryKey: ['duplicate-check', activeDuplicateInput],
+    enabled: !!activeDuplicateInput,
+    staleTime: 30_000,
+    // Keep the last answer while the next loads so the notice doesn't blink.
+    placeholderData: (previous) => previous,
+    queryFn: async (): Promise<PossibleDuplicate[]> => {
+      if (!activeDuplicateInput) return [];
+      const result = await transactionService.checkDuplicates(activeDuplicateInput);
+      // Advisory only: a failed check simply shows nothing.
+      if (!result.success) return [];
+      const body = result.data as any;
+      return body?.data?.matches ?? body?.matches ?? [];
+    },
+  });
+
+  const duplicateMatches = activeDuplicateInput ? duplicateData ?? [] : [];
+  const duplicateKey = duplicateMatches.map((match) => match.id).join(',');
+  // "Not a duplicate" hides these matches; a different match shows again.
+  const visibleDuplicates =
+    duplicateKey && duplicateKey !== dismissedDuplicateKey ? duplicateMatches : [];
+
+  const archiveDraftMutation = useMutation({
+    mutationFn: async (draftId: number) => {
+      const result = await transactionService.reject(draftId);
+      if (!result.success) {
+        throw new Error((result.data as any)?.message || result.error || 'Could not archive this draft');
+      }
+      return draftId;
+    },
+    onSuccess: (draftId) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Duplicate draft moved to Archived', {
+        duration: 6000,
+        action: {
+          label: 'Undo',
+          onPress: async () => {
+            const restored = await transactionService.restore(draftId);
+            if (restored.success) {
+              queryClient.invalidateQueries({ queryKey: ['transactions'] });
+              toast.success('Draft is back in Pending review');
+            } else {
+              toast.error('Could not restore the draft');
+            }
+          },
+        },
+      });
+      router.back();
+    },
+    onError: (error: Error) => toast.error(error.message || 'Could not archive this draft'),
+  });
 
   const handleSubmit = async () => {
     if (!validate()) return;
@@ -1763,6 +1872,17 @@ export default function TransactionFormContent({
 
         {/* Submit Button */}
         <View style={[styles.footer, { borderTopColor: colors.outlineVariant }]}>
+          <PossibleDuplicateNotice
+            matches={visibleDuplicates}
+            isDraft={isDraft}
+            onDismiss={() => setDismissedDuplicateKey(duplicateKey)}
+            onArchiveDraft={
+              isDraft && initialData?.id
+                ? () => archiveDraftMutation.mutate(initialData.id as number)
+                : undefined
+            }
+            archiving={archiveDraftMutation.isPending}
+          />
           <Button
             mode="contained"
             onPress={handleSubmit}
@@ -1792,6 +1912,11 @@ export default function TransactionFormContent({
             ref={cameraRef}
             style={styles.cameraView}
             facing={cameraFacing}
+            onMountError={({ message }) => {
+              reportError('js_error', new Error(message), { location: 'Receipt camera' });
+              toast.error("Couldn't open the camera. Please try again.");
+              setCameraVisible(false);
+            }}
           />
 
           <TouchableOpacity

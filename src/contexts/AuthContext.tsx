@@ -20,6 +20,7 @@ import { detectTimeZone, setActiveTimeZone } from '../utils/timezone';
 import { notifyToast } from './NotificationContext';
 import { startReviewTracking } from "../services/appReviewService";
 import analyticsService from '../services/analyticsService';
+import crashlytics from '../services/crashlytics';
 import metaEvents from '../services/metaEvents';
 
 // Session validation interval (30 seconds)
@@ -148,11 +149,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuthStatus();
   }, [checkAuthStatus]);
 
-  // Tie analytics to the backend user id (never email/name); clear on logout.
+  // Tie analytics and crash reports to the backend user id (never
+  // email/name); clear on logout. Admin → App errors shows the same #id.
   const analyticsUserId = isAuthenticated ? user?.id ?? null : null;
   useEffect(() => {
     if (loading) return;
     analyticsService.setUserId(analyticsUserId);
+    crashlytics.setUser(analyticsUserId);
   }, [loading, analyticsUserId]);
 
   // Meta ad attribution: user id plus the email, which the Meta SDK hashes

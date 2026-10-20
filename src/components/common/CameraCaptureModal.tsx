@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { notifyToast } from '../../contexts/NotificationContext';
 import { reportError } from '../../services/errorReporter';
+import { markFlow } from '../../services/appExitMonitor';
 import { pickFromLibrary } from '../../utils/imagePicker';
 import {
   compatibleImagePickerOptions,
@@ -68,6 +69,10 @@ function CameraScreen({ onClose, onPhoto, allowGallery }: Omit<Props, 'visible'>
   // the button, and a second "Use photo" would send the receipt twice.
   const busyRef = useRef(false);
   const deliveredRef = useRef(false);
+
+  // If the phone closes AccountE while the camera is open, the next launch
+  // reports it (admin → App errors).
+  useEffect(() => markFlow('in-app camera'), []);
 
   const bottom = Math.max(insets.bottom, 20) + 12;
 
