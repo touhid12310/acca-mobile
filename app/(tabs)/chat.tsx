@@ -24,7 +24,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Crown, Mic, Paperclip, ScanLine, SendHorizontal, Sparkles, Square } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
-import { pickFromLibrary, takeWithCamera } from "../../src/utils/imagePicker";
+import { useCameraPermissions } from "expo-camera";
+import { pickFromLibrary } from "../../src/utils/imagePicker";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import { ThemedDatePicker } from "../../src/components/ui/ThemedDatePicker";
@@ -36,6 +37,7 @@ import { notifyToast } from "../../src/contexts/NotificationContext";
 import { BrandStrip, BrandText } from "../../src/components";
 import { ASSISTANT_NAME, AssistantHeader } from "../../src/components/chat/AssistantHeader";
 import { AssistantStart } from "../../src/components/chat/AssistantStart";
+import { CameraCaptureModal } from "../../src/components/common/CameraCaptureModal";
 import { useAssistantSuggestions, type AssistantSuggestion } from "../../src/hooks/useAssistantSuggestions";
 import {
   compatibleImagePickerOptions,
@@ -550,6 +552,9 @@ export default function ChatScreen() {
     name: string;
     type: string;
   } | null>(null);
+  // Open in-app camera: "attach" puts the photo in the box, "scan" sends it.
+  const [cameraMode, setCameraMode] = useState<"attach" | "scan" | null>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [isSending, setIsSending] = useState(false);
   const [sendingHasFile, setSendingHasFile] = useState(false);
   const [sendStatusIndex, setSendStatusIndex] = useState(0);
@@ -1217,34 +1222,39 @@ export default function ChatScreen() {
     }
   };
 
-  // Handle camera
-  const capturePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      notifyToast.warning("Please grant camera access to take photos.", {
-        title: "Permission needed",
-      });
-      return null;
+  // Handle camera. Photos come from the in-app camera, never the phone's
+  // camera app: Android can kill AccountE while that app is open, and tapping
+  // ✓ then restarted AccountE on Home without the photo.
+  const openCamera = async (mode: "attach" | "scan") => {
+    if (!cameraPermission?.granted) {
+      const permission = await requestCameraPermission();
+      if (!permission.granted) {
+        notifyToast.warning("Please grant camera access to take photos.", {
+          title: "Permission needed",
+        });
+        return;
+      }
     }
-
-    const result = await takeWithCamera({
-      quality: 0.8,
-    });
-
-    return !result.canceled && result.assets[0]
-      ? uploadFileFromAsset(result.assets[0], `photo-${Date.now()}.jpg`)
-      : null;
+    setCameraMode(mode);
   };
 
-  const handleTakePhoto = async () => {
-    const photo = await capturePhoto();
-    if (photo) setSelectedFile(photo);
+  const handleTakePhoto = () => {
+    void openCamera("attach");
   };
 
   // "Scan a receipt" card: one tap from camera to reading it.
-  const handleScanReceipt = async () => {
-    const photo = await capturePhoto();
-    if (photo) void handleSend({ text: "Read this receipt", file: photo });
+  const handleScanReceipt = () => {
+    void openCamera("scan");
+  };
+
+  const handleCameraPhoto = (photo: NonNullable<typeof selectedFile>) => {
+    const mode = cameraMode;
+    setCameraMode(null);
+    if (mode === "scan") {
+      void handleSend({ text: "Read this receipt", file: photo });
+    } else {
+      setSelectedFile(photo);
+    }
   };
 
   // Questions go straight to the assistant; a log example lands in the box to edit,
@@ -2251,6 +2261,13 @@ export default function ChatScreen() {
         maxDate={new Date()}
         onCancel={() => setShowChatDatePicker(false)}
         onConfirm={handleChatDateConfirm}
+      />
+
+      <CameraCaptureModal
+        visible={cameraMode !== null}
+        allowGallery
+        onClose={() => setCameraMode(null)}
+        onPhoto={handleCameraPhoto}
       />
 
       {/* Preview Modal */}

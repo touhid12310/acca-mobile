@@ -1,26 +1,26 @@
 import React, { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { StyleSheet } from "react-native";
 import { router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
-import { ArrowLeft, KeyRound, Mail } from "lucide-react-native";
+import { KeyRound } from "lucide-react-native";
 
-import { useTheme } from "../../src/contexts/ThemeContext";
-import { AlertBar, Button, Input } from "../../src/components/ui";
+import { AlertBar } from "../../src/components/ui";
+import { AuthShell, Reveal } from "../../src/components/auth/AuthShell";
+import {
+  AuthIconBadge,
+  AuthLink,
+  AuthTitle,
+} from "../../src/components/auth/AuthParts";
+import { AuthField } from "../../src/components/auth/AuthField";
+import { PrimaryButton } from "../../src/components/auth/AuthButtons";
 import authService from "../../src/services/authService";
-import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+
+// Back to sign in: pop when we came from there, otherwise replace.
+const backToSignIn = () => {
+  if (router.canGoBack()) router.back();
+  else router.replace("/(auth)/login");
+};
 
 export default function ForgotPasswordScreen() {
-  const { colors } = useTheme();
-
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -68,132 +68,62 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.hero}>
-            <LinearGradient
-              colors={gradients.heroAccent as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.logoBadge, shadow.md]}
-            >
-              <KeyRound size={34} color="#ffffff" strokeWidth={2.2} />
-            </LinearGradient>
-            <Text style={[styles.title, { color: colors.onSurface }]}>
-              Forgot password
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-              Enter your email and we will send a password reset link.
-            </Text>
-          </View>
+    <AuthShell onBack={backToSignIn}>
+      <AuthIconBadge icon={KeyRound} index={0} />
+      <AuthTitle
+        title="Forgot password?"
+        subtitle="Enter your email and we will send a password reset link."
+        index={1}
+      />
 
-          <View style={styles.form}>
-            {!!error && <AlertBar tone="error" message={error} />}
-            {!!success && <AlertBar tone="success" message={success} />}
+      {!!error && (
+        <Reveal key={`error-${error}`} delay={0}>
+          <AlertBar tone="error" message={error} />
+        </Reveal>
+      )}
+      {!!success && (
+        <Reveal key={`success-${success}`} delay={0}>
+          <AlertBar tone="success" message={success} />
+        </Reveal>
+      )}
 
-            <Input
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={(value) => {
-                setEmail(value);
-                if (error) setError("");
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              icon={Mail}
-            />
+      <Reveal index={2}>
+        <AuthField
+          label="Email address"
+          placeholder="you@example.com"
+          value={email}
+          onChangeText={(value) => {
+            setEmail(value);
+            if (error) setError("");
+          }}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          returnKeyType="send"
+          onSubmitEditing={() => {
+            if (!isLoading) handleSubmit();
+          }}
+        />
+      </Reveal>
 
-            <Button
-              label="Send reset link"
-              onPress={handleSubmit}
-              loading={isLoading}
-              disabled={isLoading}
-              fullWidth
-              size="lg"
-              icon={Mail}
-              style={styles.primaryButton}
-            />
+      <Reveal index={3} style={styles.actionTop}>
+        <PrimaryButton
+          label="Send reset link"
+          loadingLabel="Sending…"
+          onPress={handleSubmit}
+          loading={isLoading}
+        />
+      </Reveal>
 
-            <Button
-              label="Back to sign in"
-              onPress={() => router.back()}
-              fullWidth
-              size="lg"
-              variant="secondary"
-              icon={ArrowLeft}
-            />
-          </View>
-
-          <Pressable
-            onPress={() => router.replace("/(auth)/login")}
-            hitSlop={8}
-            style={styles.footerLink}
-          >
-            <Text style={[styles.linkText, { color: colors.primary }]}>
-              Return to login
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      <Reveal index={4}>
+        <AuthLink label="Back to sign in" onPress={backToSignIn} />
+      </Reveal>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  keyboardView: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-    justifyContent: "center",
-    gap: spacing.xxl,
-  },
-  hero: {
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  logoBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.xxl,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 300,
-  },
-  form: {
-    gap: spacing.lg,
-  },
-  primaryButton: {
-    marginTop: spacing.xs,
-  },
-  footerLink: {
-    alignSelf: "center",
-    padding: spacing.xs,
-  },
-  linkText: {
-    fontSize: 14,
-    fontWeight: "700",
+  actionTop: {
+    marginTop: 4,
   },
 });

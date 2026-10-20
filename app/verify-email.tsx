@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { MailWarning } from 'lucide-react-native';
 
 import { useAuth } from '../src/contexts/AuthContext';
 import { useTheme } from '../src/contexts/ThemeContext';
 import authService from '../src/services/authService';
 import analyticsService from '../src/services/analyticsService';
+import { AuthShell, Reveal } from '../src/components/auth/AuthShell';
+import { AuthIconBadge, AuthTitle } from '../src/components/auth/AuthParts';
+import { PrimaryButton } from '../src/components/auth/AuthButtons';
 
 /**
  * Deep-link landing page for the email-verification link.
@@ -68,30 +72,36 @@ export default function VerifyEmailScreen() {
     })();
   }, [params.token, loginWithToken]);
 
+  if (isError) {
+    return (
+      <AuthShell>
+        <AuthIconBadge icon={MailWarning} index={0} />
+        <AuthTitle title="We couldn't verify your email" subtitle={message} index={1} />
+        <Reveal index={2} style={styles.actionTop}>
+          <PrimaryButton
+            label="Back to sign in"
+            onPress={() => router.replace('/(auth)/login')}
+          />
+        </Reveal>
+      </AuthShell>
+    );
+  }
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {!isError && <ActivityIndicator size="large" color={colors.primary} />}
-      <Text style={[styles.message, { color: colors.onSurface }]}>{message}</Text>
-      {isError && (
-        <Pressable
-          onPress={() => router.replace('/(auth)/login')}
-          style={[styles.button, { backgroundColor: colors.primary }]}
-          hitSlop={6}
-        >
-          <Text style={styles.buttonText}>Back to sign in</Text>
-        </Pressable>
-      )}
-    </View>
+    <AuthShell centered>
+      <Reveal index={0} style={styles.status}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.message, { color: colors.onSurface }]}>{message}</Text>
+      </Reveal>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  status: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-    padding: 24,
+    gap: 16,
+    paddingVertical: 24,
   },
   message: {
     fontSize: 15,
@@ -99,15 +109,7 @@ const styles = StyleSheet.create({
     maxWidth: 360,
     lineHeight: 22,
   },
-  button: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-    marginTop: 8,
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+  actionTop: {
+    marginTop: 4,
   },
 });

@@ -1,24 +1,24 @@
-import React, { useState } from "react";
-import {
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  Pressable,
-  TouchableOpacity,
-  Image,
-} from "react-native";
-import { Link, router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import React, { useRef, useState } from "react";
+import { StyleSheet, Text } from "react-native";
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { LogIn, Mail, Lock, ShieldCheck } from "lucide-react-native";
+import { KeyRound, Lock, Mail, MailCheck, ShieldCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
-import { Button, Input, AlertBar } from "../../src/components/ui";
-import { spacing } from "../../src/constants/theme";
+import { AlertBar } from "../../src/components/ui";
+import { AuthShell, Reveal } from "../../src/components/auth/AuthShell";
+import {
+  AuthIconBadge,
+  AuthLink,
+  AuthTitle,
+} from "../../src/components/auth/AuthParts";
+import { AuthField, AuthFieldHandle } from "../../src/components/auth/AuthField";
+import { CodeInput } from "../../src/components/auth/CodeInput";
+import {
+  PrimaryButton,
+  OutlineButton,
+} from "../../src/components/auth/AuthButtons";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
 import { SocialProvider } from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
@@ -30,14 +30,18 @@ import metaEvents from "../../src/services/metaEvents";
 
 WebBrowser.maybeCompleteAuthSession();
 
+type Notice = { tone: "success" | "info"; message: string };
+
 export default function LoginScreen() {
   const { login, loginWithToken } = useAuth();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const passwordRef = useRef<AuthFieldHandle>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
@@ -49,10 +53,12 @@ export default function LoginScreen() {
   const handleResendVerificationLink = async () => {
     if (isResendingLink) return;
     setIsResendingLink(true);
+    setNotice(null);
     try {
       const result = await authService.resendEmailLink(email.trim());
       if (result.success) {
-        setErrors({ general: "Verification link sent — check your inbox." });
+        setErrors({});
+        setNotice({ tone: "success", message: "Verification link sent — check your inbox." });
       } else {
         const msg = (result.data as any)?.message || "Could not resend the verification link.";
         setErrors({ general: msg });
@@ -79,6 +85,7 @@ export default function LoginScreen() {
     if (isMagicAuthLoading) return;
     setIsMagicAuthLoading(true);
     setErrors({});
+    setNotice(null);
     try {
       const result = await authService.requestMagicLink(trimmed);
       if (result.success) {
@@ -108,6 +115,7 @@ export default function LoginScreen() {
     if (isMagicAuthLoading) return;
     setIsMagicAuthLoading(true);
     setErrors({});
+    setNotice(null);
     try {
       const result = await authService.verifyMagicLink(
         magicAuthEmail.trim(),
@@ -122,8 +130,9 @@ export default function LoginScreen() {
         router.replace("/(tabs)");
       } else if (data?.requires_two_factor) {
         setMagicRequiresTwoFactor(true);
-        setErrors({
-          general: "Enter your authenticator code to finish signing in",
+        setNotice({
+          tone: "info",
+          message: "Enter your authenticator code to finish signing in",
         });
       } else {
         setErrors({
@@ -142,6 +151,7 @@ export default function LoginScreen() {
   const handleSocialLogin = async (provider: SocialProvider) => {
     if (socialProvider) return;
     setErrors({});
+    setNotice(null);
 
     setSocialProvider(provider);
     try {
@@ -210,6 +220,7 @@ export default function LoginScreen() {
     if (!validateForm()) return;
     setIsLoading(true);
     setErrors({});
+    setNotice(null);
     try {
       const result = await login(
         email.trim(),
@@ -235,212 +246,76 @@ export default function LoginScreen() {
           setErrors((prev) => ({ ...prev, ...fieldErrors }));
         }
       }
-    } catch (error) {
+    } catch {
       setErrors({ general: "An unexpected error occurred. Please try again." });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Keyboard "Go" / "Done" submits, but never twice.
+  const submitLogin = () => {
+    if (!isLoading) handleLogin();
+  };
+
+  const openMagicAuth = () => {
+    setErrors({});
+    setNotice(null);
+    // Carry over an email already typed for the password sign-in.
+    setMagicAuthEmail((prev) => prev || email.trim());
+    setMagicAuthStep("email");
+  };
+
+  const leaveMagicAuth = () => {
+    setErrors({});
+    setNotice(null);
+    setMagicAuthStep("idle");
+    setMagicAuthCode("");
+  };
+
+  // Which card the sheet shows. Each is keyed so its content staggers in.
+  const panel =
+    magicAuthStep === "email"
+      ? "magic-email"
+      : magicAuthStep === "code"
+        ? "magic-code"
+        : requiresTwoFactor
+          ? "two-factor"
+          : requiresEmailVerification
+            ? "check-inbox"
+            : "password";
+
+  const banner = errors.general ? (
+    <Reveal key={`error-${errors.general}`} delay={0}>
+      <AlertBar tone="error" message={errors.general} />
+    </Reveal>
+  ) : notice ? (
+    <Reveal key={`notice-${notice.message}`} delay={0}>
+      <AlertBar tone={notice.tone} message={notice.message} />
+    </Reveal>
+  ) : null;
+
+  const strong = { fontWeight: "700" as const, color: colors.onSurface };
+
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
+    <AuthShell
+      prompt={{
+        text: "Don't have an account?",
+        action: "Get started",
+        onPress: () => router.push("/(auth)/register"),
+      }}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Hero */}
-          <View style={styles.hero}>
-            <Image
-              source={
-                isDark
-                  ? require("../../assets/logo-dark.png")
-                  : require("../../assets/logo-light.png")
-              }
-              style={isDark ? styles.logoImageDark : styles.logoImageLight}
-              resizeMode="contain"
-            />
-            <View
-              style={[
-                styles.logoDivider,
-                { backgroundColor: colors.onSurface },
-              ]}
-            />
-            <Text style={[styles.title, { color: colors.onSurface }]}>
-              Welcome back
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-              Sign in to continue managing your finances
-            </Text>
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            {errors.general && (
-              <AlertBar tone="error" message={errors.general} />
-            )}
-
-            <SocialAuthButtons
-              onSelect={handleSocialLogin}
-              activeProvider={socialProvider}
-              disabled={isLoading}
-            />
-
-            {magicAuthStep === "idle" && (
-              <TouchableOpacity
-                activeOpacity={0.6}
-                onPress={() => setMagicAuthStep("email")}
-                style={{
-                  width: "100%",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingVertical: 12,
-                  paddingHorizontal: 8,
-                  borderWidth: 1,
-                  borderStyle: "dashed",
-                  borderColor: "#cbd5e1",
-                  borderRadius: 10,
-                  backgroundColor: "transparent",
-                  marginTop: 6,
-                }}
-              >
-                <Mail size={16} color="#2563eb" />
-                <Text
-                  style={{
-                    color: "#2563eb",
-                    fontWeight: "600",
-                    fontSize: 13,
-                    marginLeft: 6,
-                  }}
-                >
-                  Sign in with an email code
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {magicAuthStep === "email" && (
-              <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.sm,
-                }}
-              >
-                <Text
-                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
-                >
-                  Email me a one-time sign-in code
-                </Text>
-                <Input
-                  label="Email"
-                  placeholder="you@example.com"
-                  value={magicAuthEmail}
-                  onChangeText={setMagicAuthEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  icon={Mail}
-                />
-                <Button
-                  label={isMagicAuthLoading ? "Sending..." : "Send code"}
-                  onPress={handleMagicAuthStart}
-                  loading={isMagicAuthLoading}
-                  disabled={isMagicAuthLoading}
-                  fullWidth
-                />
-                <Pressable
-                  onPress={() => setMagicAuthStep("idle")}
-                  style={{ alignSelf: "center", paddingVertical: spacing.xs }}
-                  hitSlop={6}
-                >
-                  <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                    Cancel
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-
-            {magicAuthStep === "code" && (
-              <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.sm,
-                }}
-              >
-                <Text
-                  style={{ color: colors.onSurface, fontWeight: "600", fontSize: 13 }}
-                >
-                  Enter the code we emailed to {magicAuthEmail}
-                </Text>
-                <Input
-                  label="Code"
-                  placeholder="123456"
-                  value={magicAuthCode}
-                  onChangeText={(t) => setMagicAuthCode(t.replace(/\s+/g, ""))}
-                  keyboardType="number-pad"
-                  maxLength={10}
-                  icon={ShieldCheck}
-                />
-                {magicRequiresTwoFactor && (
-                  <Input
-                    label="Authenticator code"
-                    placeholder="000000"
-                    value={magicTwoFactorCode}
-                    onChangeText={(t) => setMagicTwoFactorCode(t.replace(/\D/g, "").slice(0, 6))}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    icon={ShieldCheck}
-                  />
-                )}
-                <Button
-                  label={isMagicAuthLoading ? "Verifying..." : "Sign in"}
-                  onPress={handleMagicAuthVerify}
-                  loading={isMagicAuthLoading}
-                  disabled={isMagicAuthLoading}
-                  fullWidth
-                />
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Pressable
-                    onPress={handleMagicAuthStart}
-                    disabled={isMagicAuthLoading}
-                    hitSlop={6}
-                  >
-                    <Text style={{ color: colors.primary, fontSize: 12 }}>
-                      Resend code
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      setMagicAuthStep("idle");
-                      setMagicAuthCode("");
-                    }}
-                    hitSlop={6}
-                  >
-                    <Text style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                      Cancel
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-
-            <Input
-              label="Email"
+      {panel === "password" && (
+        <React.Fragment key="password">
+          <AuthTitle
+            title="Welcome back"
+            subtitle="Sign in to continue managing your finances"
+            index={0}
+          />
+          {banner}
+          <Reveal index={1}>
+            <AuthField
+              label="Email address"
               placeholder="you@example.com"
               value={email}
               onChangeText={(t) => {
@@ -450,13 +325,17 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
-              icon={Mail}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => passwordRef.current?.focus()}
               error={errors.email}
             />
-
-            <Input
+          </Reveal>
+          <Reveal index={2}>
+            <AuthField
+              ref={passwordRef}
               label="Password"
-              placeholder="••••••••"
+              placeholder="Enter your password"
               value={password}
               onChangeText={(t) => {
                 setPassword(t);
@@ -464,175 +343,248 @@ export default function LoginScreen() {
               }}
               autoCapitalize="none"
               autoComplete="password"
-              icon={Lock}
               secureTextEntry
               secureToggleable
+              returnKeyType="go"
+              onSubmitEditing={submitLogin}
               error={errors.password}
             />
+          </Reveal>
+          <Reveal index={3} style={styles.actionTop}>
+            <PrimaryButton
+              label="Sign in securely"
+              icon={Lock}
+              loadingLabel="Signing in…"
+              onPress={handleLogin}
+              loading={isLoading}
+            />
+          </Reveal>
+          <Reveal index={4}>
+            <AuthLink
+              label="Forgot your password?"
+              onPress={() => router.push("/(auth)/forgot-password")}
+            />
+          </Reveal>
+          <Reveal index={5} style={styles.alternatives}>
+            <SocialAuthButtons
+              heading="Or sign in with"
+              onSelect={handleSocialLogin}
+              activeProvider={socialProvider}
+              disabled={isLoading}
+            />
+            <OutlineButton
+              label="Sign in with an email code"
+              icon={Mail}
+              onPress={openMagicAuth}
+            />
+          </Reveal>
+        </React.Fragment>
+      )}
 
-            {requiresTwoFactor && (
-              <Input
-                label="Two-factor code"
-                placeholder="123456"
-                value={twoFactorCode}
-                onChangeText={(t) => {
-                  setTwoFactorCode(t);
-                  if (errors.twoFactorCode)
-                    setErrors((p) => ({ ...p, twoFactorCode: "" }));
-                }}
-                keyboardType="number-pad"
-                maxLength={6}
-                icon={ShieldCheck}
-                error={errors.twoFactorCode}
-              />
-            )}
+      {panel === "two-factor" && (
+        <React.Fragment key="two-factor">
+          <AuthIconBadge icon={ShieldCheck} index={0} />
+          <AuthTitle
+            title="Two-step verification"
+            subtitle="Enter the 6-digit code from your authenticator app to finish signing in."
+            index={1}
+          />
+          {banner}
+          <Reveal index={2}>
+            <CodeInput
+              value={twoFactorCode}
+              onChangeText={(t) => {
+                setTwoFactorCode(t);
+                if (errors.twoFactorCode)
+                  setErrors((p) => ({ ...p, twoFactorCode: "" }));
+              }}
+              autoFocus
+              error={!!errors.twoFactorCode}
+              accessibilityLabel="Two-factor code"
+              onSubmitEditing={submitLogin}
+            />
+            {errors.twoFactorCode ? (
+              <Text style={[styles.fieldError, { color: colors.error }]}>
+                {errors.twoFactorCode}
+              </Text>
+            ) : null}
+          </Reveal>
+          <Reveal index={3} style={styles.actionTop}>
+            <PrimaryButton
+              label="Verify & sign in"
+              loadingLabel="Verifying…"
+              onPress={handleLogin}
+              loading={isLoading}
+            />
+          </Reveal>
+          <Reveal index={4}>
+            <AuthLink
+              label="Back to sign in"
+              muted
+              onPress={() => {
+                setErrors({});
+                setRequiresTwoFactor(false);
+                setTwoFactorCode("");
+              }}
+            />
+          </Reveal>
+        </React.Fragment>
+      )}
 
-            {requiresEmailVerification && (
-              <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.xs,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Mail size={18} color={colors.primary} />
-                  <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 14 }}>
-                    Check your inbox
-                  </Text>
-                </View>
-                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
-                  We sent a verification link to <Text style={{ fontWeight: "600", color: colors.onSurface }}>{email}</Text>. Click it to finish signing in. The link expires in 60 minutes.
-                </Text>
-                <Pressable
-                  onPress={handleResendVerificationLink}
-                  disabled={isResendingLink}
-                  style={{ alignSelf: "flex-start", paddingVertical: spacing.xs }}
-                  hitSlop={6}
-                >
-                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
-                    {isResendingLink ? "Sending…" : "Send a new link"}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-
-            {!requiresEmailVerification && (
+      {panel === "check-inbox" && (
+        <React.Fragment key="check-inbox">
+          <AuthIconBadge icon={MailCheck} index={0} />
+          <AuthTitle
+            title="Check your inbox"
+            subtitle={
               <>
-                <Pressable
-                  style={styles.forgotPassword}
-                  onPress={() => router.push("/(auth)/forgot-password")}
-                  hitSlop={6}
-                >
-                  <Text
-                    style={[styles.forgotPasswordText, { color: colors.primary }]}
-                  >
-                    Forgot password?
-                  </Text>
-                </Pressable>
-
-                <Button
-                  label={isLoading ? "Signing in..." : "Sign in"}
-                  onPress={handleLogin}
-                  loading={isLoading}
-                  disabled={isLoading}
-                  fullWidth
-                  size="lg"
-                  icon={LogIn}
-                  style={styles.primaryButton}
-                />
+                We sent a verification link to <Text style={strong}>{email}</Text>.
+                Tap it to finish signing in. The link expires in 60 minutes.
               </>
-            )}
-          </View>
+            }
+            index={1}
+          />
+          {banner}
+          <Reveal index={2} style={styles.actionTop}>
+            <OutlineButton
+              label="Send a new link"
+              loadingLabel="Sending…"
+              icon={Mail}
+              onPress={handleResendVerificationLink}
+              loading={isResendingLink}
+            />
+          </Reveal>
+          <Reveal index={3}>
+            <AuthLink
+              label="Back to sign in"
+              muted
+              onPress={() => {
+                setErrors({});
+                setNotice(null);
+                setRequiresEmailVerification(false);
+              }}
+            />
+          </Reveal>
+        </React.Fragment>
+      )}
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text
-              style={[styles.footerText, { color: colors.onSurfaceVariant }]}
-            >
-              Don't have an account?{" "}
-            </Text>
-            <Link href="/(auth)/register" asChild>
-              <Pressable hitSlop={6}>
-                <Text style={[styles.linkText, { color: colors.primary }]}>
-                  Sign up
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      {panel === "magic-email" && (
+        <React.Fragment key="magic-email">
+          <AuthIconBadge icon={Mail} index={0} />
+          <AuthTitle
+            title="Sign in with a code"
+            subtitle="We'll email you a one-time 6-digit code. No password needed."
+            index={1}
+          />
+          {banner}
+          <Reveal index={2}>
+            <AuthField
+              label="Email address"
+              placeholder="you@example.com"
+              value={magicAuthEmail}
+              onChangeText={setMagicAuthEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              returnKeyType="send"
+              onSubmitEditing={handleMagicAuthStart}
+            />
+          </Reveal>
+          <Reveal index={3} style={styles.actionTop}>
+            <PrimaryButton
+              label="Send code"
+              loadingLabel="Sending…"
+              onPress={handleMagicAuthStart}
+              loading={isMagicAuthLoading}
+            />
+          </Reveal>
+          <Reveal index={4}>
+            <AuthLink label="Use my password instead" muted onPress={leaveMagicAuth} />
+          </Reveal>
+        </React.Fragment>
+      )}
+
+      {panel === "magic-code" && (
+        <React.Fragment key="magic-code">
+          <AuthIconBadge icon={KeyRound} index={0} />
+          <AuthTitle
+            title="Check your email"
+            subtitle={
+              <>
+                Enter the code we emailed to <Text style={strong}>{magicAuthEmail}</Text>
+              </>
+            }
+            index={1}
+          />
+          {banner}
+          <Reveal index={2}>
+            <CodeInput
+              value={magicAuthCode}
+              onChangeText={setMagicAuthCode}
+              autoFocus
+              accessibilityLabel="Code from your email"
+              onSubmitEditing={handleMagicAuthVerify}
+            />
+          </Reveal>
+          {magicRequiresTwoFactor && (
+            <Reveal delay={0} style={styles.codeGroup}>
+              <Text style={[styles.codeLabel, { color: colors.onSurfaceVariant }]}>
+                Authenticator code
+              </Text>
+              <CodeInput
+                value={magicTwoFactorCode}
+                onChangeText={setMagicTwoFactorCode}
+                autoFocus
+                accessibilityLabel="Authenticator code"
+                onSubmitEditing={handleMagicAuthVerify}
+              />
+            </Reveal>
+          )}
+          <Reveal index={3} style={styles.actionTop}>
+            <PrimaryButton
+              label="Sign in"
+              loadingLabel="Verifying…"
+              onPress={handleMagicAuthVerify}
+              loading={isMagicAuthLoading}
+            />
+          </Reveal>
+          <Reveal index={4} style={styles.linkRow}>
+            <AuthLink
+              label="Resend code"
+              onPress={handleMagicAuthStart}
+              disabled={isMagicAuthLoading}
+            />
+            <AuthLink label="Cancel" muted onPress={leaveMagicAuth} />
+          </Reveal>
+        </React.Fragment>
+      )}
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  keyboardView: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-    justifyContent: "center",
-    gap: spacing.xxl,
+  actionTop: {
+    marginTop: 4,
   },
-  hero: {
-    alignItems: "center",
-    gap: spacing.md,
+  alternatives: {
+    gap: 14,
+    marginTop: 4,
   },
-  logoImageDark: {
-    width: 220,
-    height: 33,
-    marginBottom: spacing.sm,
-  },
-  logoImageLight: {
-    width: 220,
-    height: 47,
-    marginBottom: spacing.sm,
-  },
-  logoDivider: {
-    width: 220,
-    height: 2,
-    borderRadius: 999,
-    marginBottom: spacing.xs,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 14,
+  fieldError: {
+    fontSize: 12.5,
+    marginTop: 8,
     textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 300,
   },
-  form: {
-    gap: spacing.lg,
+  codeGroup: {
+    gap: 8,
   },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.xs,
-  },
-  forgotPasswordText: {
+  codeLabel: {
     fontSize: 13,
     fontWeight: "600",
+    textAlign: "center",
   },
-  footer: {
+  linkRow: {
     flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 14,
-  },
-  linkText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  primaryButton: {
-    marginTop: spacing.xs,
+    justifyContent: "space-between",
   },
 });

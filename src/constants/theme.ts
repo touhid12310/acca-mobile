@@ -71,6 +71,10 @@ export const gradients = {
   // Align with app dark gradient (top → bottom of main bg)
   hero: ["#0f213d", "#122a48", "#0b1830"],
   heroAccent: ["#6366f1", "#8b5cf6", "#ec4899"],
+  // Sign-in / sign-up brand header: deep indigo easing lighter toward the
+  // bottom-right. The night set sits closer to the navy app background.
+  authHeader: ["#3730a3", "#4f46e5", "#818cf8"],
+  authHeaderNight: ["#1e1b4b", "#312e81", "#4338ca"],
   mint: ["#34d399", "#10b981"],
   sunset: ["#f472b6", "#fb923c"],
   ocean: ["#0ea5e9", "#6366f1"],

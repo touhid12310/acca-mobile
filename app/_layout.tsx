@@ -200,7 +200,10 @@ function RootLayoutNav() {
           }}
         >
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        {/* Signed-out screens fade in so the logo entrance isn't hidden by a slide. */}
+        <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false, animation: 'fade' }} />
+        <Stack.Screen name="verify-email" options={{ headerShown: false, animation: 'fade' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="transaction-modal"

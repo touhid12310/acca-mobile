@@ -1,19 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import { ShieldCheck } from 'lucide-react-native';
 
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import socialAuthService from '../../src/services/socialAuthService';
 import analyticsService from '../../src/services/analyticsService';
 import metaEvents from '../../src/services/metaEvents';
-import { NativeTextInput as TextInput } from '../../src/components/ui/SafeTextInput';
+import { AuthShell, Reveal } from '../../src/components/auth/AuthShell';
+import { AuthIconBadge, AuthLink, AuthTitle } from '../../src/components/auth/AuthParts';
+import { CodeInput } from '../../src/components/auth/CodeInput';
+import { PrimaryButton } from '../../src/components/auth/AuthButtons';
 
 // Codes already processed in this app session — prevents double-exchange if
 // the inline WebBrowser.openAuthSessionAsync() handler in (auth)/login.tsx
@@ -31,12 +29,16 @@ export default function AuthCallback() {
   }>();
   const { loginWithToken } = useAuth();
   const { colors } = useTheme();
-  const [message, setMessage] = useState('Signing you in…');
+  const handedOffToken =
+    typeof params.pending_token === 'string' ? params.pending_token : null;
+  const [message, setMessage] = useState(
+    handedOffToken ? 'Two-factor authentication required' : 'Signing you in…',
+  );
   const ran = useRef(false);
 
   // 2FA state — when the backend says the account has TOTP enabled, we
   // stop on this screen and prompt for the 6-digit code.
-  const [pendingToken, setPendingToken] = useState<string | null>(null);
+  const [pendingToken, setPendingToken] = useState<string | null>(handedOffToken);
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
@@ -65,10 +67,9 @@ export default function AuthCallback() {
       return;
     }
 
-    // Hand-off from inline login handler: exchange already done, 2FA required.
+    // Hand-off from inline login handler: exchange already done, 2FA
+    // required. The prompt is already showing (state starts from the param).
     if (pendingTokenParam) {
-      setPendingToken(pendingTokenParam);
-      setMessage('Two-factor authentication required');
       return;
     }
 
@@ -144,141 +145,73 @@ export default function AuthCallback() {
 
   if (pendingToken) {
     return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.outline ?? '#d1d5db',
-            },
-          ]}
-        >
-          <Text style={[styles.cardTitle, { color: colors.onSurface }]}>
-            Two-factor authentication
-          </Text>
-          <Text style={[styles.cardSubtitle, { color: colors.onSurfaceVariant }]}>
-            Enter the 6-digit code from your authenticator app to finish signing in.
-          </Text>
-          <TextInput
+      <AuthShell>
+        <AuthIconBadge icon={ShieldCheck} index={0} />
+        <AuthTitle
+          title="Two-step verification"
+          subtitle="Enter the 6-digit code from your authenticator app to finish signing in."
+          index={1}
+        />
+        <Reveal index={2}>
+          <CodeInput
             value={code}
-            onChangeText={(t) => {
-              setCode(t.replace(/\D/g, '').slice(0, 6));
+            onChangeText={(digits) => {
+              setCode(digits);
               if (twoFactorError) setTwoFactorError(null);
             }}
-            keyboardType="number-pad"
-            placeholder="000000"
-            placeholderTextColor={colors.onSurfaceVariant}
-            maxLength={6}
             autoFocus
-            style={[
-              styles.codeInput,
-              {
-                color: colors.onSurface,
-                borderColor: colors.outline ?? '#d1d5db',
-                backgroundColor: colors.surface,
-              },
-            ]}
+            error={!!twoFactorError}
+            accessibilityLabel="Authenticator code"
+            onSubmitEditing={handleVerifyTwoFactor}
           />
           {twoFactorError && (
-            <Text style={styles.errorText}>{twoFactorError}</Text>
+            <Text style={[styles.errorText, { color: colors.error }]}>{twoFactorError}</Text>
           )}
-          <Pressable
+        </Reveal>
+        <Reveal index={3} style={styles.actionTop}>
+          <PrimaryButton
+            label="Verify & sign in"
+            loadingLabel="Verifying…"
             onPress={handleVerifyTwoFactor}
-            disabled={isVerifying || code.length !== 6}
-            style={[
-              styles.verifyBtn,
-              {
-                backgroundColor: colors.primary,
-                opacity: isVerifying || code.length !== 6 ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text style={styles.verifyBtnText}>
-              {isVerifying ? 'Verifying…' : 'Verify & sign in'}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.replace('/(auth)/login')}
-            hitSlop={6}
-            style={styles.cancelBtn}
-          >
-            <Text style={[styles.cancelText, { color: colors.onSurfaceVariant }]}>
-              Cancel
-            </Text>
-          </Pressable>
-        </View>
-      </View>
+            loading={isVerifying}
+            disabled={code.length !== 6}
+          />
+        </Reveal>
+        <Reveal index={4}>
+          <AuthLink label="Cancel" muted onPress={() => router.replace('/(auth)/login')} />
+        </Reveal>
+      </AuthShell>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={[styles.message, { color: colors.onSurface }]}>{message}</Text>
-    </View>
+    <AuthShell centered>
+      <Reveal index={0} style={styles.status}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.message, { color: colors.onSurface }]}>{message}</Text>
+      </Reveal>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  status: {
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 16,
-    padding: 24,
+    paddingVertical: 24,
   },
   message: {
     fontSize: 15,
-    opacity: 0.85,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 24,
-    gap: 14,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  cardSubtitle: {
-    fontSize: 13,
-    opacity: 0.85,
-    lineHeight: 18,
-  },
-  codeInput: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    fontSize: 20,
+    lineHeight: 22,
     textAlign: 'center',
-    letterSpacing: 6,
-    fontWeight: '700',
+    maxWidth: 320,
   },
   errorText: {
-    color: '#dc2626',
-    fontSize: 13,
+    fontSize: 12.5,
+    marginTop: 8,
+    textAlign: 'center',
   },
-  verifyBtn: {
-    paddingVertical: 13,
-    borderRadius: 10,
-    alignItems: 'center',
+  actionTop: {
     marginTop: 4,
-  },
-  verifyBtnText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  cancelBtn: {
-    alignSelf: 'center',
-    paddingVertical: 4,
-  },
-  cancelText: {
-    fontSize: 13,
   },
 });

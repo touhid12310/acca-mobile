@@ -1,23 +1,24 @@
-import React, { useState } from "react";
-import {
-  View,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  Pressable,
-} from "react-native";
-import { Link, router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import React, { useRef, useState } from "react";
+import { StyleSheet, Text } from "react-native";
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { Lock, Mail, Smartphone, UserPlus, User2 } from "lucide-react-native";
+import { ArrowRight, Mail, MailCheck } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
-import { Button, Input, AlertBar } from "../../src/components/ui";
-import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import { AlertBar } from "../../src/components/ui";
+import { AuthShell, Reveal } from "../../src/components/auth/AuthShell";
+import {
+  AuthIconBadge,
+  AuthLink,
+  AuthTitle,
+} from "../../src/components/auth/AuthParts";
+import { AuthField, AuthFieldHandle } from "../../src/components/auth/AuthField";
+import { PasswordStrength } from "../../src/components/auth/PasswordStrength";
+import {
+  PrimaryButton,
+  OutlineButton,
+} from "../../src/components/auth/AuthButtons";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
 import authService from "../../src/services/authService";
 import { SocialProvider } from "../../src/services/socialAuthService";
@@ -29,9 +30,20 @@ import metaEvents from "../../src/services/metaEvents";
 
 WebBrowser.maybeCompleteAuthSession();
 
+// Sign up is normally opened from sign in, so going back keeps the stack
+// short; a deep link straight here replaces it with sign in instead.
+const goToSignIn = () => {
+  if (router.canGoBack()) router.back();
+  else router.replace("/(auth)/login");
+};
+
 export default function RegisterScreen() {
   const { register, loginWithToken } = useAuth();
   const { colors } = useTheme();
+  const emailRef = useRef<AuthFieldHandle>(null);
+  const mobileRef = useRef<AuthFieldHandle>(null);
+  const passwordRef = useRef<AuthFieldHandle>(null);
+  const confirmRef = useRef<AuthFieldHandle>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -40,6 +52,7 @@ export default function RegisterScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState("");
   const [requiresEmailVerification, setRequiresEmailVerification] = useState(false);
   const [isResendingLink, setIsResendingLink] = useState(false);
   const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(
@@ -49,10 +62,12 @@ export default function RegisterScreen() {
   const handleResendVerificationLink = async () => {
     if (isResendingLink) return;
     setIsResendingLink(true);
+    setNotice("");
     try {
       const result = await authService.resendEmailLink(email.trim());
       if (result.success) {
-        setErrors({ general: "Verification link sent — check your inbox." });
+        setErrors({});
+        setNotice("Verification link sent — check your inbox.");
       } else {
         const msg = (result.data as any)?.message || "Could not resend the verification link.";
         setErrors({ general: msg });
@@ -175,241 +190,198 @@ export default function RegisterScreen() {
           setErrors((prev) => ({ ...prev, ...fieldErrors }));
         }
       }
-    } catch (error) {
+    } catch {
       setErrors({ general: "An unexpected error occurred. Please try again." });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Keyboard "Go" on the last field submits, but never twice.
+  const submitRegister = () => {
+    if (!isLoading) handleRegister();
+  };
+
+  // Clears a field's error as soon as the user edits it.
+  const clearError = (key: string) => {
+    if (errors[key]) setErrors((p) => ({ ...p, [key]: "" }));
+  };
+
+  const banner = errors.general ? (
+    <Reveal key={`error-${errors.general}`} delay={0}>
+      <AlertBar tone="error" message={errors.general} />
+    </Reveal>
+  ) : notice ? (
+    <Reveal key={`notice-${notice}`} delay={0}>
+      <AlertBar tone="success" message={notice} />
+    </Reveal>
+  ) : null;
+
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
+    <AuthShell
+      onBack={router.canGoBack() ? () => router.back() : undefined}
+      prompt={{
+        text: "Already have an account?",
+        action: "Sign in",
+        onPress: goToSignIn,
+      }}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Hero */}
-          <View style={styles.hero}>
-            <LinearGradient
-              colors={gradients.heroAccent as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[styles.logoBadge, shadow.md]}
-            >
-              <UserPlus size={34} color="#ffffff" strokeWidth={2.2} />
-            </LinearGradient>
-            <Text style={[styles.title, { color: colors.onSurface }]}>
-              Create account
-            </Text>
-            <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
-              Start managing your finances with clarity
-            </Text>
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            {errors.general && (
-              <AlertBar tone="error" message={errors.general} />
-            )}
-
-            <SocialAuthButtons
-              onSelect={handleSocialSignup}
-              activeProvider={socialProvider}
-              disabled={isLoading}
+      {requiresEmailVerification ? (
+        <React.Fragment key="check-inbox">
+          <AuthIconBadge icon={MailCheck} index={0} />
+          <AuthTitle
+            title="Check your inbox"
+            subtitle={
+              <>
+                We sent a verification link to{" "}
+                <Text style={{ fontWeight: "700", color: colors.onSurface }}>{email}</Text>.
+                Tap it to activate your account. The link expires in 60 minutes.
+              </>
+            }
+            index={1}
+          />
+          {banner}
+          <Reveal index={2} style={styles.actionTop}>
+            <OutlineButton
+              label="Send a new link"
+              loadingLabel="Sending…"
+              icon={Mail}
+              onPress={handleResendVerificationLink}
+              loading={isResendingLink}
             />
-
-            <Input
-              label="Full name"
+          </Reveal>
+          <Reveal index={3}>
+            <AuthLink label="Back to sign in" muted onPress={goToSignIn} />
+          </Reveal>
+        </React.Fragment>
+      ) : (
+        <React.Fragment key="form">
+          <AuthTitle
+            title="Get started free"
+            subtitle="Free forever plan. No credit card needed."
+            index={0}
+          />
+          {banner}
+          <Reveal index={1}>
+            <AuthField
+              label="Your name"
               placeholder="Jane Doe"
               value={name}
               onChangeText={(t) => {
                 setName(t);
-                if (errors.name) setErrors((p) => ({ ...p, name: "" }));
+                clearError("name");
               }}
               autoCapitalize="words"
               autoComplete="name"
-              icon={User2}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => emailRef.current?.focus()}
               error={errors.name}
             />
-            <Input
-              label="Email"
+          </Reveal>
+          <Reveal index={2}>
+            <AuthField
+              ref={emailRef}
+              label="Email address"
               placeholder="you@example.com"
               value={email}
               onChangeText={(t) => {
                 setEmail(t);
-                if (errors.email) setErrors((p) => ({ ...p, email: "" }));
+                clearError("email");
               }}
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
-              icon={Mail}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => mobileRef.current?.focus()}
               error={errors.email}
             />
-            <Input
+          </Reveal>
+          <Reveal index={3}>
+            <AuthField
+              ref={mobileRef}
               label="Mobile number"
               placeholder="+8801XXXXXXXXX"
               value={mobile}
               onChangeText={(t) => {
                 setMobile(t);
-                if (errors.mobile) setErrors((p) => ({ ...p, mobile: "" }));
+                clearError("mobile");
               }}
               keyboardType="phone-pad"
               autoCapitalize="none"
               autoComplete="tel"
-              icon={Smartphone}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => passwordRef.current?.focus()}
               error={errors.mobile}
             />
-            <Input
+          </Reveal>
+          <Reveal index={4}>
+            <AuthField
+              ref={passwordRef}
               label="Password"
               placeholder="At least 8 characters"
               value={password}
               onChangeText={(t) => {
                 setPassword(t);
-                if (errors.password) setErrors((p) => ({ ...p, password: "" }));
+                clearError("password");
               }}
               autoCapitalize="none"
               autoComplete="password-new"
-              icon={Lock}
               secureTextEntry
               secureToggleable
+              accessory={<PasswordStrength password={password} />}
+              returnKeyType="next"
+              submitBehavior="submit"
+              onSubmitEditing={() => confirmRef.current?.focus()}
               error={errors.password}
             />
-            <Input
+          </Reveal>
+          <Reveal index={5}>
+            <AuthField
+              ref={confirmRef}
               label="Confirm password"
               placeholder="Repeat your password"
               value={confirmPassword}
               onChangeText={(t) => {
                 setConfirmPassword(t);
-                if (errors.confirmPassword)
-                  setErrors((p) => ({ ...p, confirmPassword: "" }));
+                clearError("confirmPassword");
               }}
               autoCapitalize="none"
               autoComplete="password-new"
-              icon={Lock}
               secureTextEntry
               secureToggleable
+              returnKeyType="go"
+              onSubmitEditing={submitRegister}
               error={errors.confirmPassword}
             />
-
-            {requiresEmailVerification ? (
-              <View
-                style={{
-                  backgroundColor: colors.surfaceVariant ?? `${colors.primary}10`,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  gap: spacing.xs,
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Mail size={18} color={colors.primary} />
-                  <Text style={{ color: colors.onSurface, fontWeight: "700", fontSize: 14 }}>
-                    Check your inbox
-                  </Text>
-                </View>
-                <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
-                  We sent a verification link to <Text style={{ fontWeight: "600", color: colors.onSurface }}>{email}</Text>. Click it to activate your account. The link expires in 60 minutes.
-                </Text>
-                <Pressable
-                  onPress={handleResendVerificationLink}
-                  disabled={isResendingLink}
-                  style={{ alignSelf: "flex-start", paddingVertical: spacing.xs }}
-                  hitSlop={6}
-                >
-                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>
-                    {isResendingLink ? "Sending…" : "Send a new link"}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Button
-                label={isLoading ? "Creating account..." : "Create account"}
-                onPress={handleRegister}
-                loading={isLoading}
-                disabled={isLoading}
-                fullWidth
-                size="lg"
-                icon={UserPlus}
-                style={styles.primaryButton}
-              />
-            )}
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text
-              style={[styles.footerText, { color: colors.onSurfaceVariant }]}
-            >
-              Already have an account?{" "}
-            </Text>
-            <Link href="/(auth)/login" asChild>
-              <Pressable hitSlop={6}>
-                <Text style={[styles.linkText, { color: colors.primary }]}>
-                  Sign in
-                </Text>
-              </Pressable>
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </Reveal>
+          <Reveal index={6} style={styles.actionTop}>
+            <PrimaryButton
+              label="Create my free account"
+              iconRight={ArrowRight}
+              loadingLabel="Creating account…"
+              onPress={handleRegister}
+              loading={isLoading}
+            />
+          </Reveal>
+          <Reveal index={7} style={styles.actionTop}>
+            <SocialAuthButtons
+              heading="Or sign up with"
+              onSelect={handleSocialSignup}
+              activeProvider={socialProvider}
+              disabled={isLoading}
+            />
+          </Reveal>
+        </React.Fragment>
+      )}
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  keyboardView: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
-    justifyContent: "center",
-    gap: spacing.xxl,
-  },
-  hero: {
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  logoBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.xxl,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-    maxWidth: 300,
-  },
-  form: {
-    gap: spacing.lg,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 14,
-  },
-  linkText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  primaryButton: {
-    marginTop: spacing.xs,
+  actionTop: {
+    marginTop: 4,
   },
 });

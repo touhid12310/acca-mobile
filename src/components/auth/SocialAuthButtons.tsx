@@ -1,17 +1,11 @@
 import React from 'react';
-import {
-  View,
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useTheme } from '../../contexts/ThemeContext';
-import { spacing, radius } from '../../constants/theme';
 import type { SocialProvider } from '../../services/socialAuthService';
+import { AuthDivider } from './AuthParts';
+import { PressableScale } from './PressableScale';
 
 interface SocialAuthButtonsProps {
   onSelect: (provider: SocialProvider) => void;
@@ -38,15 +32,12 @@ const AppleSvg = ({ color }: { color: string }) => (
   </Svg>
 );
 
-const MicrosoftSvg = () => (
-  <Svg viewBox="0 0 24 24" width={22} height={22}>
-    <Path fill="#F25022" d="M1 1h10v10H1z" />
-    <Path fill="#7FBA00" d="M13 1h10v10H13z" />
-    <Path fill="#00A4EF" d="M1 13h10v10H1z" />
-    <Path fill="#FFB900" d="M13 13h10v10H13z" />
-  </Svg>
-);
-
+/**
+ * Divider plus the social sign-in buttons. Android offers Google only, as a
+ * full-width "Continue with Google". iOS shows Apple and Google side by side
+ * as equal logo buttons (Apple first, App Store 4.8; logo-only per Apple's
+ * button guidelines).
+ */
 export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   onSelect,
   activeProvider,
@@ -55,67 +46,59 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
 }) => {
   const { colors, isDark } = useTheme();
 
-  // Apple must lead on iOS when Google is also offered (App Store 4.8).
-  // Android stays Google-only — Sign in with Apple is not required there.
-  const googleButton = {
+  const google = {
     key: 'google' as SocialProvider,
-    label: 'Continue with Google',
+    name: 'Google',
     icon: <GoogleSvg />,
-    background: isDark ? '#1e293b' : '#ffffff',
-    border: isDark ? '#334155' : '#e2e8f0',
-    color: isDark ? '#f1f5f9' : '#0f172a',
+    background: isDark ? colors.surfaceElevated : '#ffffff',
+    border: isDark ? colors.outline : '#e2e6ef',
+    color: colors.onSurface,
   };
-  const appleButton = {
+  const apple = {
     key: 'apple' as SocialProvider,
-    label: 'Continue with Apple',
+    name: 'Apple',
     icon: <AppleSvg color={isDark ? '#0f172a' : '#ffffff'} />,
     background: isDark ? '#ffffff' : '#000000',
     border: isDark ? '#ffffff' : '#000000',
     color: isDark ? '#0f172a' : '#ffffff',
   };
-  const buttons = Platform.OS === 'ios' ? [appleButton, googleButton] : [googleButton];
+  const buttons = Platform.OS === 'ios' ? [apple, google] : [google];
+  const compact = buttons.length > 1;
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.dividerRow}>
-        <View style={[styles.dividerLine, { backgroundColor: colors.outline }]} />
-        <Text style={[styles.dividerLabel, { color: colors.onSurfaceVariant }]}>
-          {heading}
-        </Text>
-        <View style={[styles.dividerLine, { backgroundColor: colors.outline }]} />
-      </View>
-
-      <View style={socialBtnStyles.container}>
+      <AuthDivider label={heading} />
+      <View style={styles.row}>
         {buttons.map((btn) => {
           const isBusy = activeProvider === btn.key;
           const isDisabled = !!disabled || !!activeProvider;
           return (
-            <TouchableOpacity
+            <PressableScale
               key={btn.key}
               onPress={() => onSelect(btn.key)}
               disabled={isDisabled}
-              activeOpacity={0.7}
+              scaleTo={0.96}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue with ${btn.name}`}
+              accessibilityState={{ disabled: isDisabled, busy: isBusy }}
               style={[
-                socialBtnStyles.button,
+                styles.button,
                 {
                   backgroundColor: btn.background,
                   borderColor: btn.border,
-                  opacity: isDisabled ? 0.6 : 1,
+                  opacity: isDisabled && !isBusy ? 0.6 : 1,
                 },
               ]}
-              accessibilityLabel={`Continue with ${btn.label}`}
             >
-              <View style={socialBtnStyles.iconWrap}>
-                {isBusy ? (
-                  <ActivityIndicator size="small" color={btn.color} />
-                ) : (
-                  btn.icon
-                )}
+              <View style={styles.iconWrap}>
+                {isBusy ? <ActivityIndicator size="small" color={btn.color} /> : btn.icon}
               </View>
-              <Text style={[socialBtnStyles.label, { color: btn.color }]}>
-                {btn.label}
-              </Text>
-            </TouchableOpacity>
+              {!compact ? (
+                <Text style={[styles.label, { color: btn.color }]} numberOfLines={1}>
+                  Continue with {btn.name}
+                </Text>
+              ) : null}
+            </PressableScale>
           );
         })}
       </View>
@@ -123,77 +106,35 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   );
 };
 
-const socialBtnStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'column',
-    width: '100%',
-    marginTop: 4,
+const styles = StyleSheet.create({
+  wrapper: {
+    gap: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    gap: 12,
   },
   button: {
+    flex: 1,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1.5,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderRadius: 12,
-    minHeight: 52,
-    marginBottom: 8,
+    gap: 10,
+    paddingHorizontal: 16,
   },
   iconWrap: {
     width: 24,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
   },
   label: {
     fontSize: 15,
     fontWeight: '600',
-  },
-});
-
-const styles = StyleSheet.create({
-  wrapper: {
-    gap: spacing.md,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    opacity: 0.5,
-  },
-  dividerLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  grid: {
-    // Single column so the Google button stretches full-width like the
-    // web pill. When multiple providers are restored, switch back to
-    // flexDirection: 'row' (or wrap with flex: 1 children).
-    flexDirection: 'column',
-    gap: spacing.sm,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 1,
-    borderRadius: radius.lg,
-    minHeight: 52,
-  },
-  label: {
-    fontSize: 15,
-    fontWeight: '600',
+    includeFontPadding: false,
   },
 });
 

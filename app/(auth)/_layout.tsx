@@ -12,7 +12,10 @@ export default function AuthLayout() {
         contentStyle: {
           backgroundColor: theme.colors.background,
         },
-        animation: "slide_from_right",
+        // Every auth screen shares the same header, so a cross-fade reads as
+        // the sheet content changing rather than a new page sliding in.
+        animation: "fade",
+        animationDuration: 280,
       }}
     >
       <Stack.Screen

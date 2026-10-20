@@ -45,6 +45,12 @@ const launchSafely = async (
 export const pickFromLibrary = (options?: ImagePicker.ImagePickerOptions) =>
   launchSafely(() => ImagePicker.launchImageLibraryAsync(options), 'your photos');
 
-/** `launchCameraAsync` that never rejects; a failure reads as a cancel. */
+/**
+ * `launchCameraAsync` that never rejects; a failure reads as a cancel.
+ *
+ * Prefer `CameraCaptureModal`: this opens the phone's camera app, and Android
+ * can kill AccountE in the background meanwhile — tapping ✓ then restarts the
+ * app on Home and the photo is lost.
+ */
 export const takeWithCamera = (options?: ImagePicker.ImagePickerOptions) =>
   launchSafely(() => ImagePicker.launchCameraAsync(options), 'the camera');
