@@ -57,13 +57,20 @@ const MAX_REPEATS = 3;
 const ENABLED = !__DEV__ || process.env.EXPO_PUBLIC_REPORT_ERRORS === '1';
 const APP_VERSION = `${Constants.expoConfig?.version ?? 'unknown'}${__DEV__ ? ' (dev)' : ''}`;
 
-// Lost connectivity says nothing about our code.
+// Lost connectivity says nothing about our code. expo/fetch passes the
+// phone's own wording through ("fetch failed: java.net.UnknownHostException…"),
+// and NetInfo can still say "connected" on a Wi-Fi with no internet.
 const IGNORED_MESSAGES = [
   /Network request failed/i,
   /network connection was lost/i,
   /The Internet connection appears to be offline/i,
   /AbortError|Aborted|signal is aborted/i,
+  /Fetch request has been canceled/i,
   /timed? ?out/i,
+  /UnknownHostException|Unable to resolve host/i,
+  /SocketException|ConnectException|NoRouteToHostException|SSLException|SSLHandshakeException|StreamResetException/i,
+  /Software caused connection abort|Connection reset|Failed to connect to/i,
+  /NSURLErrorDomain|A server with the specified hostname could not be found|Could not connect to the server/i,
 ];
 
 let installed = false;

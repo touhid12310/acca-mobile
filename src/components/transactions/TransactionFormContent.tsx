@@ -1014,6 +1014,12 @@ export default function TransactionFormContent({
   // the same purchase. Checked while adding or reviewing a draft, never when
   // editing a saved row. It only warns; Save keeps working.
   const isDraft = initialData?.status === 'pending_review';
+  // A saved row can't switch between a transfer (two linked rows) and a single
+  // entry: the API refuses it ("The transfer to field is required.") and the
+  // web edit form doesn't offer it. Income / expense / asset / liability can
+  // still swap among themselves.
+  const editingSaved = !!initialData?.id;
+  const savedAsTransfer = editingSaved && initialData?.type === 'transfer';
   const duplicateCheckEnabled =
     formData.type !== 'transfer' && (!initialData?.id || isDraft);
   const duplicateDate = formData.date instanceof Date ? toDateInputValue(formData.date) : String(formData.date);
@@ -1267,56 +1273,62 @@ export default function TransactionFormContent({
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.typeChips}>
-                <Chip
-                  selected={formData.type === 'expense'}
-                  onPress={() => handleTypeChange('expense')}
-                  icon="arrow-up-circle"
-                  style={styles.typeChip}
-                  showSelectedCheck={false}
-                  mode={formData.type === 'expense' ? 'flat' : 'outlined'}
-                >
-                  Expense
-                </Chip>
-                <Chip
-                  selected={formData.type === 'income'}
-                  onPress={() => handleTypeChange('income')}
-                  icon="arrow-down-circle"
-                  style={styles.typeChip}
-                  showSelectedCheck={false}
-                  mode={formData.type === 'income' ? 'flat' : 'outlined'}
-                >
-                  Income
-                </Chip>
-                <Chip
-                  selected={formData.type === 'asset'}
-                  onPress={() => handleTypeChange('asset')}
-                  icon="wallet"
-                  style={styles.typeChip}
-                  showSelectedCheck={false}
-                  mode={formData.type === 'asset' ? 'flat' : 'outlined'}
-                >
-                  Asset
-                </Chip>
-                <Chip
-                  selected={formData.type === 'liability'}
-                  onPress={() => handleTypeChange('liability')}
-                  icon="credit-card"
-                  style={styles.typeChip}
-                  showSelectedCheck={false}
-                  mode={formData.type === 'liability' ? 'flat' : 'outlined'}
-                >
-                  Liability
-                </Chip>
-                <Chip
-                  selected={formData.type === 'transfer'}
-                  onPress={() => handleTypeChange('transfer')}
-                  icon="bank-transfer"
-                  style={styles.typeChip}
-                  showSelectedCheck={false}
-                  mode={formData.type === 'transfer' ? 'flat' : 'outlined'}
-                >
-                  Transfer
-                </Chip>
+                {!savedAsTransfer && (
+                  <>
+                    <Chip
+                      selected={formData.type === 'expense'}
+                      onPress={() => handleTypeChange('expense')}
+                      icon="arrow-up-circle"
+                      style={styles.typeChip}
+                      showSelectedCheck={false}
+                      mode={formData.type === 'expense' ? 'flat' : 'outlined'}
+                    >
+                      Expense
+                    </Chip>
+                    <Chip
+                      selected={formData.type === 'income'}
+                      onPress={() => handleTypeChange('income')}
+                      icon="arrow-down-circle"
+                      style={styles.typeChip}
+                      showSelectedCheck={false}
+                      mode={formData.type === 'income' ? 'flat' : 'outlined'}
+                    >
+                      Income
+                    </Chip>
+                    <Chip
+                      selected={formData.type === 'asset'}
+                      onPress={() => handleTypeChange('asset')}
+                      icon="wallet"
+                      style={styles.typeChip}
+                      showSelectedCheck={false}
+                      mode={formData.type === 'asset' ? 'flat' : 'outlined'}
+                    >
+                      Asset
+                    </Chip>
+                    <Chip
+                      selected={formData.type === 'liability'}
+                      onPress={() => handleTypeChange('liability')}
+                      icon="credit-card"
+                      style={styles.typeChip}
+                      showSelectedCheck={false}
+                      mode={formData.type === 'liability' ? 'flat' : 'outlined'}
+                    >
+                      Liability
+                    </Chip>
+                  </>
+                )}
+                {(!editingSaved || savedAsTransfer) && (
+                  <Chip
+                    selected={formData.type === 'transfer'}
+                    onPress={() => handleTypeChange('transfer')}
+                    icon="bank-transfer"
+                    style={styles.typeChip}
+                    showSelectedCheck={false}
+                    mode={formData.type === 'transfer' ? 'flat' : 'outlined'}
+                  >
+                    Transfer
+                  </Chip>
+                )}
               </View>
             </ScrollView>
           </View>

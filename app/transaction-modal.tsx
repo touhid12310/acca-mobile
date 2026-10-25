@@ -403,10 +403,16 @@ export default function TransactionModalScreen() {
   });
 
   const handleSubmit = async (data: TransactionFormData) => {
-    if (params.id) {
-      await updateMutation.mutateAsync({ id: parseInt(params.id), data });
-    } else {
-      await createMutation.mutateAsync(data);
+    // Each mutation's onError already shows the failure as a toast; letting
+    // mutateAsync's rejection escape also reported it as an unhandled promise.
+    try {
+      if (params.id) {
+        await updateMutation.mutateAsync({ id: parseInt(params.id), data });
+      } else {
+        await createMutation.mutateAsync(data);
+      }
+    } catch {
+      // Shown by onError.
     }
   };
 
