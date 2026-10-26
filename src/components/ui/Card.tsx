@@ -10,6 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, shadow, spacing } from "../../constants/theme";
+import { splitShadowStyle } from "./shadowSplit";
 
 export type CardVariant = "flat" | "elevated" | "outlined" | "tinted";
 
@@ -76,17 +77,26 @@ export function Card({
     children
   );
 
+  const renderCard = (pressedStyle?: ViewStyle) => {
+    // iOS: shadow on an outer view, clip on an inner one (see splitShadowStyle).
+    const split = splitShadowStyle([container, pressedStyle, style]);
+    if (split) {
+      return (
+        <View style={split.outer}>
+          <View style={split.inner}>{content}</View>
+        </View>
+      );
+    }
+    return <View style={[container, pressedStyle, style]}>{content}</View>;
+  };
+
   if (onPress) {
     return (
       <Pressable onPress={onPress}>
-        {({ pressed }) => (
-          <View style={[container, { opacity: pressed ? 0.9 : 1 }, style]}>
-            {content}
-          </View>
-        )}
+        {({ pressed }) => renderCard({ opacity: pressed ? 0.9 : 1 })}
       </Pressable>
     );
   }
 
-  return <View style={[container, style]}>{content}</View>;
+  return renderCard();
 }

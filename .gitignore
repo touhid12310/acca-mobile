@@ -61,6 +61,10 @@ yarn-error.log*
 # Expo
 .expo/
 
+# Apple keys (.p8 — Sign in with Apple, APNs, App Store Connect). NEVER commit;
+# the Sign in with Apple key belongs in the backend admin panel, not the app.
+*.p8
+
 # Google Play / Firebase service account keys (NEVER commit)
 google-play-service-account.json
 *service-account*.json

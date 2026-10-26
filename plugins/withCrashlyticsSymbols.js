@@ -7,15 +7,30 @@ const { withXcodeProject } = require('@expo/config-plugins');
 // the app. Inputs follow Firebase's "Upload dSYMs" setup guide.
 const PHASE_NAME = 'Upload Crashlytics symbols';
 
+// RNFirebase links the Firebase SDK through Swift Package Manager by default,
+// so there is usually no Pods/FirebaseCrashlytics. Try the CocoaPods path, then
+// the SPM checkout, and only warn when neither exists or the upload fails — a
+// missing symbol upload must never fail the build. Kept on one line: the xcode
+// lib only escapes double quotes when it writes the pbxproj string.
+const SHELL_SCRIPT = [
+  'SPM_RUN="${BUILD_DIR%/Build/*}/SourcePackages/checkouts/firebase-ios-sdk/Crashlytics/run";',
+  'if [ -x "${PODS_ROOT}/FirebaseCrashlytics/run" ]; then "${PODS_ROOT}/FirebaseCrashlytics/run" || echo "warning: Crashlytics dSYM upload failed";',
+  'elif [ -f "$SPM_RUN" ]; then /bin/sh "$SPM_RUN" || echo "warning: Crashlytics dSYM upload failed";',
+  'else echo "warning: Crashlytics run script not found, skipping dSYM upload"; fi',
+].join(' ');
+
 module.exports = function withCrashlyticsSymbols(config) {
   return withXcodeProject(config, (config) => {
     const project = config.modResults;
     const phases = project.hash.project.objects.PBXShellScriptBuildPhase || {};
-    const exists = Object.values(phases).some(
+    const existing = Object.values(phases).find(
       (phase) => phase && typeof phase === 'object' && phase.name === `"${PHASE_NAME}"`
     );
 
-    if (!exists) {
+    if (existing) {
+      // An earlier prebuild may have written the old Pods-only script.
+      existing.shellScript = `"${SHELL_SCRIPT.replace(/"/g, '\\"')}"`;
+    } else {
       project.addBuildPhase(
         [],
         'PBXShellScriptBuildPhase',
@@ -23,7 +38,7 @@ module.exports = function withCrashlyticsSymbols(config) {
         project.getFirstTarget().uuid,
         {
           shellPath: '/bin/sh',
-          shellScript: '"${PODS_ROOT}/FirebaseCrashlytics/run"',
+          shellScript: SHELL_SCRIPT,
           inputPaths: [
             '"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}"',
             '"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${PRODUCT_NAME}"',

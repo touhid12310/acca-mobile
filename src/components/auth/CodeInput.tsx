@@ -21,6 +21,11 @@ type CodeInputProps = {
   error?: boolean;
   accessibilityLabel: string;
   onSubmitEditing?: () => void;
+  /**
+   * Called once when the last digit goes in (typed, pasted or autofilled).
+   * The iOS number pad has no return key, so this is how the code submits.
+   */
+  onComplete?: (digits: string) => void;
 };
 
 /**
@@ -35,6 +40,7 @@ export function CodeInput({
   error,
   accessibilityLabel,
   onSubmitEditing,
+  onComplete,
 }: CodeInputProps) {
   const { colors, isDark } = useTheme();
   const inputRef = useRef<RNTextInput | null>(null);
@@ -110,10 +116,18 @@ export function CodeInput({
       <NativeTextInput
         ref={inputRef}
         value={value}
-        onChangeText={(text) => onChangeText(text.replace(/\D/g, '').slice(0, length))}
+        onChangeText={(text) => {
+          const cleaned = text.replace(/\D/g, '').slice(0, length);
+          onChangeText(cleaned);
+          if (onComplete && cleaned.length === length && value.length < length) {
+            onComplete(cleaned);
+          }
+        }}
         // Room for a pasted "123 456" before it is cleaned up.
         maxLength={length + 6}
         keyboardType="number-pad"
+        // iOS: adds a Done bar above the number pad, which has no return key.
+        returnKeyType={Platform.OS === 'ios' ? 'done' : undefined}
         textContentType="oneTimeCode"
         autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
         autoFocus={autoFocus}
@@ -122,7 +136,7 @@ export function CodeInput({
         selectionColor="transparent"
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
-        onSubmitEditing={onSubmitEditing}
+        onSubmitEditing={onSubmitEditing ? () => onSubmitEditing() : undefined}
         accessibilityLabel={accessibilityLabel}
         style={styles.hiddenInput}
       />

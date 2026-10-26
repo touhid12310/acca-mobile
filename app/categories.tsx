@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Keyboard,
+  Platform,
 } from "react-native";
 import {
   Text,
@@ -16,10 +18,10 @@ import {
   Button,
   Switch,
 } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { useRoute } from "expo-router";
 import { TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
@@ -116,8 +118,31 @@ export default function CategoriesScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const insets = useSafeAreaInsets();
+  // Also opened as the "categories-modal" sheet from the transaction sheet.
+  // On iOS anything pushed from there (the strip's Upgrade / bell) would land
+  // underneath both sheets, so the strip is left out.
+  const route = useRoute();
+  const showBrandStrip = !(Platform.OS === "ios" && route.name === "categories-modal");
 
   const [activeTab, setActiveTab] = useState<CategoryType>("income");
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  // iOS: Paper's dialogs stay centred behind the keyboard, so they are lifted
+  // above it (Android pans the window instead).
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return undefined;
+    const show = Keyboard.addListener("keyboardWillShow", (e) =>
+      setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener("keyboardWillHide", () =>
+      setKeyboardHeight(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
   const [modalVisible, setModalVisible] = useState(false);
   const [subcategoryModalVisible, setSubcategoryModalVisible] = useState(false);
   const [selectedParentCategory, setSelectedParentCategory] =
@@ -142,7 +167,6 @@ export default function CategoriesScreen() {
     data: categories,
     isLoading,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ["categories", "tree"],
     queryFn: async () => {
@@ -254,7 +278,29 @@ export default function CategoriesScreen() {
     setSelectedParentCategory(null);
   };
 
+  // Only a pull shows the spinner; background refetches after a save would
+  // otherwise pop it open (and shift the list) on iOS.
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
+
+  const dialogStyle =
+    keyboardHeight > 0
+      ? { marginBottom: Math.max(insets.bottom, keyboardHeight) }
+      : undefined;
+
+  // While typing, a tap on the dimmed backdrop only hides the keyboard
+  // instead of closing the dialog and losing the name.
+  const dismissKeyboardOr = (close: () => void) => () =>
+    keyboardHeight > 0 ? Keyboard.dismiss() : close();
+
   const handleSaveCategory = () => {
+    if (createCategoryMutation.isPending) return;
     if (!formData.name.trim()) {
       toast.error("Please enter a category name");
       return;
@@ -263,6 +309,7 @@ export default function CategoriesScreen() {
   };
 
   const handleSaveSubcategory = () => {
+    if (createSubcategoryMutation.isPending) return;
     if (!subcategoryFormData.name.trim()) {
       toast.error("Please enter a subcategory name");
       return;
@@ -325,18 +372,22 @@ export default function CategoriesScreen() {
   }
 
   return (
+    // Own portal host: when this screen is presented as a native sheet, the
+    // app-level host sits underneath it on iOS and the dialogs would be hidden.
+    <Portal.Host>
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}
       edges={["top"]}
     >
-      <BrandStrip />
+      {showBrandStrip && <BrandStrip />}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -673,7 +724,10 @@ export default function CategoriesScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: getTypeColor(activeTab) }]}
+        style={[
+          styles.fab,
+          { backgroundColor: getTypeColor(activeTab), bottom: 16 + insets.bottom },
+        ]}
         color="#fff"
         onPress={() => openModal()}
       />
@@ -682,13 +736,17 @@ export default function CategoriesScreen() {
       <Portal>
         <Modal
           visible={modalVisible}
-          onDismiss={closeModal}
+          onDismiss={dismissKeyboardOr(closeModal)}
+          style={dialogStyle}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
           ]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 16 }}
@@ -704,6 +762,8 @@ export default function CategoriesScreen() {
               }
               mode="outlined"
               style={styles.input}
+              returnKeyType="done"
+              onSubmitEditing={handleSaveCategory}
             />
 
             <Text
@@ -799,7 +859,8 @@ export default function CategoriesScreen() {
       <Portal>
         <Modal
           visible={subcategoryModalVisible}
-          onDismiss={closeSubcategoryModal}
+          onDismiss={dismissKeyboardOr(closeSubcategoryModal)}
+          style={dialogStyle}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
@@ -828,6 +889,8 @@ export default function CategoriesScreen() {
             }
             mode="outlined"
             style={styles.input}
+            returnKeyType="done"
+            onSubmitEditing={handleSaveSubcategory}
           />
 
           <View style={styles.switchRow}>
@@ -883,6 +946,7 @@ export default function CategoriesScreen() {
         }
       />
     </SafeAreaView>
+    </Portal.Host>
   );
 }
 

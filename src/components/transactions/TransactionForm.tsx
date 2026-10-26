@@ -31,7 +31,8 @@ import { useCurrency } from '../../contexts/CurrencyContext';
 import categoryService from '../../services/categoryService';
 import accountService from '../../services/accountService';
 import { Transaction, TransactionType, Category, Account, AccountType } from '../../types';
-import { formatDate } from '../../utils/date';
+import { formatDate, parseCalendarDate, toDateInputValue } from '../../utils/date';
+import { toDecimalInput } from '../../utils/number';
 import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
 // Helper to categorize account type as Asset or Liability
@@ -162,7 +163,7 @@ export default function TransactionForm({
       setFormData({
         type: normalizedType,
         amount: initialData.amount?.toString() || '',
-        date: initialData.date ? new Date(initialData.date) : new Date(),
+        date: initialData.date ? parseCalendarDate(initialData.date) : new Date(),
         merchant_name: initialData.merchant_name || '',
         description: initialData.description || '',
         category_id: initialData.category_id || null,
@@ -419,8 +420,9 @@ export default function TransactionForm({
               <TextInput
                 mode="outlined"
                 value={formData.amount}
-                onChangeText={(text) => updateField('amount', text.replace(/[^0-9.]/g, ''))}
+                onChangeText={(text) => updateField('amount', toDecimalInput(text))}
                 keyboardType="decimal-pad"
+                returnKeyType="done"
                 left={<TextInput.Affix text={currencySymbol} />}
                 error={!!errors.amount}
                 style={[
@@ -450,7 +452,7 @@ export default function TransactionForm({
                   color={colors.onSurfaceVariant}
                 />
                 <Text style={{ color: colors.onSurface, marginLeft: 12, flex: 1 }}>
-                  {formatDate(formData.date.toISOString(), {
+                  {formatDate(toDateInputValue(formData.date), {
                     weekday: 'short',
                     month: 'long',
                     day: 'numeric',

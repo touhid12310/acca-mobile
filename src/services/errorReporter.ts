@@ -207,7 +207,7 @@ const isOurApi = (url: string) => url.startsWith(buildApiUrl('').replace(/\/+$/,
 /** Watch requests to our API: thrown fetches and 5xx answers. */
 // Background polls that already tolerate a dropped request; a blip there is
 // the network, not a bug.
-const QUIET_NETWORK_PATHS = ['/sessions/validate'];
+const QUIET_NETWORK_PATHS = ['/sessions/validate', '/currencies'];
 
 /** The caller retries a gateway error once, so only the retry is worth reporting. */
 const willBeRetried = (init?: RequestInit) => {

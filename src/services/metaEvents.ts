@@ -1,6 +1,8 @@
-import { NativeModules, Platform } from "react-native";
+import { AppState, NativeModules, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { requireOptionalNativeModule } from "expo";
+
+import { Notifications } from "./notifications";
 
 /**
  * Meta (Facebook) App Events: install attribution plus the few conversion
@@ -16,12 +18,15 @@ import { requireOptionalNativeModule } from "expo";
  * ones anyway). The only money sent is the price of our own Premium plan —
  * never transaction amounts, balances, merchants, notes or anything else the
  * user typed. The only personal datum is the account email, which the SDK
- * hashes (SHA-256) on the device before it leaves.
+ * hashes (SHA-256) on the device before it leaves — and on iOS the email and
+ * user id are only handed over once the user has allowed tracking (ATT).
  */
 
 type FbSdk = typeof import("react-native-fbsdk-next");
 type TrackingModule = typeof import("expo-tracking-transparency");
+type TrackingStatus = Awaited<ReturnType<TrackingModule["getTrackingPermissionsAsync"]>>;
 type Params = Record<string, string | number>;
+type MetaUser = { id: string | number; email?: string | null };
 
 export type RegistrationMethod = "email" | "google" | "apple";
 
@@ -77,6 +82,122 @@ const loadTracking = (): TrackingModule | null => {
   }
 };
 
+// The signed-in user, kept so it can be handed to Meta (or withheld) once
+// the ATT answer is in.
+let currentUser: MetaUser | null = null;
+let trackingRequest: Promise<void> | null = null;
+let trackingRetryArmed = false;
+// The caller's "may ask now" check (signed in, on the tabs, not locked). The
+// waits below can outlast the moment the caller checked it.
+let trackingGate: (() => boolean) | null = null;
+
+const mayAskForTracking = (): boolean => !trackingGate || trackingGate();
+
+const applyUser = (user: MetaUser | null): void => {
+  run((m) => {
+    if (!user) {
+      m.AppEventsLogger.setUserID(null);
+      // Patched in (patches/react-native-fbsdk-next+13.4.3.patch): on
+      // Android, setUserData with empty values keeps the old hashes.
+      NativeModules.FBAppEventsLogger?.clearUserData?.();
+      return;
+    }
+    m.AppEventsLogger.setUserID(String(user.id));
+    const email = user.email?.trim().toLowerCase();
+    if (email) m.AppEventsLogger.setUserData({ email });
+  });
+};
+
+const trackingGranted = async (): Promise<boolean> => {
+  const att = loadTracking();
+  if (!att) return false;
+  try {
+    return (await att.getTrackingPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+};
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Resolves once the app is in the foreground; true when it had to wait. */
+const untilActive = (): Promise<boolean> =>
+  new Promise((resolve) => {
+    if (AppState.currentState === "active") {
+      resolve(false);
+      return;
+    }
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      sub.remove();
+      resolve(true);
+    });
+  });
+
+const pushPromptUnanswered = async (): Promise<boolean> => {
+  if (!Notifications) return false;
+  try {
+    return (await Notifications.getPermissionsAsync()).status === "undetermined";
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * iOS shows the ATT prompt only while the app is active with no other
+ * permission alert pending; otherwise it drops the request without a word.
+ * Signing in asks for notifications first, so wait until that is answered
+ * (bounded: a simulator never asks for it).
+ */
+const readyForTrackingPrompt = async (): Promise<void> => {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // Give an alert that just closed time to finish going away.
+    if (await untilActive()) await sleep(600);
+    if (AppState.currentState !== "active") continue;
+    if (!(await pushPromptUnanswered())) return;
+    await sleep(1500);
+  }
+};
+
+/** iOS dropped the request: ask once more the next time the app is active. */
+const retryTrackingWhenActive = (): void => {
+  if (trackingRetryArmed) return;
+  trackingRetryArmed = true;
+  const sub = AppState.addEventListener("change", (state) => {
+    if (state !== "active") return;
+    sub.remove();
+    trackingRetryArmed = false;
+    setTimeout(() => {
+      // Not on the sign-in screen after a logout, nor over the app lock; the
+      // caller asks again once its gate opens.
+      if (currentUser && mayAskForTracking()) void metaEvents.requestTrackingPermission();
+    }, 600);
+  });
+};
+
+const askForTracking = async (att: TrackingModule): Promise<void> => {
+  try {
+    let result: TrackingStatus = await att.getTrackingPermissionsAsync();
+    if (result.status === "undetermined" && result.canAskAgain) {
+      await readyForTrackingPrompt();
+      // The app may have locked or left the tabs meanwhile (the lock's Face
+      // ID sheet would swallow the prompt); the caller asks again later.
+      if (!mayAskForTracking()) return;
+      result = await att.requestTrackingPermissionsAsync();
+    }
+    // Still undecided means the prompt never showed; nothing to write yet.
+    if (result.status === "undetermined") {
+      if (result.canAskAgain) retryTrackingWhenActive();
+      return;
+    }
+    const granted = result.granted;
+    run((m) => m.Settings.setAdvertiserTrackingEnabled(granted));
+    applyUser(granted ? currentUser : null);
+  } catch {
+    // ATT unavailable — Meta falls back to aggregated measurement.
+  }
+};
+
 /** The native SDK crashes on a malformed currency code, so only pass ISO 4217. */
 const validCurrency = (currency?: string | null): string | null => {
   const code = (currency || "").trim().toUpperCase();
@@ -127,37 +248,38 @@ export const metaEvents = {
   /**
    * iOS only: ask once for App Tracking Transparency. Without it Meta still
    * receives events, but only through its privacy-preserving (aggregated)
-   * measurement. Asking again after an answer is a no-op.
+   * measurement. Asking again after an answer is a no-op. Waits for the app
+   * to be active and the notification prompt to be answered first.
+   * `canAsk` is re-checked right before the prompt (and on a retry).
    */
-  async requestTrackingPermission(): Promise<void> {
+  requestTrackingPermission(canAsk?: () => boolean): Promise<void> {
     const att = loadTracking();
-    if (!att) return;
-    try {
-      const current = await att.getTrackingPermissionsAsync();
-      const result =
-        current.status === "undetermined" && current.canAskAgain
-          ? await att.requestTrackingPermissionsAsync()
-          : current;
-      run((m) => m.Settings.setAdvertiserTrackingEnabled(result.granted));
-    } catch {
-      // ATT unavailable — Meta falls back to aggregated measurement.
+    if (!att) return Promise.resolve();
+    trackingGate = canAsk ?? trackingGate;
+    if (!trackingRequest) {
+      trackingRequest = askForTracking(att).finally(() => {
+        trackingRequest = null;
+      });
     }
+    return trackingRequest;
   },
 
-  /** Backend user id plus the email (hashed by the SDK). Pass null on logout. */
-  setUser(user: { id: string | number; email?: string | null } | null): void {
-    run((m) => {
-      if (!user) {
-        m.AppEventsLogger.setUserID(null);
-        // Patched in (patches/react-native-fbsdk-next+13.4.3.patch): on
-        // Android, setUserData with empty values keeps the old hashes.
-        NativeModules.FBAppEventsLogger?.clearUserData?.();
-        return;
-      }
-      m.AppEventsLogger.setUserID(String(user.id));
-      const email = user.email?.trim().toLowerCase();
-      if (email) m.AppEventsLogger.setUserData({ email });
-    });
+  /**
+   * Backend user id plus the email (hashed by the SDK). Pass null on logout.
+   * iOS: Apple counts these as tracking data, so Meta only gets them once
+   * the user has allowed tracking; until then they are cleared.
+   */
+  setUser(user: MetaUser | null): void {
+    currentUser = user;
+    if (!user || Platform.OS !== "ios") {
+      applyUser(user);
+      return;
+    }
+    trackingGranted()
+      .then((granted) => {
+        if (currentUser === user) applyUser(granted ? user : null);
+      })
+      .catch(() => {});
   },
 
   logRegistration(method: RegistrationMethod): void {

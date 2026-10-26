@@ -7,7 +7,7 @@ import React, {
   useMemo,
   ReactNode,
 } from 'react';
-import { useColorScheme } from 'react-native';
+import { Appearance, Platform, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   MD3LightTheme,
@@ -243,6 +243,15 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
     loadTheme();
   }, []);
+
+  // iOS: make native UI (keyboards, alerts, pickers, share sheets) follow the
+  // in-app choice. 'unspecified' hands control back to the phone, and then
+  // useColorScheme() reports the phone's real scheme again for 'system' mode.
+  // Not on Android, where this restarts the activity's night mode.
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !isLoaded) return;
+    Appearance.setColorScheme(themeMode === 'system' ? 'unspecified' : themeMode);
+  }, [themeMode, isLoaded]);
 
   // Save theme preference
   const setThemeMode = useCallback(async (mode: ThemeMode) => {

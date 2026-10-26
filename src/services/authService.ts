@@ -1,6 +1,15 @@
+import { Platform } from 'react-native';
+import * as Device from 'expo-device';
 import API_CONFIG, { apiRequest, saveAuthToken, removeAuthToken, getAuthToken } from '../config/api';
 import { User, LoginResponse, RegisterResponse, ApiResponse } from '../types';
 import { detectTimeZone } from '../utils/timezone';
+
+/**
+ * Names this sign-in in Settings → Login activity (e.g. "iPhone 15 Pro").
+ * The server can't tell from the iOS user agent, which only says CFNetwork.
+ */
+export const getDeviceName = (): string =>
+  Device.modelName || Device.deviceName || `${Platform.OS} device`;
 
 export const authService = {
   login: async (
@@ -8,7 +17,12 @@ export const authService = {
     password: string,
     twoFactorCode?: string
   ): Promise<ApiResponse<LoginResponse>> => {
-    const body: Record<string, string> = { email, password, timezone: detectTimeZone() };
+    const body: Record<string, string> = {
+      email,
+      password,
+      timezone: detectTimeZone(),
+      device_name: getDeviceName(),
+    };
     if (twoFactorCode) {
       body.two_factor_code = twoFactorCode;
     }
@@ -45,6 +59,7 @@ export const authService = {
         password,
         confirm_password: confirmPassword,
         timezone: detectTimeZone(),
+        device_name: getDeviceName(),
       }),
     });
 
@@ -221,6 +236,7 @@ export const authService = {
         code,
         timezone: detectTimeZone(),
         two_factor_code: twoFactorCode,
+        device_name: getDeviceName(),
       }),
     });
   },
@@ -232,7 +248,7 @@ export const authService = {
   ): Promise<ApiResponse<{ access_token: string; user: User }>> => {
     return apiRequest<{ access_token: string; user: User }>('/auth/email-link/verify', {
       method: 'POST',
-      body: JSON.stringify({ token, timezone: detectTimeZone() }),
+      body: JSON.stringify({ token, timezone: detectTimeZone(), device_name: getDeviceName() }),
     });
   },
 

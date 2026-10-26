@@ -96,6 +96,10 @@ export function AssistantStart({ suggestions, onScanReceipt, onSuggestion }: Pro
           {ASSISTANT_NAME} suggests, you confirm. Nothing is saved without you.
         </Text>
       </View>
+      {/* App Review 5.1.2(i): say plainly that a third-party AI reads what is sent. */}
+      <Text style={[styles.footerNote, { color: colors.onSurfaceVariant }]}>
+        Answers come from Google&apos;s Gemini AI, which reads what you send.
+      </Text>
     </View>
   );
 }
@@ -162,6 +166,13 @@ const styles = StyleSheet.create({
   },
   footerIcon: { marginTop: 2 },
   footerText: { flexShrink: 1, fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  footerNote: {
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
 });
 
 export default AssistantStart;

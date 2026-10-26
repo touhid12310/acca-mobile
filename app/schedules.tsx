@@ -6,7 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
 import {
@@ -35,7 +35,12 @@ import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import scheduleService from "../src/services/scheduleService";
 import accountService from "../src/services/accountService";
-import { todayDateInputValue, toDateInputValue as localDateInputValue } from "../src/utils/date";
+import {
+  parseCalendarDate,
+  todayDateInputValue,
+  toDateInputValue as localDateInputValue,
+} from "../src/utils/date";
+import { toDecimalInput } from "../src/utils/number";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Schedule } from "../src/types";
@@ -89,6 +94,7 @@ export default function SchedulesScreen() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
+  const [pullRefreshing, setPullRefreshing] = useState(false);
   const [formData, setFormData] = useState({
     vendor: "",
     amount: "",
@@ -106,7 +112,6 @@ export default function SchedulesScreen() {
     data: schedules,
     isLoading,
     refetch,
-    isRefetching,
     error,
   } = useQuery({
     queryKey: ["schedules"],
@@ -212,7 +217,7 @@ export default function SchedulesScreen() {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       closeModal();
       const date = variables.next_due_date
-        ? new Date(variables.next_due_date).toLocaleDateString(undefined, {
+        ? parseCalendarDate(variables.next_due_date).toLocaleDateString(undefined, {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -326,6 +331,37 @@ export default function SchedulesScreen() {
     setCategorySearchQuery("");
   };
 
+  // On iOS a tap on the dimmed backdrop is how people put the keyboard away;
+  // let that only close the keyboard instead of throwing the form away.
+  const handleModalDismiss = () => {
+    if (Platform.OS === "ios" && Keyboard.isVisible()) {
+      Keyboard.dismiss();
+      return;
+    }
+    closeModal();
+  };
+
+  // The form is a root-level overlay, so close it before opening Categories
+  // (otherwise the new screen slides in underneath it).
+  const openCategoriesScreen = () => {
+    Keyboard.dismiss();
+    closeModal();
+    if (Platform.OS === "ios") {
+      setTimeout(() => router.push("/categories"), 250);
+    } else {
+      router.push("/categories");
+    }
+  };
+
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
+
   const handleSave = () => {
     if (!formData.vendor.trim()) {
       toast.error("Please enter a vendor name");
@@ -347,12 +383,10 @@ export default function SchedulesScreen() {
     setShowActionSheet(true);
   };
 
+  // next_due_date is a calendar date; the API sends it as UTC midnight.
   const toDateInputValue = (value?: string) => {
     if (!value) return todayDateInputValue();
-    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return value;
-    }
-    const date = new Date(value);
+    const date = parseCalendarDate(value);
     if (isNaN(date.getTime())) return todayDateInputValue();
     return localDateInputValue(date);
   };
@@ -406,10 +440,12 @@ export default function SchedulesScreen() {
 
   const getDaysUntilDue = (dueDate?: string) => {
     if (!dueDate) return null;
-    const today = new Date();
-    const due = new Date(dueDate);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const due = parseCalendarDate(dueDate);
+    if (isNaN(due.getTime())) return null;
     const diffTime = due.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
   const getDueStatusColor = (daysUntil: number | null) => {
@@ -465,7 +501,7 @@ export default function SchedulesScreen() {
 
   const formatDisplayDate = (value?: string) => {
     if (!value) return "—";
-    const date = new Date(value);
+    const date = parseCalendarDate(value);
     if (isNaN(date.getTime())) return "—";
     return date.toLocaleDateString("en-US", {
       month: "short",
@@ -523,9 +559,10 @@ export default function SchedulesScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -803,15 +840,19 @@ export default function SchedulesScreen() {
       <Portal>
         <Modal
           visible={modalVisible}
-          onDismiss={closeModal}
+          onDismiss={handleModalDismiss}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
           ]}
         >
+          {/* Paper's Modal has no keyboard handling: on iOS the ScrollView
+              insets itself by the keyboard and scrolls the focused field up. */}
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
           >
             <Text
               variant="titleLarge"
@@ -835,10 +876,11 @@ export default function SchedulesScreen() {
               label="Amount *"
               value={formData.amount}
               onChangeText={(text) =>
-                setFormData({ ...formData, amount: text })
+                setFormData({ ...formData, amount: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -893,30 +935,44 @@ export default function SchedulesScreen() {
             >
               Account
             </Text>
-            <View style={styles.frequencyButtons}>
-              {(accounts as any[]).map((account: any) => (
-                <TouchableOpacity
-                  key={account.id}
-                  style={[
-                    styles.frequencyButton,
-                    {
-                      backgroundColor:
-                        String(formData.account_id) === String(account.id)
-                          ? colors.primaryContainer
-                          : colors.surfaceVariant,
-                      borderColor:
-                        String(formData.account_id) === String(account.id)
-                          ? colors.primary
-                          : "transparent",
-                    },
-                  ]}
-                  onPress={() => setFormData({ ...formData, account_id: String(account.id) })}
-                >
-                  <Text numberOfLines={1} style={{ color: colors.onSurfaceVariant, fontSize: 12 }}>
-                    {account.account_name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* Wrapping chips so every account stays readable; "None" clears it. */}
+            <View style={styles.accountChips}>
+              {[{ id: "", account_name: "None" }, ...(accounts as any[])].map(
+                (account: any) => {
+                  const selected =
+                    String(formData.account_id) === String(account.id);
+                  return (
+                    <TouchableOpacity
+                      key={account.id === "" ? "none" : account.id}
+                      style={[
+                        styles.accountChip,
+                        {
+                          backgroundColor: selected
+                            ? colors.primaryContainer
+                            : colors.surfaceVariant,
+                          borderColor: selected ? colors.primary : "transparent",
+                        },
+                      ]}
+                      onPress={() =>
+                        setFormData({ ...formData, account_id: String(account.id) })
+                      }
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: selected
+                            ? colors.primary
+                            : colors.onSurfaceVariant,
+                          fontWeight: selected ? "600" : "400",
+                          fontSize: 12,
+                        }}
+                      >
+                        {account.account_name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                },
+              )}
             </View>
 
             <Text
@@ -1036,7 +1092,11 @@ export default function SchedulesScreen() {
                     dense
                   />
                 </View>
-                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                <ScrollView
+                  style={{ maxHeight: 240 }}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
                   <TouchableOpacity
                     style={[
                       styles.dropdownItem,
@@ -1105,10 +1165,7 @@ export default function SchedulesScreen() {
                             styles.categoryCreateButton,
                             { borderColor: colors.primary },
                           ]}
-                          onPress={() => {
-                            setShowCategoryPicker(false);
-                            router.push("/categories");
-                          }}
+                          onPress={openCategoriesScreen}
                         >
                           <MaterialCommunityIcons
                             name="plus"
@@ -1127,12 +1184,7 @@ export default function SchedulesScreen() {
                           </Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowCategoryPicker(false);
-                          router.push("/categories");
-                        }}
-                      >
+                      <TouchableOpacity onPress={openCategoriesScreen}>
                         <Text
                           style={{
                             color: colors.onSurfaceVariant,
@@ -1546,6 +1598,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  accountChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 12,
+  },
+  accountChip: {
+    maxWidth: "100%",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 8,
     borderWidth: 1,
   },

@@ -25,6 +25,7 @@ import analyticsService from "../src/services/analyticsService";
 import metaEvents from "../src/services/metaEvents";
 import { detectTimeZone } from "../src/utils/timezone";
 import { detectCurrency } from "../src/utils/detectCurrency";
+import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 import { BrandText } from "../src/components";
 import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
@@ -63,7 +64,8 @@ const ACCOUNT_TYPES: { id: string; label: string; icon: string }[] = [
 export default function OnboardingScreen() {
   const { colors, isDark } = useTheme();
   const { token, user, checkAuthStatus } = useAuth();
-  const { currency, availableCurrencies } = useCurrency();
+  const { currency, availableCurrencies, getCurrencyMeta, isCurrencyListLoading, reloadCurrencyList } =
+    useCurrency();
 
   const detectedTz = useMemo(() => detectTimeZone(), []);
   const [step, setStep] = useState(1);
@@ -75,7 +77,7 @@ export default function OnboardingScreen() {
   const [mobile, setMobile] = useState(user?.mobile || "");
   // Their own pick first, else the currency of the country the phone's
   // timezone puts them in (Asia/Dhaka → BDT), else the app default.
-  const [selectedCurrency, setSelectedCurrency] = useState(
+  const [currencyChoice, setSelectedCurrency] = useState(
     () =>
       (user?.currency && user.currency !== DEFAULT_CURRENCY ? user.currency : null) ||
       detectCurrency({
@@ -86,6 +88,19 @@ export default function OnboardingScreen() {
       currency ||
       DEFAULT_CURRENCY
   );
+  // The currency list may arrive after the choice above was made, and
+  // onboarding only accepts active currencies. Once it is here, a detected (or
+  // earlier saved) code that isn't on it gives way to the detected / current /
+  // default one the list offers. Picks from the picker are always on it.
+  const selectedCurrency = useMemo(() => {
+    const codes = (availableCurrencies || []).map((c) => c.code);
+    if (codes.length === 0 || codes.includes(currencyChoice)) return currencyChoice;
+    return (
+      detectCurrency({ supported: codes, timezone: detectedTz }) ||
+      (codes.includes(currency) ? currency : null) ||
+      (codes.includes(DEFAULT_CURRENCY) ? DEFAULT_CURRENCY : codes[0])
+    );
+  }, [availableCurrencies, currencyChoice, detectedTz, currency]);
   const [timezone, setTimezone] = useState(user?.timezone || detectedTz);
   const savedMonthDay = user?.financial_month_start_day || 1;
   const [monthMode, setMonthMode] = useState<"first" | "custom">(savedMonthDay > 1 ? "custom" : "first");
@@ -115,16 +130,28 @@ export default function OnboardingScreen() {
       .catch(() => {});
   }, [userId, userCurrency]);
 
+  // The whole list (the server's ~160, not capped, so scrolling reaches every
+  // one), plus the picked currency when the list lacks it (turned off, or
+  // the list hasn't loaded yet).
   const filteredCurrencies = useMemo(() => {
     const list = availableCurrencies || [];
-    if (!currencyQuery.trim()) return list.slice(0, 60);
+    const withPicked =
+      !selectedCurrency || list.some((c) => c.code === selectedCurrency)
+        ? list
+        : [getCurrencyMeta(selectedCurrency), ...list];
     const q = currencyQuery.trim().toLowerCase();
-    return list.filter(
+    if (!q) return withPicked;
+    return withPicked.filter(
       (c) =>
         c.code.toLowerCase().includes(q) ||
         (c.label || "").toLowerCase().includes(q)
-    ).slice(0, 60);
-  }, [availableCurrencies, currencyQuery]);
+    );
+  }, [availableCurrencies, currencyQuery, selectedCurrency, getCurrencyMeta]);
+
+  const openCurrencyModal = () => {
+    setCurrencyModalOpen(true);
+    if (!availableCurrencies?.length) reloadCurrencyList();
+  };
 
   const closeCurrencyModal = () => {
     setCurrencyModalOpen(false);
@@ -222,7 +249,9 @@ export default function OnboardingScreen() {
   };
 
   const buildPayload = () => {
-    const balance = parseFloat(openingBalance);
+    // parseDecimalInput drops a '-', and credit card / loan balances can be negative.
+    const magnitude = parseDecimalInput(openingBalance);
+    const balance = openingBalance.trim().startsWith("-") ? -magnitude : magnitude;
     return {
       ...profilePayload(),
       load_sample_data: loadSampleData,
@@ -252,11 +281,11 @@ export default function OnboardingScreen() {
       analyticsService.logEvent('tutorial_complete');
       metaEvents.logOnboardingComplete();
       await checkAuthStatus();
-      if (destination) {
-        router.replace(destination as any);
-      } else {
-        router.replace("/(tabs)");
-      }
+      // Onboarding is the only route in the stack, so the tabs go in first and
+      // the picked screen opens on top — otherwise its back button (and Save /
+      // Cancel on the transaction sheet) has nothing to return to.
+      router.replace("/(tabs)");
+      if (destination) router.push(destination as any);
     } finally {
       setSubmitting(false);
     }
@@ -280,13 +309,18 @@ export default function OnboardingScreen() {
   const cardBorder = isDark ? "rgba(75, 85, 99, 0.55)" : "#e2e8f0";
   const subtle = isDark ? "#94a3b8" : "#64748b";
 
-  const selectedCurrencyMeta = availableCurrencies?.find((c) => c.code === selectedCurrency);
+  // Named even when the list lacks it (turned off, or not loaded yet).
+  const selectedCurrencyMeta = selectedCurrency ? getCurrencyMeta(selectedCurrency) : null;
 
   return (
     <SafeAreaView style={[styles.shell, { backgroundColor: colors.background }]} edges={["top", "bottom"]}>
+      {/* iOS-only props: scroll the focused field and the footer button above
+          the keyboard (Android pans the window instead). */}
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
       >
         {/* Stepper */}
@@ -355,6 +389,7 @@ export default function OnboardingScreen() {
                   placeholderTextColor={subtle}
                   keyboardType="phone-pad"
                   autoComplete="tel"
+                  returnKeyType="done"
                   style={[
                     styles.input,
                     { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
@@ -366,7 +401,7 @@ export default function OnboardingScreen() {
               <View style={styles.field}>
                 <Text style={[styles.label, { color: subtle }]}>Default currency</Text>
                 <TouchableOpacity
-                  onPress={() => setCurrencyModalOpen(true)}
+                  onPress={openCurrencyModal}
                   style={[
                     styles.select,
                     { borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
@@ -374,7 +409,9 @@ export default function OnboardingScreen() {
                 >
                   <Text style={{ color: colors.onSurface, fontSize: 14 }}>
                     {selectedCurrencyMeta
-                      ? `${selectedCurrencyMeta.code} — ${selectedCurrencyMeta.label}`
+                      ? selectedCurrencyMeta.label && selectedCurrencyMeta.label !== selectedCurrencyMeta.code
+                        ? `${selectedCurrencyMeta.code} — ${selectedCurrencyMeta.label}`
+                        : selectedCurrencyMeta.code
                       : "Select currency"}
                   </Text>
                   <MaterialCommunityIcons name="chevron-down" size={18} color={subtle} />
@@ -439,6 +476,7 @@ export default function OnboardingScreen() {
                     placeholder="Day of month (1–28)"
                     placeholderTextColor={subtle}
                     keyboardType="number-pad"
+                    returnKeyType="done"
                     style={[
                       styles.input,
                       { marginTop: 8, color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
@@ -511,10 +549,16 @@ export default function OnboardingScreen() {
                   </Text>
                   <TextInput
                     value={openingBalance}
-                    onChangeText={(v) => setField("openingBalance", v)}
+                    onChangeText={(v) =>
+                      setField(
+                        "openingBalance",
+                        (v.trim().startsWith("-") ? "-" : "") + toDecimalInput(v),
+                      )
+                    }
                     placeholder="0.00"
                     placeholderTextColor={subtle}
                     keyboardType="decimal-pad"
+                    returnKeyType="done"
                     style={[
                       styles.input,
                       { color: colors.onSurface, borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
@@ -715,7 +759,7 @@ export default function OnboardingScreen() {
                 keyboardShouldPersistTaps="handled"
                 keyboardDismissMode="on-drag"
               >
-                {filteredCurrencies.length === 0 ? (
+                {filteredCurrencies.length === 0 && availableCurrencies?.length ? (
                   <Text style={[styles.modalEmpty, { color: subtle }]}>
                     No currency matches "{currencyQuery.trim()}"
                   </Text>
@@ -740,6 +784,25 @@ export default function OnboardingScreen() {
                       </Pressable>
                     );
                   })
+                )}
+                {!availableCurrencies?.length && (
+                  <View style={{ alignItems: "center", gap: 8, paddingVertical: 18 }}>
+                    {isCurrencyListLoading ? (
+                      <>
+                        <ActivityIndicator color={colors.primary} />
+                        <Text style={{ fontSize: 13, color: subtle }}>Loading currencies…</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 13, color: subtle, textAlign: "center" }}>
+                          Couldn't load the currency list. Check your connection.
+                        </Text>
+                        <Pressable onPress={reloadCurrencyList} hitSlop={8}>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.primary }}>Try again</Text>
+                        </Pressable>
+                      </>
+                    )}
+                  </View>
                 )}
               </ScrollView>
             </Pressable>

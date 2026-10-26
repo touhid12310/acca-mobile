@@ -43,7 +43,10 @@ export function ScreenHeader({
 
   const handleBack = () => {
     if (onBack) return onBack();
+    // A screen opened with replace (e.g. from onboarding) has nothing under
+    // it; fall back to the tabs instead of leaving the button dead.
     if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)");
   };
 
   return (

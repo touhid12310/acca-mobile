@@ -47,6 +47,8 @@ import chatService from "../../src/services/chatService";
 import categoryService from "../../src/services/categoryService";
 import accountService from "../../src/services/accountService";
 import { withFlow } from "../../src/services/appExitMonitor";
+import { ensureAiConsent } from "../../src/services/aiConsent";
+import { showPermissionSettingsAlert } from "../../src/utils/permissions";
 import { buildFileUrl } from "../../src/config/api";
 import {
   ChatMessage,
@@ -70,12 +72,16 @@ type SpeechRecognitionModuleType = {
   stop: () => void;
   start: (options: Record<string, unknown>) => void;
   isRecognitionAvailable: () => boolean;
-  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  requestPermissionsAsync: () => Promise<{ granted: boolean; canAskAgain?: boolean }>;
   // Android-only: prompt the OS to download an offline voice model for a
   // locale. Optional — not present on every version/platform.
   androidTriggerOfflineModelDownload?: (options: {
     locale: string;
   }) => Promise<unknown>;
+  setAudioSessionActiveIOS?: (
+    value: boolean,
+    options?: { notifyOthersOnDeactivation: boolean },
+  ) => void;
 };
 
 /**
@@ -540,6 +546,9 @@ export default function ChatScreen() {
     null,
   );
   const lastHistoryErrorRef = useRef<string | null>(null);
+  // Set while the AI consent question is up, so a quick second tap can't
+  // send the same message twice once the user agrees.
+  const consentPendingRef = useRef(false);
 
   // Empty = the assistant start screen (greeting + starter cards).
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -647,6 +656,17 @@ export default function ChatScreen() {
       voiceInterimTranscriptRef.current = "";
       applyVoiceTextToInput();
       voiceStopRequestedRef.current = false;
+      // The recognizer leaves the iOS audio session active, so music or a
+      // podcast it paused never resumes. Release it ('end' follows errors too).
+      if (Platform.OS === "ios") {
+        try {
+          SpeechRecognitionModule?.setAudioSessionActiveIOS?.(false, {
+            notifyOthersOnDeactivation: true,
+          });
+        } catch {
+          // Session busy (a new recognition is starting) — leave it.
+        }
+      }
     });
 
     const errorSub = SpeechRecognitionModule.addListener(
@@ -1145,7 +1165,23 @@ export default function ChatScreen() {
   const handleSend = async (override?: { text?: string; file?: typeof selectedFile }) => {
     const messageText = (override?.text ?? inputText).trim();
     const file = override && "file" in override ? override.file ?? null : selectedFile;
-    if (isSending || (!messageText && !file)) return;
+    if (isSending || consentPendingRef.current || (!messageText && !file)) return;
+
+    // Messages and attachments go to Google Gemini (App Review 5.1.2(i)), so
+    // nothing is sent until the user agrees. "Not now" keeps the draft.
+    consentPendingRef.current = true;
+    let allowed = false;
+    try {
+      allowed = await ensureAiConsent(user?.id);
+    } finally {
+      consentPendingRef.current = false;
+    }
+    if (!allowed) {
+      // A scanned receipt waits in the box rather than being lost.
+      if (override?.file) setSelectedFile(override.file);
+      return;
+    }
+
     if (messageText && !file) remember(messageText);
     setSendingHasFile(Boolean(file));
     setSendStatusIndex(0);
@@ -1203,13 +1239,19 @@ export default function ChatScreen() {
 
   // Handle image picker
   const handlePickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      notifyToast.warning(
-        "Please grant camera roll access to upload images.",
-        { title: "Permission needed" },
-      );
-      return;
+    Keyboard.dismiss();
+    // iOS opens the system photo picker, which needs no library permission;
+    // asking anyway showed a needless prompt and left the paperclip dead
+    // after "Don't Allow".
+    if (Platform.OS !== "ios") {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        notifyToast.warning(
+          "Please grant camera roll access to upload images.",
+          { title: "Permission needed" },
+        );
+        return;
+      }
     }
 
     const result = await pickFromLibrary(
@@ -1227,12 +1269,20 @@ export default function ChatScreen() {
   // camera app: Android can kill AccountE while that app is open, and tapping
   // ✓ then restarted AccountE on Home without the photo.
   const openCamera = async (mode: "attach" | "scan") => {
+    Keyboard.dismiss();
     if (!cameraPermission?.granted) {
       const permission = await requestCameraPermission();
       if (!permission.granted) {
-        notifyToast.warning("Please grant camera access to take photos.", {
-          title: "Permission needed",
-        });
+        if (permission.canAskAgain === false) {
+          showPermissionSettingsAlert(
+            "Camera access is off",
+            "Turn on Camera for AccountE in Settings to take photos of receipts.",
+          );
+        } else {
+          notifyToast.warning("Please grant camera access to take photos.", {
+            title: "Permission needed",
+          });
+        }
         return;
       }
     }
@@ -1243,9 +1293,11 @@ export default function ChatScreen() {
     void openCamera("attach");
   };
 
-  // "Scan a receipt" card: one tap from camera to reading it.
-  const handleScanReceipt = () => {
-    void openCamera("scan");
+  // "Scan a receipt" card: one tap from camera to reading it. The photo goes
+  // to the AI as soon as it is taken, so the AI consent comes first.
+  const handleScanReceipt = async () => {
+    if (!(await ensureAiConsent(user?.id))) return;
+    await openCamera("scan");
   };
 
   const handleCameraPhoto = (photo: NonNullable<typeof selectedFile>) => {
@@ -1313,10 +1365,17 @@ export default function ChatScreen() {
       const permission =
         await SpeechRecognitionModule.requestPermissionsAsync();
       if (!permission.granted) {
-        notifyToast.warning(
-          "Please grant microphone and speech recognition permissions.",
-          { title: "Permission needed" },
-        );
+        if (permission.canAskAgain === false) {
+          showPermissionSettingsAlert(
+            "Voice input is off",
+            "Turn on Microphone and Speech Recognition for AccountE in Settings to speak your messages.",
+          );
+        } else {
+          notifyToast.warning(
+            "Please grant microphone and speech recognition permissions.",
+            { title: "Permission needed" },
+          );
+        }
         return;
       }
 
@@ -1384,6 +1443,9 @@ export default function ChatScreen() {
       });
 
   const handleOpenChatDatePicker = () => {
+    // The pill sits outside the list, so tapping it keeps the composer
+    // focused; on iOS the keyboard would then cover the calendar's buttons.
+    Keyboard.dismiss();
     setShowChatDatePicker(true);
   };
 
@@ -2051,10 +2113,11 @@ export default function ChatScreen() {
       />
 
       {/* Messages */}
+      {/* No keyboardVerticalOffset: the screen has no header, so this view's
+          frame already gives its true distance from the keyboard. */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         {isLoadingHistory ? (
           <View style={styles.loadingContainer}>
@@ -2174,6 +2237,7 @@ export default function ChatScreen() {
                 style={[styles.pillTextInput, { color: colors.onSurface }]}
                 placeholder={`Ask ${ASSISTANT_NAME} anything…`}
                 placeholderTextColor={colors.onSurfaceVariant}
+                keyboardAppearance={isDark ? "dark" : "light"}
                 value={inputText}
                 onChangeText={setInputText}
                 multiline

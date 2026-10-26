@@ -5,14 +5,22 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useSyncExternalStore,
   ReactNode,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import settingsService from '../services/settingsService';
-import { CURRENCIES } from '../constants/currencies';
+import {
+  type CatalogCurrency,
+  getCurrencyCatalogState,
+  isCurrencyCode,
+  refreshCurrencyCatalog,
+  startCurrencyCatalog,
+  subscribeCurrencyCatalog,
+} from '../services/currencyCatalog';
 
-interface Currency {
+export interface Currency {
   code: string;
   label: string;
   symbol: string;
@@ -21,11 +29,19 @@ interface Currency {
 interface CurrencyContextType {
   currency: string;
   currencySymbol: string;
+  /** Active currencies from the server's list, in its order. Empty until it loads. */
   availableCurrencies: Currency[];
+  /** Name and symbol for any code, including turned-off or unknown ones. */
+  getCurrencyMeta: (code: string) => Currency;
+  /** There is no list yet and one is on its way. */
+  isCurrencyListLoading: boolean;
+  /** Fetch the list again now (e.g. a picker opened with nothing to show). */
+  reloadCurrencyList: () => void;
   isCurrencyLoading: boolean;
   isCurrencyUpdating: boolean;
   updatingCurrencyCode: string | null;
-  updateCurrency: (code: string) => Promise<void>;
+  /** Resolves true once the server has saved it (or it was already the currency). */
+  updateCurrency: (code: string) => Promise<boolean>;
   refreshCurrency: () => Promise<void>;
   formatAmount: (amount: number | string | null | undefined, options?: FormatOptions) => string;
 }
@@ -41,20 +57,48 @@ const CurrencyContext = createContext<CurrencyContextType | null>(null);
 const DEFAULT_CURRENCY = 'USD';
 const STORAGE_KEY = 'accounte:selected_currency';
 
-const AVAILABLE_CURRENCIES: Currency[] = CURRENCIES.map(({ code, name, symbol }) => ({
-  code,
-  label: name,
-  symbol: symbol || code,
-}));
+const normalizeCode = (code: string | null | undefined): string =>
+  typeof code === 'string' ? code.trim().toUpperCase() : '';
 
-const SUPPORTED_CODES = new Set(AVAILABLE_CURRENCIES.map((c) => c.code));
+// The device's own symbol for a code the list has no symbol for. Hermes' Intl
+// support varies (narrowSymbol, formatToParts, or Intl itself may be missing),
+// so every step is guarded and the answer is cached per code.
+const intlSymbols = new Map<string, string | null>();
 
-const getCurrencyMeta = (code: string): Currency => {
-  const found = AVAILABLE_CURRENCIES.find(
-    (c) => c.code.toUpperCase() === code.toUpperCase()
-  );
-  return found || { code, label: code, symbol: code };
+const intlCurrencySymbol = (code: string): string | null => {
+  if (!isCurrencyCode(code)) return null;
+  if (intlSymbols.has(code)) return intlSymbols.get(code) ?? null;
+
+  let symbol: string | null = null;
+  for (const currencyDisplay of ['narrowSymbol', 'symbol'] as const) {
+    try {
+      const formatter = new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: code,
+        currencyDisplay,
+      });
+      const text =
+        typeof formatter.formatToParts === 'function'
+          ? formatter.formatToParts(0).find((part) => part.type === 'currency')?.value
+          : formatter.format(0).replace(/[\d\s.,  ‎‏-]/g, '');
+      if (text && text.trim()) {
+        symbol = text.trim();
+        break;
+      }
+    } catch {
+      // Try the next display, then give up.
+    }
+  }
+
+  intlSymbols.set(code, symbol);
+  return symbol;
 };
+
+const toCurrency = (item: CatalogCurrency): Currency => ({
+  code: item.code,
+  label: item.name || item.code,
+  symbol: item.symbol || intlCurrencySymbol(item.code) || item.code,
+});
 
 export const useCurrency = (): CurrencyContextType => {
   const context = useContext(CurrencyContext);
@@ -79,15 +123,62 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     null
   );
 
-  // Load stored currency
+  // The server's currency list: cached copy first, refreshed in the background.
+  const catalogState = useSyncExternalStore(
+    subscribeCurrencyCatalog,
+    getCurrencyCatalogState
+  );
+  const catalogCurrencies = catalogState.catalog?.currencies;
+
+  useEffect(() => {
+    startCurrencyCatalog();
+  }, []);
+
+  const catalogByCode = useMemo(() => {
+    const map = new Map<string, CatalogCurrency>();
+    (catalogCurrencies ?? []).forEach((item) => map.set(item.code, item));
+    return map;
+  }, [catalogCurrencies]);
+
+  const availableCurrencies = useMemo<Currency[]>(
+    () => (catalogCurrencies ?? []).filter((item) => item.active).map(toCurrency),
+    [catalogCurrencies]
+  );
+
+  // Works for any code: a turned-off currency keeps its name and symbol, and
+  // one the list doesn't know (or a list not loaded yet) falls back to the
+  // device's symbol, then the code itself.
+  const getCurrencyMeta = useCallback(
+    (code: string): Currency => {
+      const normalized = normalizeCode(code);
+      const found = catalogByCode.get(normalized);
+      if (found) return toCurrency(found);
+      const fallback = normalized || code || '';
+      return {
+        code: fallback,
+        label: fallback,
+        symbol: intlCurrencySymbol(normalized) || fallback,
+      };
+    },
+    [catalogByCode]
+  );
+
+  const isCurrencyListLoading = !catalogCurrencies?.length && !catalogState.failed;
+
+  const reloadCurrencyList = useCallback(() => {
+    refreshCurrencyCatalog();
+  }, []);
+
+  // Load stored currency. Any well-formed code is fine: the server decides
+  // which currencies exist, and the list may not have loaded yet.
   useEffect(() => {
     const loadStoredCurrency = async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored && SUPPORTED_CODES.has(stored.toUpperCase())) {
-          setCurrency(stored.toUpperCase());
+        const stored = normalizeCode(await AsyncStorage.getItem(STORAGE_KEY));
+        if (isCurrencyCode(stored)) {
+          setCurrency(stored);
         }
-      } catch (error) {
+      } catch {
         // Failed to load stored currency
       }
     };
@@ -136,7 +227,7 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
       const normalized = (serverCurrency || DEFAULT_CURRENCY).toUpperCase();
       setCurrency(normalized);
       await AsyncStorage.setItem(STORAGE_KEY, normalized);
-    } catch (error) {
+    } catch {
       setCurrency(DEFAULT_CURRENCY);
     } finally {
       setIsCurrencyLoading(false);
@@ -150,17 +241,16 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     }
   }, [token, loadCurrencyPreference]);
 
-  // Update currency preference
+  // Update currency preference. Codes aren't checked against the list here —
+  // PUT /settings validates them (and refuses newly picked turned-off ones).
   const updateCurrency = useCallback(
-    async (nextCurrency: string) => {
-      const normalized = nextCurrency?.toUpperCase();
-      if (
-        !normalized ||
-        normalized === currency ||
-        !token ||
-        !SUPPORTED_CODES.has(normalized)
-      ) {
-        return;
+    async (nextCurrency: string): Promise<boolean> => {
+      const normalized = normalizeCode(nextCurrency);
+      if (normalized && normalized === currency) {
+        return true;
+      }
+      if (!token || !isCurrencyCode(normalized)) {
+        return false;
       }
 
       setIsCurrencyUpdating(true);
@@ -178,9 +268,15 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
         const finalCode = updated.toUpperCase();
 
         setCurrency(finalCode);
-        await AsyncStorage.setItem(STORAGE_KEY, finalCode);
-      } catch (error) {
+        try {
+          await AsyncStorage.setItem(STORAGE_KEY, finalCode);
+        } catch {
+          // The server has it; the local copy is only a launch-time hint.
+        }
+        return true;
+      } catch {
         // Currency update failed
+        return false;
       } finally {
         setIsCurrencyUpdating(false);
         setUpdatingCurrencyCode(null);
@@ -194,7 +290,12 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     if (token) {
       await loadCurrencyPreference();
     } else {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      let stored: string | null = null;
+      try {
+        stored = await AsyncStorage.getItem(STORAGE_KEY);
+      } catch {
+        stored = null;
+      }
       setCurrency(stored || DEFAULT_CURRENCY);
     }
   }, [token, loadCurrencyPreference]);
@@ -202,7 +303,7 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
   // Get currency symbol
   const currencySymbol = useMemo(
     () => getCurrencyMeta(currency).symbol || currency,
-    [currency]
+    [currency, getCurrencyMeta]
   );
 
   // Format amount with currency
@@ -235,7 +336,10 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     () => ({
       currency,
       currencySymbol,
-      availableCurrencies: AVAILABLE_CURRENCIES,
+      availableCurrencies,
+      getCurrencyMeta,
+      isCurrencyListLoading,
+      reloadCurrencyList,
       isCurrencyLoading,
       isCurrencyUpdating,
       updatingCurrencyCode,
@@ -246,6 +350,10 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
     [
       currency,
       currencySymbol,
+      availableCurrencies,
+      getCurrencyMeta,
+      isCurrencyListLoading,
+      reloadCurrencyList,
       isCurrencyLoading,
       isCurrencyUpdating,
       updatingCurrencyCode,

@@ -15,6 +15,7 @@ import {
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useAuth } from "../../src/contexts/AuthContext";
 import { radius, shadow, gradients } from "../../src/constants/theme";
+import { splitShadowStyle } from "../../src/components/ui/shadowSplit";
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutGrid,
@@ -50,8 +51,8 @@ export default function TabsLayout() {
     if (!Icon) return null;
 
     if (isCenter) {
-      return (
-        <View style={[styles.centerIconWrap, shadow.md]}>
+      const content = (
+        <>
           <LinearGradient
             colors={gradients.primary as any}
             start={{ x: 0, y: 0 }}
@@ -63,8 +64,18 @@ export default function TabsLayout() {
             color="#ffffff"
             strokeWidth={2.3}
           />
-        </View>
+        </>
       );
+      // iOS: overflow:hidden on the shadowed view would clip its shadow.
+      const split = splitShadowStyle([styles.centerIconWrap, shadow.md]);
+      if (split) {
+        return (
+          <View style={[split.outer, { backgroundColor: gradients.primary[1] }]}>
+            <View style={split.inner}>{content}</View>
+          </View>
+        );
+      }
+      return <View style={[styles.centerIconWrap, shadow.md]}>{content}</View>;
     }
 
     return (
@@ -101,6 +112,9 @@ export default function TabsLayout() {
           shadowOpacity: isDark ? 0.3 : 0.08,
           shadowRadius: 12,
         },
+        // iPad (>= 768pt) would put labels beside the icons, which breaks the
+        // raised AI Chat button; keep the phone layout everywhere.
+        tabBarLabelPosition: "below-icon",
         tabBarLabelStyle: {
           fontSize: 10.5,
           fontWeight: "600",

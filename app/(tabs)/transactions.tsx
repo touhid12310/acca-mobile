@@ -423,7 +423,6 @@ export default function TransactionsScreen() {
     data: transactionPages,
     isLoading,
     isFetching,
-    isRefetching,
     refetch,
     fetchNextPage,
     hasNextPage,
@@ -500,6 +499,19 @@ export default function TransactionsScreen() {
   useEffect(() => {
     refetch();
   }, [statusView, sourceView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The spinner follows the user's pull only. Tied to isRefetching, the 15s
+  // Pending poll and every invalidation would show it, and on iOS a
+  // programmatic refresh also shifts the list down by the spinner's height.
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [refetch]);
 
   const transactions = useMemo(() => {
     const seen = new Set<number>();
@@ -760,8 +772,8 @@ export default function TransactionsScreen() {
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
           />
@@ -1310,7 +1322,11 @@ export default function TransactionsScreen() {
       >
         <Pressable
           onPress={() => router.push("/transaction-modal")}
-          style={styles.fabPressable}
+          // iOS ignores android_ripple, so dim the button while pressed there.
+          style={({ pressed }) => [
+            styles.fabPressable,
+            Platform.OS === "ios" && pressed && { opacity: 0.85 },
+          ]}
           android_ripple={{
             color: "rgba(255,255,255,0.25)",
             borderless: true,
@@ -1380,7 +1396,7 @@ export default function TransactionsScreen() {
                         { color: colors.onSurfaceVariant },
                       ]}
                     >
-                      {formatDate(selectedTransaction.date, {
+                      {formatDate(String(selectedTransaction.date).slice(0, 10), {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
@@ -1701,7 +1717,7 @@ function TransactionRow({
                 <Text
                   style={[styles.txnSub, { color: colors.onSurfaceVariant }]}
                 >
-                  {formatDate(t.date)}
+                  {formatDate(String(t.date).slice(0, 10))}
                 </Text>
                 {t.category && (
                   <Badge label={t.category.name} tone="neutral" size="sm" />
@@ -1966,7 +1982,8 @@ const styles = StyleSheet.create({
   aliasValue: {
     fontSize: 13,
     fontWeight: "700",
-    fontFamily: "monospace",
+    // "monospace" is an Android-only alias; iOS falls back to the system font.
+    fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
     flexShrink: 1,
     lineHeight: 17,
   },

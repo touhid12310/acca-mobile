@@ -137,7 +137,6 @@ export default function ReportsScreen() {
     data: summaryData,
     isLoading: isLoadingSummary,
     refetch: refetchSummary,
-    isRefetching: isRefetchingSummary,
   } = useQuery({
     queryKey: ["reports", "monthly-summary", months],
     queryFn: async () => {
@@ -180,7 +179,6 @@ export default function ReportsScreen() {
     data: categoryData,
     isLoading: isLoadingCategory,
     refetch: refetchCategory,
-    isRefetching: isRefetchingCategory,
   } = useQuery({
     queryKey: ["reports", "category-breakdown", categoryTypeFilter],
     queryFn: async () => {
@@ -216,7 +214,6 @@ export default function ReportsScreen() {
     data: netWorthData,
     isLoading: isLoadingNetWorth,
     refetch: refetchNetWorth,
-    isRefetching: isRefetchingNetWorth,
   } = useQuery({
     queryKey: ["reports", "net-worth-timeline", months],
     queryFn: async () => {
@@ -234,7 +231,6 @@ export default function ReportsScreen() {
     data: incomeStatementData,
     isLoading: isLoadingIncome,
     refetch: refetchIncome,
-    isRefetching: isRefetchingIncome,
   } = useQuery({
     queryKey: [
       "reports",
@@ -260,7 +256,6 @@ export default function ReportsScreen() {
     data: balanceSheetData,
     isLoading: isLoadingBalance,
     refetch: refetchBalance,
-    isRefetching: isRefetchingBalance,
   } = useQuery({
     queryKey: ["reports", "balance-sheet", balanceSheetDate.toISOString()],
     queryFn: async () => {
@@ -283,30 +278,31 @@ export default function ReportsScreen() {
     (reportType === "income" && isLoadingIncome) ||
     (reportType === "balance" && isLoadingBalance);
 
-  const isRefetching =
-    isRefetchingSummary ||
-    isRefetchingCategory ||
-    isRefetchingNetWorth ||
-    isRefetchingIncome ||
-    isRefetchingBalance;
+  // Spinner only for a pull: iOS treats refreshing=true as a pull and shifts
+  // the content, so background refetches must not drive it.
+  const [userRefreshing, setUserRefreshing] = useState(false);
 
-  const handleRefresh = () => {
+  const refetchActiveReport = () => {
     switch (reportType) {
       case "summary":
-        refetchSummary();
-        break;
+        return refetchSummary();
       case "category":
-        refetchCategory();
-        break;
+        return refetchCategory();
       case "networth":
-        refetchNetWorth();
-        break;
+        return refetchNetWorth();
       case "income":
-        refetchIncome();
-        break;
+        return refetchIncome();
       case "balance":
-        refetchBalance();
-        break;
+        return refetchBalance();
+    }
+  };
+
+  const handleRefresh = async () => {
+    setUserRefreshing(true);
+    try {
+      await refetchActiveReport();
+    } finally {
+      setUserRefreshing(false);
     }
   };
 
@@ -1198,7 +1194,7 @@ export default function ReportsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
+            refreshing={userRefreshing}
             onRefresh={handleRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}

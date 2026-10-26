@@ -6,7 +6,6 @@ import {
   ScrollView,
   RefreshControl,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
 } from "react-native";
 import {
@@ -48,7 +47,13 @@ import accountService from "../src/services/accountService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Loan } from "../src/types";
-import { formatDate, todayDateInputValue } from "../src/utils/date";
+import {
+  formatDate,
+  parseCalendarDate,
+  toDateInputValue,
+  todayDateInputValue,
+} from "../src/utils/date";
+import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
@@ -70,6 +75,13 @@ type EntryDraft = {
 
 const unwrapData = <T,>(value: any): T | undefined =>
   (value && typeof value === "object" && "data" in value ? value.data : value) as T | undefined;
+
+/**
+ * Start and next-payment dates arrive as UTC midnight; show that calendar
+ * day, not the local time of the instant (a day early west of UTC).
+ */
+const formatCalendarDate = (value: string) =>
+  formatDate(toDateInputValue(parseCalendarDate(value)));
 
 const formatApiError = (result: any): string => {
   const errorData = result.data;
@@ -159,7 +171,6 @@ export default function LoansScreen() {
     data: loans,
     isLoading,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ["loans"],
     queryFn: async () => {
@@ -211,9 +222,9 @@ export default function LoansScreen() {
     mutationFn: async (data: typeof formData) => {
       const payload = {
         loan_name: data.loan_name,
-        original_amount: parseFloat(data.original_amount) || 0,
-        interest_rate: parseFloat(data.interest_rate) || 0,
-        next_payment: parseFloat(data.next_payment) || 0,
+        original_amount: parseDecimalInput(data.original_amount),
+        interest_rate: parseDecimalInput(data.interest_rate),
+        next_payment: parseDecimalInput(data.next_payment),
         term: parseInt(data.term) || 0,
         term_period: data.term_period,
         start_date: data.start_date || todayDateInputValue(),
@@ -244,7 +255,7 @@ export default function LoansScreen() {
       data: typeof paymentData;
     }) => {
       const settling = isRepaymentDirection(selectedLoan, paymentDirection);
-      const amount = parseFloat(data.payment_amount) || 0;
+      const amount = parseDecimalInput(data.payment_amount);
 
       const payload = {
         payment_amount: amount,
@@ -254,13 +265,13 @@ export default function LoansScreen() {
           ? undefined
           : amount,
         interest_paid: settling
-          ? (data.interest_paid ? parseFloat(data.interest_paid) : 0)
+          ? (data.interest_paid ? parseDecimalInput(data.interest_paid) : 0)
           : 0,
         account_id: parseInt(data.account_id) || undefined,
         payment_date:
           data.payment_date || todayDateInputValue(),
         next_payment: data.next_payment
-          ? parseFloat(data.next_payment)
+          ? parseDecimalInput(data.next_payment)
           : undefined,
         next_payment_date: data.next_payment_date || undefined,
         notes: data.notes || undefined,
@@ -340,9 +351,9 @@ export default function LoansScreen() {
     data: { payment_amount: string; interest_paid?: string },
   ) => {
     if (!loan || !isRepaymentDirection(loan, direction)) return 0;
-    const total = parseFloat(data.payment_amount);
+    const total = parseDecimalInput(data.payment_amount, NaN);
     if (!Number.isFinite(total)) return 0;
-    const interest = parseFloat(data.interest_paid ?? "") || 0;
+    const interest = parseDecimalInput(data.interest_paid ?? "");
     const extra = total - interest - parseFloat(String(loan.remaining_balance ?? 0));
     return extra > 0.009 ? Math.round(extra * 100) / 100 : 0;
   };
@@ -358,7 +369,12 @@ export default function LoansScreen() {
       ? { in: "Borrowed", out: "Repaid" }
       : { in: "Received", out: "Given" };
 
-  const openPaymentModal = (loan: Loan, direction: LoanDirection = "in") => {
+  // Defaults to the direction that pays the loan down: "out" on a Borrowed
+  // loan ("in" there would be borrowing more), "in" on a Lent one.
+  const openPaymentModal = (
+    loan: Loan,
+    direction: LoanDirection = loan.loan_type === "Borrowed" ? "out" : "in",
+  ) => {
     const defaultAccountId = accounts?.[0]?.id ? String(accounts[0].id) : "";
 
     setPaymentDirection(direction);
@@ -389,7 +405,7 @@ export default function LoansScreen() {
     }
     if (
       !formData.original_amount ||
-      parseFloat(formData.original_amount) <= 0
+      parseDecimalInput(formData.original_amount) <= 0
     ) {
       notifyToast.error("Please enter a valid amount");
       return;
@@ -407,9 +423,9 @@ export default function LoansScreen() {
 
   const handleMakePayment = () => {
     if (!selectedLoan) return;
-    const amount = parseFloat(paymentData.payment_amount);
+    const amount = parseDecimalInput(paymentData.payment_amount);
     const interest = paymentData.interest_paid
-      ? parseFloat(paymentData.interest_paid)
+      ? parseDecimalInput(paymentData.interest_paid, NaN)
       : 0;
     if (!amount || amount <= 0) {
       notifyToast.error("Please enter a valid payment amount");
@@ -486,8 +502,8 @@ export default function LoansScreen() {
   const saveEntry = async () => {
     const draft = editingEntry;
     if (!draft || !selectedLoan) return;
-    const amount = parseFloat(draft.amount);
-    const interest = draft.is_repayment ? parseFloat(draft.interest_paid) || 0 : 0;
+    const amount = parseDecimalInput(draft.amount, NaN);
+    const interest = draft.is_repayment ? parseDecimalInput(draft.interest_paid) : 0;
     if (!(amount > 0)) return notifyToast.error("Enter an amount above zero.");
     if (interest < 0 || interest > amount) {
       return notifyToast.error("Interest must be between 0 and the amount.");
@@ -603,11 +619,15 @@ export default function LoansScreen() {
   const shareStatementLink = async () => {
     const url = statement?.share?.url;
     if (!url) return;
+    const name = selectedLoan?.loan_name ?? "Loan";
     try {
-      await Share.share({
-        message: `${selectedLoan?.loan_name ?? "Loan"} statement: ${url}`,
-        url,
-      });
+      // iOS shares message and url as separate items, so a url inside the
+      // message would arrive twice; Android only sends the message.
+      await Share.share(
+        Platform.OS === "ios"
+          ? { message: `${name} statement`, url }
+          : { message: `${name} statement: ${url}` },
+      );
     } catch {
       // The user dismissing the share sheet is not an error.
     }
@@ -731,10 +751,24 @@ export default function LoansScreen() {
 
   const getDaysUntilPayment = (dateString?: string) => {
     if (!dateString) return null;
-    const paymentDate = new Date(dateString);
-    const today = new Date();
+    // Whole calendar days between local midnights (round absorbs DST hours).
+    const paymentDate = parseCalendarDate(dateString);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const diffTime = paymentDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Only a pull shows the spinner; refetches after a save stay silent (on iOS
+  // a programmatic refresh would also push the list down).
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
   };
 
   if (isLoading) {
@@ -759,9 +793,10 @@ export default function LoansScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -1140,7 +1175,7 @@ export default function LoansScreen() {
                         }}
                       >
                         Next:{" "}
-                        {new Date(loan.next_payment_date).toLocaleDateString()}
+                        {formatCalendarDate(loan.next_payment_date)}
                         {daysUntil !== null && daysUntil >= 0 && (
                           <Text
                             style={{
@@ -1299,9 +1334,14 @@ export default function LoansScreen() {
             { backgroundColor: colors.surface },
           ]}
         >
+          {/* automaticallyAdjustKeyboardInsets: on iOS the keyboard covers the
+              lower part of this centred sheet; the inset lets the focused
+              field and the buttons scroll above it. */}
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
           >
             <Text
               variant="titleLarge"
@@ -1326,10 +1366,11 @@ export default function LoansScreen() {
               label="Original Amount *"
               value={formData.original_amount}
               onChangeText={(text) =>
-                setFormData({ ...formData, original_amount: text })
+                setFormData({ ...formData, original_amount: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -1337,10 +1378,11 @@ export default function LoansScreen() {
               label="Interest Rate (%)"
               value={formData.interest_rate}
               onChangeText={(text) =>
-                setFormData({ ...formData, interest_rate: text })
+                setFormData({ ...formData, interest_rate: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -1348,10 +1390,11 @@ export default function LoansScreen() {
               label="Next Payment Amount"
               value={formData.next_payment}
               onChangeText={(text) =>
-                setFormData({ ...formData, next_payment: text })
+                setFormData({ ...formData, next_payment: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -1361,6 +1404,7 @@ export default function LoansScreen() {
               onChangeText={(text) => setFormData({ ...formData, term: text })}
               mode="outlined"
               keyboardType="number-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -1686,7 +1730,12 @@ export default function LoansScreen() {
             { backgroundColor: colors.surface },
           ]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
+          >
             <Text variant="titleLarge" style={{ color: colors.onSurface }}>
               {selectedLoan?.loan_name || selectedLoan?.name}
             </Text>
@@ -1695,7 +1744,7 @@ export default function LoansScreen() {
               style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
             >
               {selectedLoan?.loan_type === "Borrowed" ? "Money borrowed" : "Money lent"}
-              {selectedLoan?.start_date ? ` · opened ${formatDate(selectedLoan.start_date)}` : ""}
+              {selectedLoan?.start_date ? ` · opened ${formatCalendarDate(selectedLoan.start_date)}` : ""}
             </Text>
 
             {statementLoading && (
@@ -1909,18 +1958,22 @@ export default function LoansScreen() {
                     <TextInput
                       label="Amount *"
                       value={editingEntry.amount}
-                      onChangeText={(text) => setEntryField("amount", text)}
+                      onChangeText={(text) => setEntryField("amount", toDecimalInput(text))}
                       mode="outlined"
                       keyboardType="decimal-pad"
+                      returnKeyType="done"
                       style={styles.input}
                     />
                     {entry.is_repayment && (
                       <TextInput
                         label="Interest"
                         value={editingEntry.interest_paid}
-                        onChangeText={(text) => setEntryField("interest_paid", text)}
+                        onChangeText={(text) =>
+                          setEntryField("interest_paid", toDecimalInput(text))
+                        }
                         mode="outlined"
                         keyboardType="decimal-pad"
+                        returnKeyType="done"
                         style={styles.input}
                       />
                     )}
@@ -2096,7 +2149,7 @@ export default function LoansScreen() {
                       </Text>
                     </View>
                     <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {selectedLoan?.start_date ? formatDate(selectedLoan.start_date) : "-"}
+                      {selectedLoan?.start_date ? formatCalendarDate(selectedLoan.start_date) : "-"}
                     </Text>
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
@@ -2143,6 +2196,8 @@ export default function LoansScreen() {
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
           >
             <Text
               variant="titleLarge"
@@ -2251,10 +2306,11 @@ export default function LoansScreen() {
               label="Amount *"
               value={paymentData.payment_amount}
               onChangeText={(text) =>
-                setPaymentData({ ...paymentData, payment_amount: text })
+                setPaymentData({ ...paymentData, payment_amount: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -2265,10 +2321,11 @@ export default function LoansScreen() {
                 label="Interest"
                 value={paymentData.interest_paid}
                 onChangeText={(text) =>
-                  setPaymentData({ ...paymentData, interest_paid: text })
+                  setPaymentData({ ...paymentData, interest_paid: toDecimalInput(text) })
                 }
                 mode="outlined"
                 keyboardType="decimal-pad"
+                returnKeyType="done"
                 style={styles.input}
               />
             )}
@@ -2388,10 +2445,11 @@ export default function LoansScreen() {
               label="Next Payment Amount"
               value={paymentData.next_payment}
               onChangeText={(text) =>
-                setPaymentData({ ...paymentData, next_payment: text })
+                setPaymentData({ ...paymentData, next_payment: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               placeholder="Optional"
               style={styles.input}
             />

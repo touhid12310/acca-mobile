@@ -9,6 +9,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "../../contexts/ThemeContext";
 import { gradients, radius, shadow } from "../../constants/theme";
+import { splitShadowStyle } from "./shadowSplit";
 
 interface HeroCardProps {
   children?: React.ReactNode;
@@ -29,8 +30,9 @@ export function HeroCard({
   const { isDark } = useTheme();
 
   if (isDark) {
-    return (
-      <View style={[styles.base, styles.darkBg, withShadow && shadow.lg, style]}>
+    const darkStyle = [styles.base, styles.darkBg, withShadow && shadow.lg, style];
+    const darkBody = (
+      <>
         <View
           style={[
             styles.glowA,
@@ -46,16 +48,27 @@ export function HeroCard({
           pointerEvents="none"
         />
         {children}
-      </View>
+      </>
     );
+    // iOS: shadow on an outer view, clip on an inner one (see splitShadowStyle).
+    const darkSplit = splitShadowStyle(darkStyle);
+    if (darkSplit) {
+      return (
+        <View style={darkSplit.outer}>
+          <View style={darkSplit.inner}>{darkBody}</View>
+        </View>
+      );
+    }
+    return <View style={darkStyle}>{darkBody}</View>;
   }
 
-  return (
+  const lightStyle = [styles.base, withShadow && shadow.lg, style];
+  const renderGradient = (gradientStyle: StyleProp<ViewStyle>) => (
     <LinearGradient
       colors={gradients.ocean as any}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[styles.base, withShadow && shadow.lg, style]}
+      style={gradientStyle}
     >
       <View
         style={[styles.glowA, { backgroundColor: "#22d3ee", opacity: 0.4 }]}
@@ -68,6 +81,18 @@ export function HeroCard({
       {children}
     </LinearGradient>
   );
+
+  const lightSplit = splitShadowStyle(lightStyle);
+  if (lightSplit) {
+    // A solid colour under the gradient lets iOS draw the shadow from the
+    // rounded outline instead of rendering it offscreen.
+    return (
+      <View style={[{ backgroundColor: gradients.ocean[1] }, lightSplit.outer]}>
+        {renderGradient(lightSplit.inner)}
+      </View>
+    );
+  }
+  return renderGradient(lightStyle);
 }
 
 const styles = StyleSheet.create({

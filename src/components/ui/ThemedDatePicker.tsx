@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
+  Keyboard,
   Modal,
   Pressable,
   StyleSheet,
@@ -64,6 +65,12 @@ export function ThemedDatePicker({
   const headerGradient = (isDark
     ? gradients.primaryNight
     : gradients.primary) as any;
+
+  // Keep a focused field's keyboard (the iOS decimal pad has no return key)
+  // from staying up over Cancel / Select.
+  React.useEffect(() => {
+    if (visible) Keyboard.dismiss();
+  }, [visible]);
 
   React.useEffect(() => {
     if (visible) {

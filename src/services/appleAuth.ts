@@ -7,6 +7,8 @@ export type AppleAuthResult =
       identityToken: string;
       appleUser: string;
       fullName?: string;
+      /** Short-lived; lets the backend get a refresh token to revoke on account deletion. */
+      authorizationCode?: string;
     }
   | { type: 'cancel' }
   | { type: 'error'; message: string };
@@ -46,6 +48,7 @@ export async function startAppleAuth(): Promise<AppleAuthResult> {
       identityToken: credential.identityToken,
       appleUser: credential.user,
       fullName: formatFullName(credential.fullName),
+      authorizationCode: credential.authorizationCode ?? undefined,
     };
   } catch (error: any) {
     if (error?.code === 'ERR_REQUEST_CANCELED' || error?.code === 'ERR_CANCELED') {

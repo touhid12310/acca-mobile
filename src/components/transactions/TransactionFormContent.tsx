@@ -9,6 +9,7 @@ import {
   Image,
   Linking,
   ActivityIndicator,
+  Keyboard,
   Modal as RNModal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +33,7 @@ import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useToast } from '../../contexts/NotificationContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCurrency } from '../../contexts/CurrencyContext';
@@ -43,8 +45,11 @@ import { findMatchingRule } from '../../utils/categorizationRules';
 import { buildFileUrl } from '../../config/api';
 import { reportError } from '../../services/errorReporter';
 import { markFlow } from '../../services/appExitMonitor';
+import { ensureAiConsent } from '../../services/aiConsent';
 import { Transaction, TransactionType, Category, Account, AccountType, PossibleDuplicate } from '../../types';
-import { formatDate, toDateInputValue } from '../../utils/date';
+import { formatDate, parseCalendarDate, toDateInputValue } from '../../utils/date';
+import { toDecimalInput } from '../../utils/number';
+import { showPermissionSettingsAlert } from '../../utils/permissions';
 import PossibleDuplicateNotice from './PossibleDuplicateNotice';
 import { compatibleImagePickerOptions, uploadFileFromAsset } from '../../utils/uploads';
 import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
@@ -133,6 +138,10 @@ type Props = {
   autoScanMode?: 'camera' | 'gallery';
   /** New transactions only: preselect "Other Expenses" / "Other Income" / … */
   applyDefaultCategory?: boolean;
+  /** Called with true the first time the user changes anything. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** iOS sheet: distance from the top of the window to the top of the form. */
+  keyboardOffset?: number;
 };
 
 export default function TransactionFormContent({
@@ -143,9 +152,12 @@ export default function TransactionFormContent({
   title = 'Add Transaction',
   autoScanMode,
   applyDefaultCategory = false,
+  onDirtyChange,
+  keyboardOffset = 0,
 }: Props) {
   const { colors } = useTheme();
   const { currencySymbol } = useCurrency();
+  const { user } = useAuth();
 
   // Convert API items to form items. Always yields at least one row — the grid
   // opens with an editable line instead of an empty "no items" state, so a
@@ -203,7 +215,9 @@ export default function TransactionFormContent({
       return {
         type: normalizedType,
         amount: initialData.amount?.toString() || '',
-        date: initialData.date ? new Date(initialData.date) : new Date(),
+        // A calendar day: new Date() on the API's UTC midnight lands on the
+        // previous day west of UTC, and saving would move the transaction.
+        date: initialData.date ? parseCalendarDate(initialData.date) : new Date(),
         merchant_name: initialData.merchant_name || '',
         description: initialData.description || '',
         category_id: initialData.category_id || null,
@@ -506,7 +520,7 @@ export default function TransactionFormContent({
       setFormData({
         type: normalizedType,
         amount: initialData.amount?.toString() || '',
-        date: initialData.date ? new Date(initialData.date) : new Date(),
+        date: initialData.date ? parseCalendarDate(initialData.date) : new Date(),
         merchant_name: initialData.merchant_name || '',
         description: initialData.description || '',
         category_id: initialData.category_id || null,
@@ -538,10 +552,18 @@ export default function TransactionFormContent({
     setErrors({});
   }, [initialData, isInitialized]);
 
+  // Every user edit (and a receipt scan) goes through updateField; the
+  // automatic prefills (initial data, default account / category, rules) set
+  // formData directly, so they don't count as unsaved input.
+  const dirtyRef = useRef(false);
   const updateField = <K extends keyof TransactionFormData>(
     field: K,
     value: TransactionFormData[K]
   ) => {
+    if (!dirtyRef.current) {
+      dirtyRef.current = true;
+      onDirtyChange?.(true);
+    }
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }));
@@ -619,7 +641,7 @@ export default function TransactionFormContent({
 
         // Set date
         if (data.date) {
-          updateField('date', new Date(data.date));
+          updateField('date', parseCalendarDate(data.date));
         }
 
         // Set type first (needed for category matching)
@@ -731,34 +753,70 @@ export default function TransactionFormContent({
     }
   };
 
+  // The photo goes to Gemini (App Review 5.1.2(i)). Consent is asked before
+  // the camera / photo picker opens, so this normally passes at once; it only
+  // stays as a backstop, and then nothing is attached or sent.
+  const scanReceiptFile = async (file: { uri: string; name: string; type: string }) => {
+    if (!(await ensureAiConsent(user?.id))) {
+      toast.info('Receipt not scanned');
+      return;
+    }
+
+    // Store the receipt for display
+    updateField('receipt', file);
+
+    // Process with AI
+    await processReceiptWithAI(file);
+  };
+
   // Handle receipt selection for AI processing
   const handleScanReceipt = async () => {
+    if (!(await ensureAiConsent(user?.id))) return;
     const result = await pickFromLibrary(compatibleImagePickerOptions);
 
     if (!result.canceled && result.assets[0]) {
-      const file = uploadFileFromAsset(result.assets[0], 'receipt.jpg');
-
-      // Store the receipt for display
-      updateField('receipt', file);
-
-      // Process with AI
-      await processReceiptWithAI(file);
+      await scanReceiptFile(uploadFileFromAsset(result.assets[0], 'receipt.jpg'));
     }
   };
 
   const handleOpenCamera = async () => {
+    Keyboard.dismiss();
+    // Ask before the camera opens so a declined prompt doesn't waste a photo.
+    if (!(await ensureAiConsent(user?.id))) return;
     if (!cameraPermission?.granted) {
       const permission = await requestCameraPermission();
       if (!permission.granted) {
-        toast.warning('Camera permission is needed to capture receipts', {
-          title: 'Permission required',
-        });
+        // iOS asks only once (Android after "Don't ask again"); after that the
+        // request answers denied without a prompt, so point to Settings.
+        if (permission.canAskAgain === false) {
+          showPermissionSettingsAlert(
+            'Camera access is off',
+            'Allow camera access for AccountE in Settings to scan receipts.',
+          );
+        } else {
+          toast.warning('Camera permission is needed to capture receipts', {
+            title: 'Permission required',
+          });
+        }
         return;
       }
     }
 
     setCameraFacing('back');
     setCameraVisible(true);
+  };
+
+  // Camera → Gallery: iOS can't present the photo picker while the camera
+  // modal is still sliding out, so it opens from the modal's onDismiss.
+  const galleryAfterCameraRef = useRef(false);
+  const openGalleryFromCamera = () => {
+    if (Platform.OS === 'ios') {
+      galleryAfterCameraRef.current = true;
+      setCameraVisible(false);
+    } else {
+      setCameraVisible(false);
+      void handleScanReceipt();
+    }
   };
 
   const handleCaptureReceipt = async () => {
@@ -778,8 +836,7 @@ export default function TransactionFormContent({
       };
 
       setCameraVisible(false);
-      updateField('receipt', file);
-      await processReceiptWithAI(file);
+      await scanReceiptFile(file);
     } catch (error) {
       reportError('js_error', error, { location: 'Receipt camera' });
       toast.error('Failed to capture photo. Please try again.');
@@ -1110,7 +1167,9 @@ export default function TransactionFormContent({
           },
         },
       });
-      router.back();
+      // The screen's own close — it falls back to the tabs when there is
+      // nothing to go back to.
+      onCancel();
     },
     onError: (error: Error) => toast.error(error.message || 'Could not archive this draft'),
   });
@@ -1176,6 +1235,14 @@ export default function TransactionFormContent({
     }
   };
 
+  // On iOS this form is a native sheet, and a plain push would open
+  // /categories underneath it, out of sight. categories-modal is presented
+  // as a sheet of its own on top.
+  const openCategoriesManager = () => {
+    setShowCategoryPicker(false);
+    router.push((Platform.OS === 'ios' ? '/categories-modal' : '/categories') as any);
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       {/* Android is configured with softwareKeyboardLayoutMode "pan", so the OS
@@ -1184,6 +1251,7 @@ export default function TransactionFormContent({
           the footer and the keyboard — hence `undefined` on Android. */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={keyboardOffset}
         style={styles.keyboardView}
       >
         {/* Header */}
@@ -1203,6 +1271,9 @@ export default function TransactionFormContent({
           // which is why tapping a merchant did nothing until the keyboard
           // was closed first.
           keyboardShouldPersistTaps="handled"
+          // iOS: dragging down into the keyboard closes it; scrolling up keeps
+          // it open so the merchant suggestions under the field stay usable.
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
         >
           {/* Scan Receipt with AI - Only show when no data entered yet.
               Transfers have no receipt/items (web parity), so hide it. */}
@@ -1445,9 +1516,10 @@ export default function TransactionFormContent({
               <TextInput
                 mode="outlined"
                 keyboardType="decimal-pad"
+                returnKeyType="done"
                 placeholder="0.00"
                 value={formData.amount}
-                onChangeText={(v) => updateField('amount', v.replace(/[^0-9.]/g, ''))}
+                onChangeText={(v) => updateField('amount', toDecimalInput(v))}
                 left={<TextInput.Affix text={currencySymbol} />}
               />
               {errors.amount && (
@@ -1480,9 +1552,10 @@ export default function TransactionFormContent({
                   <TextInput
                     mode="outlined"
                     keyboardType="decimal-pad"
+                    returnKeyType="done"
                     placeholder="0.00"
                     value={formData.transfer_fee}
-                    onChangeText={(v) => updateField('transfer_fee', v.replace(/[^0-9.]/g, ''))}
+                    onChangeText={(v) => updateField('transfer_fee', toDecimalInput(v))}
                     left={<TextInput.Affix text={currencySymbol} />}
                   />
                   {errors.transfer_fee && (
@@ -1529,8 +1602,9 @@ export default function TransactionFormContent({
                         mode="outlined"
                         label="Qty"
                         value={item.quantity}
-                        onChangeText={(text) => updateItem(index, 'quantity', text.replace(/[^0-9.]/g, ''))}
+                        onChangeText={(text) => updateItem(index, 'quantity', toDecimalInput(text))}
                         keyboardType="decimal-pad"
+                        returnKeyType="done"
                         style={styles.itemQtyInput}
                         dense
                       />
@@ -1538,8 +1612,9 @@ export default function TransactionFormContent({
                         mode="outlined"
                         label="Price"
                         value={item.price}
-                        onChangeText={(text) => updateItem(index, 'price', text.replace(/[^0-9.]/g, ''))}
+                        onChangeText={(text) => updateItem(index, 'price', toDecimalInput(text))}
                         keyboardType="decimal-pad"
+                        returnKeyType="done"
                         style={styles.itemPriceInput}
                         left={<TextInput.Affix text={currencySymbol} />}
                         dense
@@ -1558,6 +1633,7 @@ export default function TransactionFormContent({
                         },
                       ]}
                       onPress={() => {
+                        Keyboard.dismiss();
                         setCategoryPickerTarget(index);
                         setShowCategoryPicker(true);
                       }}
@@ -1632,11 +1708,16 @@ export default function TransactionFormContent({
             </Text>
             <TouchableOpacity
               style={[styles.pickerButton, { borderColor: colors.outline }]}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                // A tap here doesn't blur the focused field, and on iOS its
+                // keyboard would sit over the calendar's buttons.
+                Keyboard.dismiss();
+                setShowDatePicker(true);
+              }}
             >
               <MaterialCommunityIcons name="calendar" size={20} color={colors.onSurfaceVariant} />
               <Text style={{ color: colors.onSurface, marginLeft: 12, flex: 1 }}>
-                {formatDate(formData.date.toISOString(), {
+                {formatDate(toDateInputValue(formData.date), {
                   weekday: 'short',
                   month: 'long',
                   day: 'numeric',
@@ -1756,6 +1837,7 @@ export default function TransactionFormContent({
                   { borderColor: errors.category_id ? colors.error : colors.outline },
                 ]}
                 onPress={() => {
+                  Keyboard.dismiss();
                   setCategoryPickerTarget('transaction');
                   setShowCategoryPicker(true);
                 }}
@@ -1795,7 +1877,10 @@ export default function TransactionFormContent({
                 styles.pickerButton,
                 { borderColor: errors.account_id ? colors.error : colors.outline },
               ]}
-              onPress={() => setShowAccountPicker(true)}
+              onPress={() => {
+                Keyboard.dismiss();
+                setShowAccountPicker(true);
+              }}
             >
               <MaterialCommunityIcons name="wallet" size={20} color={colors.onSurfaceVariant} />
               <View style={{ marginLeft: 12, flex: 1 }}>
@@ -1834,7 +1919,10 @@ export default function TransactionFormContent({
                   styles.pickerButton,
                   { borderColor: errors.to_account_id ? colors.error : colors.outline },
                 ]}
-                onPress={() => setShowToAccountPicker(true)}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowToAccountPicker(true);
+                }}
               >
                 <MaterialCommunityIcons name="wallet" size={20} color={colors.onSurfaceVariant} />
                 <View style={{ marginLeft: 12, flex: 1 }}>
@@ -1918,6 +2006,11 @@ export default function TransactionFormContent({
         animationType="slide"
         presentationStyle="fullScreen"
         onRequestClose={() => setCameraVisible(false)}
+        onDismiss={() => {
+          if (!galleryAfterCameraRef.current) return;
+          galleryAfterCameraRef.current = false;
+          void handleScanReceipt();
+        }}
       >
         <View style={styles.cameraOverlay}>
           <CameraView
@@ -1941,10 +2034,7 @@ export default function TransactionFormContent({
           <View style={[styles.cameraBottomBar, { bottom: Math.max(cameraInsets.bottom, 20) + 12 }]}>
             <TouchableOpacity
               style={styles.cameraActionButton}
-              onPress={async () => {
-                setCameraVisible(false);
-                await handleScanReceipt();
-              }}
+              onPress={openGalleryFromCamera}
             >
               <MaterialCommunityIcons name="image-multiple" size={24} color="#fff" />
               <Text style={styles.cameraActionLabel}>Gallery</Text>
@@ -2043,10 +2133,7 @@ export default function TransactionFormContent({
                       borderWidth: 1,
                       borderColor: colors.primary,
                     }}
-                    onPress={() => {
-                      setShowCategoryPicker(false);
-                      router.push('/categories');
-                    }}
+                    onPress={openCategoriesManager}
                   >
                     <MaterialCommunityIcons name="plus" size={16} color={colors.primary} />
                     <Text
@@ -2061,12 +2148,7 @@ export default function TransactionFormContent({
                     </Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowCategoryPicker(false);
-                    router.push('/categories');
-                  }}
-                >
+                <TouchableOpacity onPress={openCategoriesManager}>
                   <Text
                     style={{
                       color: colors.onSurfaceVariant,

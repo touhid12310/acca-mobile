@@ -2,33 +2,25 @@
   "expo": {
     "name": "AccountE",
     "slug": "accounte-expo",
-    "version": "1.8.8",
+    "version": "1.9.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "accounte",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
-      "requireFullScreen": true,
+      "supportsTablet": false,
       "usesAppleSignIn": true,
       "bundleIdentifier": "com.accounte.finance",
+      "appStoreUrl": "https://apps.apple.com/app/id6827135074",
       "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Allow AccountE to access your microphone for voice transcription.",
-        "NSCameraUsageDescription": "AccountE needs access to your camera to capture receipts.",
-        "NSPhotoLibraryUsageDescription": "AccountE needs access to your photos to upload receipts.",
+        "NSMicrophoneUsageDescription": "AccountE uses the microphone so you can speak transactions and questions to the AI assistant.",
+        "NSCameraUsageDescription": "AccountE uses the camera so you can photograph receipts for your transactions and the AI assistant.",
+        "NSPhotoLibraryUsageDescription": "AccountE uses your photos so you can attach receipts, share images with the AI assistant and choose a profile picture.",
         "NSSpeechRecognitionUsageDescription": "Allow AccountE to use speech recognition for live transcription.",
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
-        ],
-        "UIRequiresFullScreen": true,
-        "CFBundleURLTypes": [
-          {
-            "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.799451467900-8t35fi6ope0c7nfbsnla38c660icadpv"
-            ]
-          }
         ]
       }
     },
@@ -74,7 +66,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "AccountE needs access to your camera to capture receipts.",
+          "cameraPermission": "AccountE uses the camera so you can photograph receipts for your transactions and the AI assistant.",
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": false
         }
@@ -82,14 +74,16 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow AccountE to access your microphone for voice recording."
+          "microphonePermission": "AccountE uses the microphone so you can speak transactions and questions to the AI assistant.",
+          "enableBackgroundPlayback": false,
+          "enableBackgroundRecording": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow AccountE to access your photos to upload receipts.",
-          "cameraPermission": "Allow AccountE to access your camera to capture receipts."
+          "photosPermission": "AccountE uses your photos so you can attach receipts, share images with the AI assistant and choose a profile picture.",
+          "cameraPermission": "AccountE uses the camera so you can photograph receipts for your transactions and the AI assistant."
         }
       ],
       "expo-font",
@@ -109,7 +103,7 @@
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "Allow AccountE to access your microphone for voice transcription.",
+          "microphonePermission": "AccountE uses the microphone so you can speak transactions and questions to the AI assistant.",
           "speechRecognitionPermission": "Allow AccountE to use speech recognition for live transcription."
         }
       ],
@@ -121,6 +115,7 @@
         {
           "android": {
             "buildArchs": ["armeabi-v7a", "arm64-v8a"],
+            "useLegacyPackaging": true,
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true,
             "extraProguardRules": "-keep class com.accounte.finance.** { *; }\n-keepattributes SourceFile,LineNumberTable\n-keepattributes *Annotation*,Signature,Exceptions\n-keep class com.facebook.hermes.unicode.** { *; }\n-keep class com.facebook.jni.** { *; }"

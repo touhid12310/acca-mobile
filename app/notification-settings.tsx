@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,10 @@ import {
   Switch,
   ActivityIndicator,
   RefreshControl,
+  AppState,
+  Linking,
 } from "react-native";
+import type { NotificationPermissionsStatus } from "expo-notifications";
 import { Stack } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +21,8 @@ import {
   Mail,
   PieChart,
   Bell,
+  BellOff,
+  Settings,
   Wallet,
   Receipt,
   Moon,
@@ -25,9 +30,11 @@ import {
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useToast } from "../src/contexts/NotificationContext";
-import { Card, IconBadge, ScreenHeader } from "../src/components/ui";
+import { useAuth } from "../src/contexts/AuthContext";
+import { Button, Card, IconBadge, ScreenHeader } from "../src/components/ui";
 import { BrandStrip } from "../src/components";
 import settingsService from "../src/services/settingsService";
+import { getPushPermission, registerDevice } from "../src/services/pushService";
 import { NotificationPreferences } from "../src/types";
 import { radius, spacing } from "../src/constants/theme";
 
@@ -51,6 +58,62 @@ export default function NotificationSettingsScreen() {
   const queryClient = useQueryClient();
   const [prefs, setPrefs] = useState<Required<NotificationPreferences>>(DEFAULT_PREFS);
   const [savingKey, setSavingKey] = useState<PrefKey | null>(null);
+  const { token } = useAuth();
+  const [pushPermission, setPushPermission] =
+    useState<NotificationPermissionsStatus | null>(null);
+  const [turningOnPush, setTurningOnPush] = useState(false);
+  const lastPushStatus = useRef<string | null>(null);
+  const askingForPush = useRef(false);
+
+  const readPushPermission = useCallback(async () => {
+    const permission = await getPushPermission().catch(() => null);
+    const previous = lastPushStatus.current;
+    lastPushStatus.current = permission?.status ?? null;
+    setPushPermission(permission);
+    return { permission, previous };
+  }, []);
+
+  // The phone's own setting decides whether pushes arrive, and iOS asks only
+  // once. Re-check whenever the app comes back (e.g. from Settings).
+  useEffect(() => {
+    const check = async () => {
+      const { permission, previous } = await readPushPermission();
+      // Allowed in Settings meanwhile: register this phone now rather than
+      // on the next cold start.
+      if (
+        permission?.status === "granted" &&
+        previous &&
+        previous !== "granted" &&
+        token &&
+        !askingForPush.current
+      ) {
+        registerDevice(token).catch(() => {});
+      }
+    };
+    void check();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void check();
+    });
+    return () => subscription.remove();
+  }, [readPushPermission, token]);
+
+  const turnOnPush = async () => {
+    if (!token || askingForPush.current) return;
+    askingForPush.current = true;
+    setTurningOnPush(true);
+    try {
+      // Shows the system prompt, then registers this phone.
+      if (await registerDevice(token)) {
+        toast.success("Push notifications are on");
+      }
+    } catch {
+      // The card below reflects whatever the phone decided.
+    } finally {
+      await readPushPermission();
+      askingForPush.current = false;
+      setTurningOnPush(false);
+    }
+  };
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["settings", "me"],
@@ -194,6 +257,42 @@ export default function NotificationSettingsScreen() {
           subtitle="Choose what you want to hear about"
           showBack
         />
+        {pushPermission && pushPermission.status !== "granted" && (
+          <Card variant="elevated" padding="lg" radiusSize="xl" style={styles.pushOff}>
+            <View style={styles.rowMain}>
+              <IconBadge icon={BellOff} tone="warning" size="md" />
+              <View style={styles.rowText}>
+                <Text style={[styles.rowTitle, { color: colors.onSurface }]}>
+                  Push notifications are off
+                </Text>
+                <Text
+                  style={[styles.rowDescription, { color: colors.onSurfaceVariant }]}
+                >
+                  {pushPermission.canAskAgain
+                    ? "Turn them on to get budget alerts, payment reminders and daily reminders on this phone."
+                    : "AccountE isn't allowed to notify you on this phone. Open Settings, tap Notifications and allow them."}
+                </Text>
+              </View>
+            </View>
+            {pushPermission.canAskAgain ? (
+              <Button
+                label="Turn on"
+                icon={Bell}
+                fullWidth
+                loading={turningOnPush}
+                disabled={turningOnPush || !token}
+                onPress={() => void turnOnPush()}
+              />
+            ) : (
+              <Button
+                label="Open Settings"
+                icon={Settings}
+                fullWidth
+                onPress={() => void Linking.openSettings()}
+              />
+            )}
+          </Card>
+        )}
         <Card variant="elevated" padding="xl" radiusSize="xxl" style={styles.intro}>
           <View
             style={[
@@ -321,6 +420,9 @@ const styles = StyleSheet.create({
   intro: {
     alignItems: "center",
     marginBottom: spacing.md,
+  },
+  pushOff: {
+    gap: spacing.md,
   },
   introIcon: {
     width: 64,

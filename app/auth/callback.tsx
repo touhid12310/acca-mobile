@@ -118,9 +118,10 @@ export default function AuthCallback() {
     loginWithToken,
   ]);
 
-  const handleVerifyTwoFactor = async () => {
+  // `completed` is a code that was just finished, before its state lands.
+  const handleVerifyTwoFactor = async (completed?: string) => {
     if (!pendingToken) return;
-    const trimmed = code.replace(/\D/g, '').slice(0, 6);
+    const trimmed = (completed ?? code).replace(/\D/g, '').slice(0, 6);
     if (trimmed.length !== 6) {
       setTwoFactorError('Enter the 6-digit code from your authenticator app');
       return;
@@ -162,7 +163,8 @@ export default function AuthCallback() {
             autoFocus
             error={!!twoFactorError}
             accessibilityLabel="Authenticator code"
-            onSubmitEditing={handleVerifyTwoFactor}
+            onSubmitEditing={() => handleVerifyTwoFactor()}
+            onComplete={(digits) => handleVerifyTwoFactor(digits)}
           />
           {twoFactorError && (
             <Text style={[styles.errorText, { color: colors.error }]}>{twoFactorError}</Text>
@@ -172,7 +174,7 @@ export default function AuthCallback() {
           <PrimaryButton
             label="Verify & sign in"
             loadingLabel="Verifying…"
-            onPress={handleVerifyTwoFactor}
+            onPress={() => handleVerifyTwoFactor()}
             loading={isVerifying}
             disabled={code.length !== 6}
           />

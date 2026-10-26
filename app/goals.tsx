@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   StyleSheet,
   ScrollView,
   RefreshControl,
   TouchableOpacity,
+  Keyboard,
+  Platform,
 } from "react-native";
 import {
   Text,
@@ -16,7 +18,10 @@ import {
   Button,
   ProgressBar,
 } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -33,6 +38,19 @@ import DateField from "../src/components/common/DateField";
 import { Goal } from "../src/types";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import {
+  formatDate,
+  parseCalendarDate,
+  toDateInputValue,
+} from "../src/utils/date";
+import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
+
+/**
+ * Target dates arrive as UTC midnight; show that calendar day, not the local
+ * time of the instant (a day early west of UTC).
+ */
+const formatCalendarDate = (value: string) =>
+  formatDate(toDateInputValue(parseCalendarDate(value)));
 
 // Helper function to extract detailed validation errors from API response
 const formatApiError = (result: any): string => {
@@ -61,6 +79,7 @@ export default function GoalsScreen() {
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const insets = useSafeAreaInsets();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false);
@@ -78,11 +97,28 @@ export default function GoalsScreen() {
     description: "",
   });
 
+  // Paper's Modal centres its sheet and ignores the keyboard, and iOS does not
+  // pan the window the way Android's softwareKeyboardLayoutMode "pan" does.
+  // The contribution sheet is lifted above the keyboard with this height.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const show = Keyboard.addListener("keyboardWillShow", (e) =>
+      setKeyboardHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener("keyboardWillHide", () =>
+      setKeyboardHeight(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const {
     data: goals,
     isLoading,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ["goals"],
     queryFn: async () => {
@@ -116,8 +152,8 @@ export default function GoalsScreen() {
     mutationFn: async (data: typeof formData) => {
       const result = await goalService.create({
         name: data.name,
-        target_amount: parseFloat(data.target_amount) || 0,
-        current_amount: parseFloat(data.current_amount) || 0,
+        target_amount: parseDecimalInput(data.target_amount),
+        current_amount: parseDecimalInput(data.current_amount),
         target_date: data.target_date || undefined,
         category: data.category || undefined,
         description: data.description || undefined,
@@ -138,7 +174,7 @@ export default function GoalsScreen() {
     mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
       const result = await goalService.update(id, {
         name: data.name,
-        target_amount: parseFloat(data.target_amount) || 0,
+        target_amount: parseDecimalInput(data.target_amount),
         target_date: data.target_date || undefined,
         category: data.category || undefined,
         description: data.description,
@@ -258,7 +294,7 @@ export default function GoalsScreen() {
       toast.error("Please enter a goal name");
       return;
     }
-    if (!formData.target_amount || parseFloat(formData.target_amount) <= 0) {
+    if (!formData.target_amount || parseDecimalInput(formData.target_amount) <= 0) {
       toast.error("Please enter a valid target amount");
       return;
     }
@@ -271,7 +307,7 @@ export default function GoalsScreen() {
 
   const handleAddAmount = () => {
     if (!selectedGoal) return;
-    const amount = parseFloat(amountToAdd);
+    const amount = parseDecimalInput(amountToAdd);
     if (!amount || amount <= 0) {
       toast.error("Please enter a valid amount");
       return;
@@ -285,11 +321,25 @@ export default function GoalsScreen() {
 
   const getDaysRemaining = (targetDate?: string | null) => {
     if (!targetDate) return null;
-    const today = new Date();
-    const target = new Date(targetDate);
+    // Whole calendar days between local midnights (round absorbs DST hours).
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const target = parseCalendarDate(targetDate);
     const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
+  };
+
+  // Only a pull shows the spinner; refetches after a save stay silent (on iOS
+  // a programmatic refresh would also push the list down).
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
   };
 
   const getProgressColor = (percentage: number, status?: string) => {
@@ -346,9 +396,10 @@ export default function GoalsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -618,9 +669,9 @@ export default function GoalsScreen() {
                         }}
                       >
                         Target:{" "}
-                        {new Date(
+                        {formatCalendarDate(
                           goal.target_date || goal.deadline || "",
-                        ).toLocaleDateString()}
+                        )}
                         {daysRemaining !== null && (
                           <Text
                             style={{
@@ -760,7 +811,10 @@ export default function GoalsScreen() {
 
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[
+          styles.fab,
+          { backgroundColor: colors.primary, bottom: 16 + insets.bottom },
+        ]}
         color={colors.onPrimary}
         onPress={openModal}
       />
@@ -775,7 +829,15 @@ export default function GoalsScreen() {
             { backgroundColor: colors.surface },
           ]}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          {/* automaticallyAdjustKeyboardInsets: on iOS the keyboard covers the
+              lower part of this centred sheet; the inset lets Description and
+              the buttons scroll above it. */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
+          >
             <Text
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 16 }}
@@ -806,10 +868,11 @@ export default function GoalsScreen() {
               label="Target Amount *"
               value={formData.target_amount}
               onChangeText={(text) =>
-                setFormData({ ...formData, target_amount: text })
+                setFormData({ ...formData, target_amount: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 
@@ -875,116 +938,118 @@ export default function GoalsScreen() {
         <Modal
           visible={addAmountModalVisible}
           onDismiss={closeAddAmountModal}
+          // Re-centres the sheet in the space above the iOS keyboard; on
+          // Android keyboardHeight stays 0 and this is Paper's own margin.
+          style={{ marginBottom: Math.max(insets.bottom, keyboardHeight) }}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
           ]}
         >
-          <Text
-            variant="titleLarge"
-            style={{ color: colors.onSurface, marginBottom: 8 }}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
-            {selectedGoal ? `Add Contribution — ${selectedGoal.name}` : "Add Contribution"}
-          </Text>
-          {selectedGoal && (
             <Text
-              variant="bodyMedium"
-              style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
+              variant="titleLarge"
+              style={{ color: colors.onSurface, marginBottom: 16 }}
             >
-              {selectedGoal.name}
+              {selectedGoal ? `Add Contribution — ${selectedGoal.name}` : "Add Contribution"}
             </Text>
-          )}
 
-          {selectedGoal && (
-            <Surface
-              style={[
-                styles.goalInfoCard,
-                { backgroundColor: colors.surfaceVariant },
-              ]}
-              elevation={0}
-            >
-              <View style={styles.goalInfoRow}>
-                <Text
-                  variant="bodySmall"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  Target:
-                </Text>
-                <Text
-                  variant="bodyMedium"
-                  style={{ color: colors.onSurface, fontWeight: "600" }}
-                >
-                  {formatAmount(
-                    parseFloat(
-                      String(
-                        selectedGoal.target_amount ||
-                          (selectedGoal as any).amount ||
-                          0,
+            {selectedGoal && (
+              <Surface
+                style={[
+                  styles.goalInfoCard,
+                  { backgroundColor: colors.surfaceVariant },
+                ]}
+                elevation={0}
+              >
+                <View style={styles.goalInfoRow}>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant }}
+                  >
+                    Target:
+                  </Text>
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: colors.onSurface, fontWeight: "600" }}
+                  >
+                    {formatAmount(
+                      parseFloat(
+                        String(
+                          selectedGoal.target_amount ||
+                            (selectedGoal as any).amount ||
+                            0,
+                        ),
                       ),
-                    ),
-                  )}
-                </Text>
-              </View>
-              <View style={styles.goalInfoRow}>
-                <Text
-                  variant="bodySmall"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  Saved:
-                </Text>
-                <Text
-                  variant="bodyMedium"
-                  style={{ color: colors.tertiary, fontWeight: "600" }}
-                >
-                  {formatAmount(
-                    parseFloat(
-                      String(
-                        selectedGoal.current_amount ||
-                          (selectedGoal as any).saved_amount ||
-                          0,
+                    )}
+                  </Text>
+                </View>
+                <View style={styles.goalInfoRow}>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant }}
+                  >
+                    Saved:
+                  </Text>
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: colors.tertiary, fontWeight: "600" }}
+                  >
+                    {formatAmount(
+                      parseFloat(
+                        String(
+                          selectedGoal.current_amount ||
+                            (selectedGoal as any).saved_amount ||
+                            0,
+                        ),
                       ),
-                    ),
-                  )}
-                </Text>
-              </View>
-              <View style={styles.goalInfoRow}>
-                <Text
-                  variant="bodySmall"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  Remaining:
-                </Text>
-                <Text
-                  variant="bodyMedium"
-                  style={{ color: colors.onSurface, fontWeight: "600" }}
-                >
-                  {formatAmount(remainingFor(selectedGoal))}
-                </Text>
-              </View>
-            </Surface>
-          )}
+                    )}
+                  </Text>
+                </View>
+                <View style={styles.goalInfoRow}>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant }}
+                  >
+                    Remaining:
+                  </Text>
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: colors.onSurface, fontWeight: "600" }}
+                  >
+                    {formatAmount(remainingFor(selectedGoal))}
+                  </Text>
+                </View>
+              </Surface>
+            )}
 
-          <TextInput
-            label="Amount to Add *"
-            value={amountToAdd}
-            onChangeText={setAmountToAdd}
-            mode="outlined"
-            keyboardType="decimal-pad"
-            style={styles.input}
-          />
+            <TextInput
+              label="Amount to Add *"
+              value={amountToAdd}
+              onChangeText={(text) => setAmountToAdd(toDecimalInput(text))}
+              mode="outlined"
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              style={styles.input}
+            />
 
-          <View style={styles.modalButtons}>
-            <Button mode="text" onPress={closeAddAmountModal}>
-              Cancel
-            </Button>
-            <Button
-              mode="contained"
-              onPress={handleAddAmount}
-              loading={addAmountMutation.isPending}
-            >
-              Add Contribution
-            </Button>
-          </View>
+            <View style={styles.modalButtons}>
+              <Button mode="text" onPress={closeAddAmountModal}>
+                Cancel
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleAddAmount}
+                loading={addAmountMutation.isPending}
+              >
+                Add Contribution
+              </Button>
+            </View>
+          </ScrollView>
         </Modal>
       </Portal>
 

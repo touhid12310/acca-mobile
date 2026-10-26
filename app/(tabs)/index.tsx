@@ -20,16 +20,20 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  Calendar,
   Camera,
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  CreditCard,
   Eye,
   EyeOff,
+  Flag,
   PlusCircle,
   Receipt,
   Sparkles,
   SlidersHorizontal,
+  Target,
   User2,
   Wallet,
 } from "lucide-react-native";
@@ -77,7 +81,6 @@ export default function DashboardScreen() {
   const {
     data: dashboardData,
     isLoading,
-    isRefetching,
     refetch,
   } = useQuery<DashboardData>({
     queryKey: ["dashboard"],
@@ -91,6 +94,18 @@ export default function DashboardScreen() {
       throw new Error(result.error || "Failed to load dashboard");
     },
   });
+
+  // Spinner only for a pull: iOS treats refreshing=true as a pull and shifts
+  // the content, so background refetches (invalidations) must not drive it.
+  const [userRefreshing, setUserRefreshing] = React.useState(false);
+  const onPullRefresh = React.useCallback(async () => {
+    setUserRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setUserRefreshing(false);
+    }
+  }, [refetch]);
 
   const stats = dashboardData || null;
 
@@ -567,8 +582,8 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={userRefreshing}
+            onRefresh={onPullRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
           />
@@ -739,7 +754,8 @@ export default function DashboardScreen() {
               shadow.sm,
             ]}
           >
-            <View style={styles.quickActionsRow}>
+            {/* Two rows of four: money in / out first, then the trackers. */}
+            <View style={styles.quickActionsGrid}>
               {(
                 [
                   {
@@ -786,42 +802,76 @@ export default function DashboardScreen() {
                         params: { type: "expense", scan_mode: "camera" },
                       }),
                   },
+                  // Same icon and tone as these items in the More tab
+                  // (app/(tabs)/more.tsx) — keep them in step.
+                  {
+                    key: "budgets",
+                    label: "Budgets",
+                    color: colors.info,
+                    icon: Target,
+                    onPress: () => router.push("/budgets"),
+                  },
+                  {
+                    key: "goals",
+                    label: "Goals",
+                    color: colors.tertiary,
+                    icon: Flag,
+                    onPress: () => router.push("/goals"),
+                  },
+                  {
+                    key: "loans",
+                    label: "Loans",
+                    color: colors.warning,
+                    icon: CreditCard,
+                    onPress: () => router.push("/loans"),
+                  },
+                  {
+                    key: "schedules",
+                    label: "Schedules",
+                    color: colors.primary,
+                    icon: Calendar,
+                    onPress: () => router.push("/schedules"),
+                  },
                 ] as const
               ).map((action) => {
                 const Icon = action.icon;
                 return (
-                  <Pressable
-                    key={action.key}
-                    onPress={action.onPress}
-                    style={({ pressed }) => [
-                      styles.quickAction,
-                      { opacity: pressed ? 0.7 : 1 },
-                    ]}
-                    hitSlop={4}
-                  >
-                    <View style={styles.quickActionInner}>
-                      <View
-                        style={[
-                          styles.quickActionIcon,
-                          { backgroundColor: `${action.color}25` },
-                        ]}
-                      >
-                        <Icon size={22} color={action.color} strokeWidth={2.2} />
-                      </View>
-                      <View style={styles.quickActionLabelWrap}>
-                        <Text
+                  // The cell sets the quarter width with a plain style, so
+                  // the grid holds even if the Pressable's function style
+                  // isn't applied (see the note in app/support.tsx).
+                  <View key={action.key} style={styles.quickActionCell}>
+                    <Pressable
+                      onPress={action.onPress}
+                      style={({ pressed }) => [
+                        styles.quickAction,
+                        { opacity: pressed ? 0.7 : 1 },
+                      ]}
+                      hitSlop={4}
+                    >
+                      <View style={styles.quickActionInner}>
+                        <View
                           style={[
-                            styles.quickActionLabel,
-                            { color: colors.onSurface },
-                            Platform.OS === "android" && styles.quickActionLabelAndroid,
+                            styles.quickActionIcon,
+                            { backgroundColor: `${action.color}25` },
                           ]}
-                          numberOfLines={2}
                         >
-                          {action.label}
-                        </Text>
+                          <Icon size={22} color={action.color} strokeWidth={2.2} />
+                        </View>
+                        <View style={styles.quickActionLabelWrap}>
+                          <Text
+                            style={[
+                              styles.quickActionLabel,
+                              { color: colors.onSurface },
+                              Platform.OS === "android" && styles.quickActionLabelAndroid,
+                            ]}
+                            numberOfLines={2}
+                          >
+                            {action.label}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                  </Pressable>
+                    </Pressable>
+                  </View>
                 );
               })}
             </View>
@@ -1704,16 +1754,20 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing.md,
   },
-  quickActionsRow: {
+  quickActionsGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    flexWrap: "wrap",
     alignItems: "flex-start",
-    gap: 2,
+    rowGap: spacing.lg,
+  },
+  quickActionCell: {
+    width: "25%",
+    alignItems: "center",
+    paddingHorizontal: 1,
   },
   quickAction: {
-    flex: 1,
+    width: "100%",
     minWidth: 56,
-    alignSelf: "stretch",
   },
   quickActionInner: {
     width: "100%",

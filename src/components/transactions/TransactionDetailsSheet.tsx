@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -122,6 +122,24 @@ export default function TransactionDetailsSheet({
   // drafts are never opened.
   const [emailBody, setEmailBody] = useState<EmailBodyState>(null);
 
+  // iOS can't present another Modal (the screens' ConfirmDialog) while this
+  // one is still sliding out — UIKit drops it and the dialog never shows. So
+  // on iOS the action waits for onDismiss, which fires once the sheet is gone.
+  const pendingAction = useRef<(() => void) | null>(null);
+  const closeThen = (action: () => void) => {
+    if (Platform.OS === "ios") {
+      pendingAction.current = action;
+      onClose();
+    } else {
+      onClose();
+      action();
+    }
+  };
+
+  useEffect(() => {
+    if (visible) pendingAction.current = null;
+  }, [visible]);
+
   // The list payload is trimmed, so pull the full record (items, receipt,
   // categories) before showing it — same detail the web modal renders.
   const transactionId = transaction?.id;
@@ -189,6 +207,11 @@ export default function TransactionDetailsSheet({
       transparent
       animationType="slide"
       onRequestClose={onClose}
+      onDismiss={() => {
+        const action = pendingAction.current;
+        pendingAction.current = null;
+        action?.();
+      }}
       statusBarTranslucent
     >
       <Pressable style={styles.detailBackdrop} onPress={onClose}>
@@ -255,7 +278,13 @@ export default function TransactionDetailsSheet({
                 )}
 
                 {/* Field rows */}
-                <DetailRow label="Date" value={formatDate(detail.date)} colors={colors} />
+                {/* Calendar day only: the API's UTC-midnight timestamp would
+                    show the previous day west of UTC. */}
+                <DetailRow
+                  label="Date"
+                  value={formatDate(String(detail.date).slice(0, 10))}
+                  colors={colors}
+                />
                 <DetailRow
                   label={detail.type === "transfer" ? "Transfer" : "Account"}
                   value={
@@ -424,8 +453,7 @@ export default function TransactionDetailsSheet({
                     style={[styles.detailActionButton, { backgroundColor: `${colors.tertiary}1f` }]}
                     onPress={() => {
                       const target = detail;
-                      onClose();
-                      onRestore(target);
+                      closeThen(() => onRestore(target));
                     }}
                   >
                     <RotateCcw size={18} color={colors.tertiary} />
@@ -452,8 +480,7 @@ export default function TransactionDetailsSheet({
                   style={[styles.detailActionButton, { backgroundColor: `${colors.error}1f` }]}
                   onPress={() => {
                     const target = detail;
-                    onClose();
-                    onDelete(target);
+                    closeThen(() => onDelete(target));
                   }}
                 >
                   <Trash2 size={18} color={colors.error} />

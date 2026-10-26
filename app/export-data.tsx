@@ -355,7 +355,10 @@ export default function ExportDataScreen() {
         current={period}
         onSelect={(range) => {
           setPeriod(range);
-          setPeriodModal(false);
+          // A custom range closes with Apply. Closing here would dismiss the
+          // sheet while its date picker is still animating out, which iOS
+          // ignores, leaving an invisible modal over the screen.
+          if (range.preset !== 'custom_range') setPeriodModal(false);
         }}
       />
     </View>

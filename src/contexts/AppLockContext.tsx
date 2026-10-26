@@ -8,7 +8,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, Keyboard, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -34,7 +34,7 @@ type Capability = {
   available: boolean;
   /** Fingerprint / face is enrolled (otherwise only the PIN is asked). */
   biometric: boolean;
-  /** "Face ID", "Fingerprint", "Screen lock"… */
+  /** "Face ID", "Fingerprint", "Screen lock" / "Passcode"… */
   label: string;
 };
 
@@ -57,6 +57,15 @@ type AppLockContextValue = {
 
 const DEFAULT_SETTINGS: LockSettings = { enabled: false, timeout: 60 };
 
+// iOS has a passcode (set under Face ID / Touch ID & Passcode), not a PIN.
+const NO_SCREEN_LOCK_MESSAGE =
+  Platform.OS === 'ios'
+    ? 'Turn on a passcode in Settings › Face ID & Passcode (or Touch ID & Passcode) first.'
+    : 'Set up a screen lock (fingerprint, face or PIN) in your phone settings first.';
+
+// Label when there is no biometric, only the phone's own lock.
+const SCREEN_LOCK_LABEL = Platform.OS === 'ios' ? 'Passcode' : 'Screen lock';
+
 const AppLockContext = createContext<AppLockContextValue | null>(null);
 
 const describeCapability = async (): Promise<Capability> => {
@@ -70,7 +79,7 @@ const describeCapability = async (): Promise<Capability> => {
       level === LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK;
     const has = (type: LocalAuthentication.AuthenticationType) => types.includes(type);
 
-    let label = 'Screen lock';
+    let label = SCREEN_LOCK_LABEL;
     if (biometric && has(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
       label = Platform.OS === 'ios' ? 'Face ID' : 'Face unlock';
     } else if (biometric && has(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
@@ -85,7 +94,7 @@ const describeCapability = async (): Promise<Capability> => {
       label,
     };
   } catch {
-    return { available: false, biometric: false, label: 'Screen lock' };
+    return { available: false, biometric: false, label: SCREEN_LOCK_LABEL };
   }
 };
 
@@ -116,7 +125,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   const [capability, setCapability] = useState<Capability>({
     available: false,
     biometric: false,
-    label: 'Screen lock',
+    label: SCREEN_LOCK_LABEL,
   });
   const [locked, setLocked] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
@@ -126,7 +135,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   const unlockedAt = useRef(0);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const lockedOnLaunch = useRef(false);
+  const [launchLockDone, setLaunchLockDone] = useState(false);
 
   const refreshCapability = useCallback(async () => {
     setCapability(await describeCapability());
@@ -148,12 +157,17 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
 
   // Cold start: a signed-in user with the lock on sees the lock screen first.
   useEffect(() => {
-    if (!ready || lockedOnLaunch.current) return;
+    if (!ready || launchLockDone) return;
     if (isAuthenticated && settings.enabled) {
-      lockedOnLaunch.current = true;
+      setLaunchLockDone(true);
+      Keyboard.dismiss();
       setLocked(true);
     }
-  }, [ready, isAuthenticated, settings.enabled]);
+  }, [ready, isAuthenticated, settings.enabled, launchLockDone]);
+  // Reported as locked from the render where the launch lock becomes due,
+  // not one effect later: child effects (the push-tap router in _layout) run
+  // first and would open a screen under the lock.
+  const launchLockPending = ready && isAuthenticated && settings.enabled && !launchLockDone;
 
   // Signing out drops the lock; the login screen is not protected content.
   useEffect(() => {
@@ -172,6 +186,11 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
 
       if (next === 'background') {
         backgroundAt.current = Date.now();
+        // iOS brings a focused input's keyboard back on return, above the lock
+        // screen's buttons. With "Immediately" the lock is certain, so drop it now.
+        if (isAuthenticated && settingsRef.current.enabled && settingsRef.current.timeout === 0) {
+          Keyboard.dismiss();
+        }
         return;
       }
 
@@ -182,6 +201,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         if (!since || !current.enabled || !isAuthenticated) return;
         if (Date.now() - unlockedAt.current < 1500) return;
         if (Date.now() - since >= current.timeout * 1000) {
+          Keyboard.dismiss();
           setLocked(true);
         }
       }
@@ -206,10 +226,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         return { ok: false };
       }
       if (error === 'not_enrolled' || error === 'passcode_not_set') {
-        return {
-          ok: false,
-          message: 'Set up a screen lock (fingerprint, face or PIN) in your phone settings first.',
-        };
+        return { ok: false, message: NO_SCREEN_LOCK_MESSAGE };
       }
       if (error === 'lockout') {
         return { ok: false, message: 'Too many attempts. Unlock your phone, then try again.' };
@@ -239,15 +256,14 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     const cap = await describeCapability();
     setCapability(cap);
     if (!cap.available) {
-      return {
-        ok: false,
-        message: 'Set up a screen lock (fingerprint, face or PIN) in your phone settings first.',
-      };
+      return { ok: false, message: NO_SCREEN_LOCK_MESSAGE };
     }
     const result = await authenticate(`Confirm to turn on ${cap.label}`);
     if (!result.ok) return result;
 
     const next = { ...settingsRef.current, enabled: true };
+    // Just confirmed it's them: turning the lock on mustn't lock straight away.
+    setLaunchLockDone(true);
     setSettings(next);
     await writeSettings(next);
     unlockedAt.current = Date.now();
@@ -278,7 +294,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       ready,
       settings,
       capability,
-      locked: locked && isAuthenticated,
+      locked: (locked || launchLockPending) && isAuthenticated,
       privacyCover,
       unlock,
       enable,
@@ -286,7 +302,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       setLockTimeout,
       refreshCapability,
     }),
-    [ready, settings, capability, locked, isAuthenticated, privacyCover, unlock, enable, disable, setLockTimeout, refreshCapability],
+    [ready, settings, capability, locked, launchLockPending, isAuthenticated, privacyCover, unlock, enable, disable, setLockTimeout, refreshCapability],
   );
 
   return <AppLockContext.Provider value={value}>{children}</AppLockContext.Provider>;

@@ -8,6 +8,7 @@ import {
   Pressable,
   Linking,
   AppState,
+  Platform,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,6 +35,9 @@ export default function AppLockScreen() {
     });
     return () => subscription.remove();
   }, [refreshCapability]);
+
+  // iPhone wording: passcode / App Switcher, not PIN / recent apps.
+  const isIOS = Platform.OS === 'ios';
 
   const Icon = /face/i.test(capability.label)
     ? ScanFace
@@ -75,8 +79,9 @@ export default function AppLockScreen() {
             Unlock with {capability.label}
           </Text>
           <Text style={[styles.introText, { color: colors.onSurfaceVariant }]}>
-            Anyone who picks up your phone sees a lock screen instead of your balances. Your phone&apos;s PIN
-            always works as a backup, and the app is hidden in the recent-apps view.
+            {isIOS
+              ? 'Anyone who picks up your phone sees a lock screen instead of your balances. Your passcode always works as a backup, and the app is hidden in the App Switcher.'
+              : "Anyone who picks up your phone sees a lock screen instead of your balances. Your phone's PIN always works as a backup, and the app is hidden in the recent-apps view."}
           </Text>
         </Card>
 
@@ -87,18 +92,23 @@ export default function AppLockScreen() {
               <View style={styles.rowText}>
                 <Text style={[styles.rowTitle, { color: colors.onSurface }]}>Set up a screen lock first</Text>
                 <Text style={[styles.rowDescription, { color: colors.onSurfaceVariant }]}>
-                  Add a fingerprint, face or PIN in your phone&apos;s settings, then come back here.
+                  {isIOS
+                    ? 'Turn on a passcode in Settings › Face ID & Passcode (or Touch ID & Passcode), then come back here.'
+                    : "Add a fingerprint, face or PIN in your phone's settings, then come back here."}
                 </Text>
               </View>
             </View>
-            <Button
-              label="Open phone settings"
-              variant="secondary"
-              fullWidth
-              onPress={() => {
-                Linking.openSettings().catch(() => toast.error('Could not open settings.'));
-              }}
-            />
+            {/* On iOS openSettings() opens AccountE's own page, which can't set a passcode. */}
+            {!isIOS && (
+              <Button
+                label="Open phone settings"
+                variant="secondary"
+                fullWidth
+                onPress={() => {
+                  Linking.openSettings().catch(() => toast.error('Could not open settings.'));
+                }}
+              />
+            )}
           </Card>
         )}
 

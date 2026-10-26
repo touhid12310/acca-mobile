@@ -94,6 +94,7 @@ export default function RegisterScreen() {
             identityToken: result.identityToken,
             appleUser: result.appleUser,
             fullName: result.fullName,
+            authorizationCode: result.authorizationCode,
           });
           if (exchanged.requiresTwoFactor && exchanged.pendingToken) {
             router.push({
@@ -328,7 +329,7 @@ export default function RegisterScreen() {
                 clearError("password");
               }}
               autoCapitalize="none"
-              autoComplete="password-new"
+              autoComplete="new-password"
               secureTextEntry
               secureToggleable
               accessory={<PasswordStrength password={password} />}
@@ -349,7 +350,7 @@ export default function RegisterScreen() {
                 clearError("confirmPassword");
               }}
               autoCapitalize="none"
-              autoComplete="password-new"
+              autoComplete="new-password"
               secureTextEntry
               secureToggleable
               returnKeyType="go"

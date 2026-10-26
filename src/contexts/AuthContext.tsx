@@ -159,7 +159,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [loading, analyticsUserId]);
 
   // Meta ad attribution: user id plus the email, which the Meta SDK hashes
-  // on the device. Cleared on logout.
+  // on the device. Cleared on logout; on iOS withheld until tracking is
+  // allowed (metaEvents.setUser checks ATT).
   const metaUserEmail = isAuthenticated ? user?.email ?? null : null;
   useEffect(() => {
     if (loading) return;

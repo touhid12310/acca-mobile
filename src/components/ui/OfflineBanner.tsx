@@ -71,8 +71,10 @@ export function OfflineBanner() {
   if (!mounted) return null;
 
   return (
+    // Nothing in the banner is tappable; the full-width strip must not swallow
+    // taps meant for the header buttons underneath.
     <Animated.View
-      pointerEvents={offline ? "auto" : "none"}
+      pointerEvents="none"
       style={[
         styles.host,
         { paddingTop: insets.top + spacing.xs },

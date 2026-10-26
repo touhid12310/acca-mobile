@@ -102,13 +102,15 @@ export default function LoginScreen() {
     }
   };
 
-  const handleMagicAuthVerify = async () => {
-    const trimmed = magicAuthCode.trim();
+  // `codes` carries a code that was just completed, before its state lands.
+  const handleMagicAuthVerify = async (codes?: { email?: string; twoFactor?: string }) => {
+    const trimmed = (codes?.email ?? magicAuthCode).trim();
+    const twoFactorDigits = codes?.twoFactor ?? magicTwoFactorCode;
     if (!trimmed) {
       setErrors({ general: "Enter the code from your email" });
       return;
     }
-    if (magicRequiresTwoFactor && magicTwoFactorCode.length !== 6) {
+    if (magicRequiresTwoFactor && twoFactorDigits.length !== 6) {
       setErrors({ general: "Enter the 6-digit code from your authenticator app" });
       return;
     }
@@ -120,7 +122,7 @@ export default function LoginScreen() {
       const result = await authService.verifyMagicLink(
         magicAuthEmail.trim(),
         trimmed,
-        magicRequiresTwoFactor ? magicTwoFactorCode : undefined,
+        magicRequiresTwoFactor ? twoFactorDigits : undefined,
       );
       const data = result.data as any;
       const payload = data?.data || data;
@@ -162,6 +164,7 @@ export default function LoginScreen() {
             identityToken: result.identityToken,
             appleUser: result.appleUser,
             fullName: result.fullName,
+            authorizationCode: result.authorizationCode,
           });
           if (exchanged.requiresTwoFactor && exchanged.pendingToken) {
             router.push({
@@ -204,20 +207,22 @@ export default function LoginScreen() {
     }
   };
 
-  const validateForm = () => {
+  const validateForm = (code: string) => {
     const newErrors: Record<string, string> = {};
     if (!email.trim()) newErrors.email = "Email is required";
     else if (!/\S+@\S+\.\S+/.test(email))
       newErrors.email = "Please enter a valid email";
     if (!password) newErrors.password = "Password is required";
-    if (requiresTwoFactor && !twoFactorCode.trim())
+    if (requiresTwoFactor && !code)
       newErrors.twoFactorCode = "Two-factor code is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleLogin = async () => {
-    if (!validateForm()) return;
+  // `twoFactorOverride` is a code that was just completed, before its state lands.
+  const handleLogin = async (twoFactorOverride?: string) => {
+    const code = (twoFactorOverride ?? twoFactorCode).trim();
+    if (!validateForm(code)) return;
     setIsLoading(true);
     setErrors({});
     setNotice(null);
@@ -225,7 +230,7 @@ export default function LoginScreen() {
       const result = await login(
         email.trim(),
         password,
-        requiresTwoFactor ? twoFactorCode.trim() : undefined,
+        requiresTwoFactor ? code : undefined,
       );
       if (result.success) {
         router.replace("/(tabs)");
@@ -325,6 +330,8 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
+              // iOS Password AutoFill pairs the password with a "username" field.
+              textContentType="username"
               returnKeyType="next"
               submitBehavior="submit"
               onSubmitEditing={() => passwordRef.current?.focus()}
@@ -342,7 +349,7 @@ export default function LoginScreen() {
                 if (errors.password) setErrors((p) => ({ ...p, password: "" }));
               }}
               autoCapitalize="none"
-              autoComplete="password"
+              autoComplete="current-password"
               secureTextEntry
               secureToggleable
               returnKeyType="go"
@@ -355,7 +362,7 @@ export default function LoginScreen() {
               label="Sign in securely"
               icon={Lock}
               loadingLabel="Signing in…"
-              onPress={handleLogin}
+              onPress={() => handleLogin()}
               loading={isLoading}
             />
           </Reveal>
@@ -402,6 +409,9 @@ export default function LoginScreen() {
               error={!!errors.twoFactorCode}
               accessibilityLabel="Two-factor code"
               onSubmitEditing={submitLogin}
+              onComplete={(digits) => {
+                if (!isLoading) handleLogin(digits);
+              }}
             />
             {errors.twoFactorCode ? (
               <Text style={[styles.fieldError, { color: colors.error }]}>
@@ -413,7 +423,7 @@ export default function LoginScreen() {
             <PrimaryButton
               label="Verify & sign in"
               loadingLabel="Verifying…"
-              onPress={handleLogin}
+              onPress={() => handleLogin()}
               loading={isLoading}
             />
           </Reveal>
@@ -523,7 +533,13 @@ export default function LoginScreen() {
               onChangeText={setMagicAuthCode}
               autoFocus
               accessibilityLabel="Code from your email"
-              onSubmitEditing={handleMagicAuthVerify}
+              onSubmitEditing={() => handleMagicAuthVerify()}
+              // With 2FA on, the authenticator code below submits instead.
+              onComplete={
+                magicRequiresTwoFactor
+                  ? undefined
+                  : (digits) => handleMagicAuthVerify({ email: digits })
+              }
             />
           </Reveal>
           {magicRequiresTwoFactor && (
@@ -536,7 +552,8 @@ export default function LoginScreen() {
                 onChangeText={setMagicTwoFactorCode}
                 autoFocus
                 accessibilityLabel="Authenticator code"
-                onSubmitEditing={handleMagicAuthVerify}
+                onSubmitEditing={() => handleMagicAuthVerify()}
+                onComplete={(digits) => handleMagicAuthVerify({ twoFactor: digits })}
               />
             </Reveal>
           )}
@@ -544,7 +561,7 @@ export default function LoginScreen() {
             <PrimaryButton
               label="Sign in"
               loadingLabel="Verifying…"
-              onPress={handleMagicAuthVerify}
+              onPress={() => handleMagicAuthVerify()}
               loading={isMagicAuthLoading}
             />
           </Reveal>

@@ -1,6 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View } from 'react-native';
-import { Stack, router, usePathname, useSegments } from 'expo-router';
+import {
+  Stack,
+  router,
+  usePathname,
+  useSegments,
+  ThemeProvider as NavThemeProvider,
+  DarkTheme as NavDarkTheme,
+  DefaultTheme as NavDefaultTheme,
+} from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -71,6 +79,10 @@ const ROUTABLE_TYPES: Record<string, string> = {
 // navigation to any screen, including purchase sheets.
 const ALLOWED_PUSH_ROUTES = new Set<string>(Object.values(ROUTABLE_TYPES));
 
+// Root segments a signed-out user may sit on: the sign-in group, the social
+// sign-in return (incl. its 2FA step) and the email-verification link.
+const PUBLIC_ROOTS = new Set(['(auth)', 'auth', 'verify-email']);
+
 const routeFromNotificationData = (data: unknown): string | undefined => {
   const d = data as { type?: string } | undefined;
   const mapped = d?.type ? ROUTABLE_TYPES[d.type] : undefined;
@@ -100,7 +112,7 @@ onlineManager.setEventListener((setOnline) =>
 function RootLayoutNav() {
   const { theme, paperTheme, isDark } = useTheme();
   const { isAuthenticated, user, loading } = useAuth();
-  const { locked } = useAppLock();
+  const { locked, privacyCover, ready: lockReady } = useAppLock();
   const segments = useSegments();
   const pathname = usePathname();
 
@@ -111,14 +123,17 @@ function RootLayoutNav() {
 
   // iOS: ask once for App Tracking Transparency (Meta ad measurement) after
   // the user reaches the app proper — never during sign-in or onboarding,
-  // where the notification prompt appears, nor over the app lock. A no-op
-  // once answered, and on Android.
+  // nor over the app lock. metaEvents waits for the notification prompt to be
+  // answered and re-checks the gate before it asks (and on its one retry).
+  // A no-op once answered, and on Android.
   const onMainTabs = (segments as readonly string[])[0] === '(tabs)';
   const onboarded = Boolean(user?.onboarding_completed_at);
+  const trackingGate = useRef(false);
+  trackingGate.current = isAuthenticated && onboarded && onMainTabs && !locked;
   useEffect(() => {
     if (!isAuthenticated || !onboarded || !onMainTabs || locked) return;
     const timer = setTimeout(() => {
-      metaEvents.requestTrackingPermission();
+      metaEvents.requestTrackingPermission(() => trackingGate.current);
     }, 2500);
     return () => clearTimeout(timer);
   }, [isAuthenticated, onboarded, onMainTabs, locked]);
@@ -145,7 +160,7 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading || (segments as readonly string[]).length === 0) return;
     const root = (segments as readonly string[])[0];
-    const isAuthRoute = root === '(auth)';
+    const isAuthRoute = PUBLIC_ROOTS.has(root);
     const isOnboarding = root === 'onboarding';
     if (!isAuthenticated && !isAuthRoute) {
       router.replace('/(auth)/login' as any);
@@ -173,18 +188,52 @@ function RootLayoutNav() {
   // useLastNotificationResponse (not addNotificationResponseReceivedListener)
   // because the listener is not reliably called when the tap launches the app
   // from a killed state — the hook covers killed, background, and foreground.
+  // Held while the app lock (or its privacy cover) is up and replayed on
+  // unlock: on iOS a sheet presented now (daily_log_nudge opens the
+  // transaction sheet) would cover it. iOS delivers the tap before the app
+  // turns active, i.e. while only the cover shows and the lock isn't set yet.
   const lastNotificationResponse = useLastNotificationResponse();
   useEffect(() => {
-    if (!lastNotificationResponse) return;
+    if (!lastNotificationResponse || loading || !lockReady || locked || privacyCover) return;
     const route = routeFromNotificationData(
       lastNotificationResponse.notification.request.content.data,
     );
     // Clear so a remount doesn't replay the same tap.
     Notifications?.clearLastNotificationResponseAsync();
-    if (route) {
+    // Dropped after "Sign out instead" on the lock screen.
+    if (route && isAuthenticated) {
       router.push(route as any);
     }
-  }, [lastNotificationResponse]);
+  }, [lastNotificationResponse, loading, lockReady, locked, privacyCover, isAuthenticated]);
+
+  // React Navigation theme for the navigators. Without it they fall back to
+  // its light grey background, which iOS paints behind every stack screen
+  // (the UINavigationController view) and which hides AppDarkBackground.
+  const navTheme = useMemo(
+    () =>
+      isDark
+        ? {
+            ...NavDarkTheme,
+            colors: {
+              ...NavDarkTheme.colors,
+              background: 'transparent',
+              card: theme.colors.surface,
+              text: theme.colors.onSurface,
+              border: theme.colors.outline,
+              primary: theme.colors.primary,
+            },
+          }
+        : {
+            ...NavDefaultTheme,
+            colors: {
+              ...NavDefaultTheme.colors,
+              background: theme.colors.background,
+              card: theme.colors.surface,
+              primary: theme.colors.primary,
+            },
+          },
+    [isDark, theme],
+  );
 
   return (
     <PaperProvider theme={paperTheme}>
@@ -198,6 +247,7 @@ function RootLayoutNav() {
         }}
       >
         {isDark && <AppDarkBackground />}
+        <NavThemeProvider value={navTheme}>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -221,6 +271,15 @@ function RootLayoutNav() {
             animation: 'slide_from_bottom',
           }}
         />
+        {/* Categories as a sheet, so the transaction sheet's category picker
+            can open it above itself on iOS. */}
+        <Stack.Screen
+          name="categories-modal"
+          options={{
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
         <Stack.Screen
           name="onboarding"
           options={{
@@ -230,6 +289,7 @@ function RootLayoutNav() {
         />
         <Stack.Screen name="billing" options={{ headerShown: false }} />
         </Stack>
+        </NavThemeProvider>
         <OfflineBanner />
         {/* Biometric app lock + app-switcher privacy cover, above everything. */}
         <AppLockOverlay />

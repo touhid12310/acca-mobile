@@ -2,6 +2,7 @@ import { apiRequest } from '../config/api';
 import * as SecureStore from 'expo-secure-store';
 import { detectTimeZone } from '../utils/timezone';
 import { User } from '../types';
+import { getDeviceName } from './authService';
 
 export type SocialProvider = 'google' | 'apple' | 'facebook' | 'linkedin' | 'microsoft';
 
@@ -118,6 +119,7 @@ const socialAuthService = {
           state,
           client: 'mobile',
           timezone: detectTimeZone(),
+          device_name: getDeviceName(),
         }),
       });
 
@@ -178,6 +180,7 @@ const socialAuthService = {
     identityToken: string;
     appleUser?: string;
     fullName?: string;
+    authorizationCode?: string;
   }): Promise<ExchangeResult> {
     const response = await apiRequest(`/auth/social/apple`, {
       method: 'POST',
@@ -185,8 +188,10 @@ const socialAuthService = {
         identity_token: payload.identityToken,
         apple_user: payload.appleUser,
         full_name: payload.fullName,
+        authorization_code: payload.authorizationCode,
         client: 'mobile',
         timezone: detectTimeZone(),
+        device_name: getDeviceName(),
       }),
     });
 
@@ -241,6 +246,7 @@ const socialAuthService = {
         platform,
         client: 'mobile',
         timezone: detectTimeZone(),
+        device_name: getDeviceName(),
       }),
     });
 

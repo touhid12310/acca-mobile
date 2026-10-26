@@ -139,6 +139,21 @@ export const parseDate = (dateString: string): Date => {
 };
 
 /**
+ * Reads a calendar date (transaction, due, target or opened date) as local
+ * midnight of that day. The API sends these as 'YYYY-MM-DD' or as UTC
+ * midnight ('2026-10-22T00:00:00.000000Z'); new Date() on either lands on the
+ * previous day for anyone west of UTC. Not for real timestamps (created_at).
+ */
+export const parseCalendarDate = (value: string | Date): Date => {
+  if (value instanceof Date) return value;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (match) {
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  }
+  return new Date(value);
+};
+
+/**
  * Checks if a date string is valid
  */
 export const isValidDate = (dateString: string): boolean => {

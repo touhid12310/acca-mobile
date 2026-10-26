@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -9,9 +9,12 @@ import {
   Modal,
   Linking,
   Platform,
+  Alert,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import {
   Bell,
@@ -61,7 +64,11 @@ import {
 import { BrandStrip } from "../../src/components";
 import { getInitials } from "../../src/utils/format";
 import { radius, shadow, spacing } from "../../src/constants/theme";
-import { openStoreListing, shareApp } from "../../src/services/appReviewService";
+import {
+  hasStoreListing,
+  openStoreListing,
+  shareApp,
+} from "../../src/services/appReviewService";
 import { NativeTextInput as TextInput } from "../../src/components/ui/SafeTextInput";
 
 type MenuItem = {
@@ -83,19 +90,71 @@ export default function MoreScreen() {
   const { user, logout } = useAuth();
   const appLock = useAppLock();
   const { colors, themeMode, setThemeMode } = useTheme();
-  const { currency, availableCurrencies, updateCurrency, isCurrencyUpdating } =
-    useCurrency();
+  const {
+    currency,
+    availableCurrencies,
+    getCurrencyMeta,
+    isCurrencyListLoading,
+    reloadCurrencyList,
+    updateCurrency,
+    isCurrencyUpdating,
+  } = useCurrency();
 
   const [themeModal, setThemeModal] = useState(false);
   const [currencyModal, setCurrencyModal] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [currencySearch, setCurrencySearch] = useState("");
+  // iOS hides "Rate AccountE" until an App Store link exists (the automatic
+  // review prompt still works); Android always has the Play listing.
+  const [canRate, setCanRate] = useState(Platform.OS !== "ios");
 
-  const filteredCurrencies = availableCurrencies.filter(
-    (curr) =>
-      curr.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
-      curr.label.toLowerCase().includes(currencySearch.toLowerCase()),
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "ios") return;
+      let active = true;
+      hasStoreListing()
+        .then((has) => {
+          if (active) setCanRate(has);
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }, []),
   );
+
+  const appVersion = Constants.expoConfig?.version ?? "1.8.0";
+
+  const showAbout = () => {
+    Alert.alert("AccountE", `Version ${appVersion}`, [
+      {
+        text: "Visit website",
+        onPress: () => {
+          Linking.openURL("https://accounte.com").catch(() =>
+            notifyToast.error("Could not open the website."),
+          );
+        },
+      },
+      { text: "OK", style: "cancel" },
+    ]);
+  };
+
+  // Their own currency stays listed (and ticked) even when an admin turned it
+  // off or the list hasn't loaded yet.
+  const pickerCurrencies = availableCurrencies.some((c) => c.code === currency)
+    ? availableCurrencies
+    : [getCurrencyMeta(currency), ...availableCurrencies];
+  const currencyQuery = currencySearch.trim().toLowerCase();
+  const filteredCurrencies = pickerCurrencies.filter(
+    (curr) =>
+      curr.code.toLowerCase().includes(currencyQuery) ||
+      curr.label.toLowerCase().includes(currencyQuery),
+  );
+
+  const openCurrencyPicker = () => {
+    setCurrencyModal(true);
+    if (availableCurrencies.length === 0) reloadCurrencyList();
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -199,7 +258,7 @@ export default function MoreScreen() {
           icon: DollarSign,
           label: "Currency",
           description: currency,
-          onPress: () => setCurrencyModal(true),
+          onPress: openCurrencyPicker,
           tone: "success",
         },
         {
@@ -250,18 +309,22 @@ export default function MoreScreen() {
           onPress: () => router.push("/support" as never),
           tone: "neutral",
         },
-        {
-          icon: Star,
-          label: "Rate AccountE",
-          description: "Tell others what you think on the store",
-          onPress: () =>
-            openStoreListing()
-              .then((opened) => {
-                if (!opened) notifyToast.error("The store link is not set up yet.");
-              })
-              .catch(() => notifyToast.error("Could not open the store.")),
-          tone: "neutral",
-        },
+        ...(canRate
+          ? [
+              {
+                icon: Star,
+                label: "Rate AccountE",
+                description: "Tell others what you think on the store",
+                onPress: () =>
+                  openStoreListing()
+                    .then((opened) => {
+                      if (!opened) notifyToast.error("The store link is not set up yet.");
+                    })
+                    .catch(() => notifyToast.error("Could not open the store.")),
+                tone: "neutral" as const,
+              },
+            ]
+          : []),
         {
           icon: Share2,
           label: "Share AccountE",
@@ -296,8 +359,8 @@ export default function MoreScreen() {
           label: "About",
           // Read from app.json (Constants.expoConfig.version) so it always
           // reflects the shipped version — no more hardcoded string to update.
-          description: `Version ${Constants.expoConfig?.version ?? "1.8.0"}`,
-          onPress: () => {},
+          description: `Version ${appVersion}`,
+          onPress: showAbout,
           tone: "neutral",
         },
       ],
@@ -540,6 +603,12 @@ export default function MoreScreen() {
             setCurrencySearch("");
           }}
         >
+          {/* iOS: shrink the sheet above the keyboard so Close and the
+              results stay reachable while searching. */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            style={styles.modalKeyboardArea}
+          >
           <Pressable
             style={[
               styles.sheet,
@@ -569,6 +638,9 @@ export default function MoreScreen() {
                 placeholderTextColor={colors.onSurfaceVariant}
                 value={currencySearch}
                 onChangeText={setCurrencySearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
                 style={[styles.searchInput, { color: colors.onSurface }]}
               />
               {currencySearch.length > 0 && (
@@ -582,16 +654,25 @@ export default function MoreScreen() {
               )}
             </View>
 
-            <ScrollView style={styles.currencyList}>
+            <ScrollView
+              style={styles.currencyList}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
               {filteredCurrencies.map((curr) => {
                 const selected = currency === curr.code;
                 return (
                   <Pressable
                     key={curr.code}
                     onPress={async () => {
-                      await updateCurrency(curr.code);
+                      const saved = await updateCurrency(curr.code);
                       setCurrencyModal(false);
                       setCurrencySearch("");
+                      if (!saved) {
+                        notifyToast.error(
+                          `Couldn't switch to ${curr.code}. Please try again.`,
+                        );
+                      }
                     }}
                     disabled={isCurrencyUpdating}
                   >
@@ -628,15 +709,19 @@ export default function MoreScreen() {
                           >
                             {curr.code}
                           </Text>
-                          <Text
-                            style={[
-                              styles.currencyLabel,
-                              { color: colors.onSurfaceVariant },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {curr.label}
-                          </Text>
+                          {/* Before the list loads only the code is known —
+                              don't print it twice ("USD / USD"). */}
+                          {!!curr.label && curr.label !== curr.code && (
+                            <Text
+                              style={[
+                                styles.currencyLabel,
+                                { color: colors.onSurfaceVariant },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {curr.label}
+                            </Text>
+                          )}
                         </View>
                         {selected && (
                           <Check
@@ -650,12 +735,49 @@ export default function MoreScreen() {
                   </Pressable>
                 );
               })}
-              {filteredCurrencies.length === 0 && (
-                <View style={{ padding: spacing.xl, alignItems: "center" }}>
-                  <Text style={{ color: colors.onSurfaceVariant }}>
-                    No currencies found
-                  </Text>
+              {availableCurrencies.length === 0 ? (
+                <View
+                  style={{
+                    padding: spacing.xl,
+                    alignItems: "center",
+                    gap: spacing.sm,
+                  }}
+                >
+                  {isCurrencyListLoading ? (
+                    <>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text style={{ color: colors.onSurfaceVariant }}>
+                        Loading currencies…
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={{
+                          color: colors.onSurfaceVariant,
+                          textAlign: "center",
+                        }}
+                      >
+                        Couldn't load the currency list. Check your connection.
+                      </Text>
+                      <Pressable onPress={reloadCurrencyList} hitSlop={8}>
+                        <Text
+                          style={{ color: colors.primary, fontWeight: "600" }}
+                        >
+                          Try again
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
                 </View>
+              ) : (
+                filteredCurrencies.length === 0 && (
+                  <View style={{ padding: spacing.xl, alignItems: "center" }}>
+                    <Text style={{ color: colors.onSurfaceVariant }}>
+                      No currencies found
+                    </Text>
+                  </View>
+                )
               )}
             </ScrollView>
             <Button
@@ -668,6 +790,7 @@ export default function MoreScreen() {
               }}
             />
           </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
 
@@ -766,6 +889,12 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalKeyboardArea: {
+    flex: 1,
+    width: "100%",
     justifyContent: "center",
     alignItems: "center",
   },

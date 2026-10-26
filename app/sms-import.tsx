@@ -30,6 +30,8 @@ import {
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
 import { useCurrency } from '../src/contexts/CurrencyContext';
+import { useAuth } from '../src/contexts/AuthContext';
+import { ensureAiConsent } from '../src/services/aiConsent';
 import { Button, Card, ConfirmDialog, IconBadge, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
@@ -100,6 +102,7 @@ export default function SmsImportScreen() {
   const { colors } = useTheme();
   const toast = useToast();
   const { currency } = useCurrency();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const supported = smsImportSupported();
 
@@ -296,6 +299,13 @@ export default function SmsImportScreen() {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  // Messages the built-in reader can't read go to Gemini while the user has
+  // AI allowance left, so ask first. "Not now" keeps the text and sends nothing.
+  const submitPaste = async () => {
+    if (overview?.ai_reading !== false && !(await ensureAiConsent(user?.id))) return;
+    pasteMutation.mutate();
+  };
+
   const senderMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: { account_id?: number | null; is_enabled?: boolean } }) => {
       const result = await smsService.updateSender(id, data);
@@ -439,7 +449,7 @@ export default function SmsImportScreen() {
               fullWidth
               loading={pasteMutation.isPending}
               disabled={pastedCount === 0 || pasteMutation.isPending}
-              onPress={() => pasteMutation.mutate()}
+              onPress={() => void submitPaste()}
             />
           </Card>
 

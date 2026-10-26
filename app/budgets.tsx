@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -6,7 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
 import {
@@ -43,6 +43,7 @@ import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
 import { todayDateInputValue } from "../src/utils/date";
+import { toDecimalInput } from "../src/utils/number";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
 // Helper function to extract detailed validation errors from API response
@@ -97,33 +98,37 @@ export default function BudgetsScreen() {
   const [selectedCategories, setSelectedCategories] = useState<
     SelectedCategory[]
   >([]);
-  const [availableCategories, setAvailableCategories] = useState<any[]>([]);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [categorySearchQuery, setCategorySearchQuery] = useState("");
+  const [pullRefreshing, setPullRefreshing] = useState(false);
 
-  // Fetch expense categories for budget
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const result = await categoryService.getForTransaction({
-          type: "expense",
-        });
-        if (result.success && result.data) {
-          const data = (result.data as any)?.data || result.data;
-          setAvailableCategories(Array.isArray(data) ? data : []);
-        }
-      } catch (error) {
-        // Failed to load categories
+  // Expense categories for the picker. A query (not a mount-only load) so a
+  // category added on the Categories screen shows up on return: that screen
+  // invalidates ["categories"]. Refetched on every visit too, since other
+  // inline creates invalidate narrower keys.
+  const budgetCategoriesKey = ["categories", "budget-picker"];
+  const { data: categoriesData } = useQuery({
+    queryKey: budgetCategoriesKey,
+    queryFn: async () => {
+      const result = await categoryService.getForTransaction({
+        type: "expense",
+      });
+      if (result.success && result.data) {
+        const data = (result.data as any)?.data || result.data;
+        return Array.isArray(data) ? data : [];
       }
-    };
-    loadCategories();
-  }, []);
+      return [];
+    },
+    refetchOnMount: "always",
+  });
+  const availableCategories: any[] = Array.isArray(categoriesData)
+    ? categoriesData
+    : [];
 
   const {
     data: budgets,
     isLoading,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ["budgets"],
     queryFn: async () => {
@@ -275,6 +280,37 @@ export default function BudgetsScreen() {
     setCategorySearchQuery("");
   };
 
+  // On iOS a tap on the dimmed backdrop is how people put the keyboard away;
+  // let that only close the keyboard instead of throwing the form away.
+  const handleModalDismiss = () => {
+    if (Platform.OS === "ios" && Keyboard.isVisible()) {
+      Keyboard.dismiss();
+      return;
+    }
+    closeModal();
+  };
+
+  // The form is a root-level overlay, so close it before opening Categories
+  // (otherwise the new screen slides in underneath it).
+  const openCategoriesScreen = () => {
+    Keyboard.dismiss();
+    closeModal();
+    if (Platform.OS === "ios") {
+      setTimeout(() => router.push("/categories"), 250);
+    } else {
+      router.push("/categories");
+    }
+  };
+
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
+
   const filteredAvailableCategories = (() => {
     const query = categorySearchQuery.trim().toLowerCase();
     if (!query) return availableCategories;
@@ -316,7 +352,7 @@ export default function BudgetsScreen() {
       const created: any = (result as any)?.data?.data || (result as any)?.data || {};
       if (created?.id) {
         const newCat = { ...created, subcategories: [] };
-        setAvailableCategories((prev) => {
+        queryClient.setQueryData<any[]>(budgetCategoriesKey, (prev = []) => {
           const exists = prev.some((c) => c.id === created.id);
           return exists ? prev : [...prev, newCat];
         });
@@ -472,9 +508,10 @@ export default function BudgetsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
       >
@@ -866,15 +903,19 @@ export default function BudgetsScreen() {
       <Portal>
         <Modal
           visible={modalVisible}
-          onDismiss={closeModal}
+          onDismiss={handleModalDismiss}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
           ]}
         >
+          {/* Paper's Modal has no keyboard handling: on iOS the ScrollView
+              insets itself by the keyboard and scrolls the focused field up. */}
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode={Platform.OS === "ios" ? "on-drag" : "none"}
           >
             <Text
               variant="titleLarge"
@@ -975,7 +1016,11 @@ export default function BudgetsScreen() {
                     dense
                   />
                 </View>
-                <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                <ScrollView
+                  style={{ maxHeight: 240 }}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
                   {filteredAvailableCategories.length === 0 ? (
                     <View style={styles.categoryEmptyState}>
                       <Text
@@ -1026,10 +1071,7 @@ export default function BudgetsScreen() {
                             styles.categoryCreateButton,
                             { borderColor: colors.primary },
                           ]}
-                          onPress={() => {
-                            setShowCategoryPicker(false);
-                            router.push("/categories");
-                          }}
+                          onPress={openCategoriesScreen}
                         >
                           <MaterialCommunityIcons
                             name="plus"
@@ -1048,12 +1090,7 @@ export default function BudgetsScreen() {
                           </Text>
                         </TouchableOpacity>
                       )}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowCategoryPicker(false);
-                          router.push("/categories");
-                        }}
-                      >
+                      <TouchableOpacity onPress={openCategoriesScreen}>
                         <Text
                           style={{
                             color: colors.onSurfaceVariant,
@@ -1110,10 +1147,11 @@ export default function BudgetsScreen() {
               label="Budget Amount *"
               value={formData.budgeted_amount}
               onChangeText={(text) =>
-                setFormData({ ...formData, budgeted_amount: text })
+                setFormData({ ...formData, budgeted_amount: toDecimalInput(text) })
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={[styles.input, { marginTop: 12 }]}
             />
 

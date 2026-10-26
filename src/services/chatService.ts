@@ -51,6 +51,10 @@ export const chatService = {
     });
   },
 
+  /**
+   * The backend passes all of this to Google Gemini, so callers must get
+   * ensureAiConsent() first (App Review 5.1.2(i)).
+   */
   sendMessage: async ({
     message,
     file,

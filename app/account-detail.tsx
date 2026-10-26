@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   FlatList,
   Pressable,
+  Keyboard,
 } from "react-native";
 import { RectButton, Swipeable } from "react-native-gesture-handler";
 import {
@@ -46,6 +47,10 @@ import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import TransactionDetailsSheet from "../src/components/transactions/TransactionDetailsSheet";
 import { getAmountSign } from "../src/utils/transactions";
+import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
+import { parseCalendarDate } from "../src/utils/date";
+import { useAuth } from "../src/contexts/AuthContext";
+import { ensureAiConsent } from "../src/services/aiConsent";
 import { withFlow } from "../src/services/appExitMonitor";
 import { Account, Transaction } from "../src/types";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
@@ -55,6 +60,8 @@ interface ReconcileTransaction {
   merchant_name: string;
   description?: string;
   amount: number;
+  /** The Amount field's text as typed; parsed into a number on save. */
+  amountText?: string;
   type: "income" | "expense" | "transfer";
   category_id?: number;
   notes?: string;
@@ -100,8 +107,20 @@ const formatApiError = (result: any): string => {
   return errorMsg;
 };
 
+// parseDecimalInput reads the iOS comma decimal key but drops a '-', and a
+// balance can be negative (credit cards, loans).
+const parseBalanceInput = (text: string): number => {
+  const value = parseDecimalInput(text);
+  return text.trim().startsWith("-") ? -value : value;
+};
+
+// Statement amounts arrive unsigned (the type says which way the money went).
+const getReconcileAmount = (tx: ReconcileTransaction): number =>
+  parseDecimalInput(tx.amountText ?? String(tx.amount));
+
 export default function AccountDetailScreen() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -154,7 +173,6 @@ export default function AccountDetailScreen() {
     data: transactions,
     isLoading: transactionsLoading,
     refetch: refetchTransactions,
-    isRefetching,
   } = useQuery({
     queryKey: ["transactions", "account", accountId],
     queryFn: async () => {
@@ -193,6 +211,18 @@ export default function AccountDetailScreen() {
     }, [refetchAccount, refetchTransactions]),
   );
 
+  // The spinner follows the user's pull only, not the focus / archive
+  // refetches (on iOS a programmatic refresh also shifts the list down).
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await refetchTransactions();
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [refetchTransactions]);
+
   // Ensure transactions is always an array
   const transactionsList = Array.isArray(transactions) ? transactions : [];
 
@@ -225,7 +255,7 @@ export default function AccountDetailScreen() {
       const result = await accountService.update(accountId, {
         account_name: data.account_name,
         type: data.account_type,
-        current_balance: parseFloat(data.balance) || 0,
+        current_balance: parseBalanceInput(data.balance),
       });
       if (!result.success) throw new Error(formatApiError(result));
       return result;
@@ -404,6 +434,8 @@ export default function AccountDetailScreen() {
   };
 
   const handleDelete = () => {
+    // The iOS keyboard stays up over a Modal and would cover the dialog's buttons.
+    Keyboard.dismiss();
     if (transactionsList.length > 0) {
       toast.error(
         "Remove or reassign all transactions before deleting this account.",
@@ -441,7 +473,7 @@ export default function AccountDetailScreen() {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "";
-    const date = new Date(dateString);
+    const date = parseCalendarDate(dateString);
     return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -463,6 +495,9 @@ export default function AccountDetailScreen() {
   };
 
   const handlePickCsv = async () => {
+    Keyboard.dismiss();
+    // The statement rows are categorised by Gemini on the server.
+    if (!(await ensureAiConsent(user?.id))) return;
     try {
       const result = await withFlow("file picker", () =>
         DocumentPicker.getDocumentAsync({
@@ -588,7 +623,8 @@ export default function AccountDetailScreen() {
 
   const handleSaveSingle = async (index: number) => {
     const tx = reconcileData[index];
-    if (!tx.merchant_name || !tx.amount || !tx.date || !tx.type) {
+    const amount = getReconcileAmount(tx);
+    if (!tx.merchant_name || !(amount > 0) || !tx.date || !tx.type) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -604,7 +640,7 @@ export default function AccountDetailScreen() {
         {
           merchant_name: tx.merchant_name,
           description: tx.description || tx.merchant_name,
-          amount: tx.amount,
+          amount,
           type: tx.type,
           date: tx.date,
           category_id: tx.category_id,
@@ -648,7 +684,7 @@ export default function AccountDetailScreen() {
     const invalidTx = unmatchedTx.find(
       (tx) =>
         !tx.merchant_name ||
-        !tx.amount ||
+        !(getReconcileAmount(tx) > 0) ||
         !tx.date ||
         !tx.type ||
         (tx.type !== "transfer" && !tx.category_id),
@@ -664,7 +700,7 @@ export default function AccountDetailScreen() {
       const transactions = unmatchedTx.map((tx) => ({
         merchant_name: tx.merchant_name,
         description: tx.description || tx.merchant_name,
-        amount: tx.amount,
+        amount: getReconcileAmount(tx),
         type: tx.type,
         date: tx.date,
         category_id: tx.category_id,
@@ -693,6 +729,7 @@ export default function AccountDetailScreen() {
   };
 
   const handleClearReconcile = () => {
+    Keyboard.dismiss();
     setShowClearReconcile(true);
   };
 
@@ -921,9 +958,10 @@ export default function AccountDetailScreen() {
               }}
               refreshControl={
                 <RefreshControl
-                  refreshing={isRefetching}
-                  onRefresh={refetchTransactions}
+                  refreshing={pullRefreshing}
+                  onRefresh={handlePullRefresh}
                   colors={[colors.primary]}
+                  tintColor={colors.primary}
                 />
               }
               ListHeaderComponent={() => (
@@ -1332,6 +1370,11 @@ export default function AccountDetailScreen() {
                 paddingTop: 12,
                 paddingBottom: 100,
               }}
+              // iOS has no window pan: inset the list by the keyboard and
+              // scroll the focused field above it (no-op on Android).
+              automaticallyAdjustKeyboardInsets
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
               ListHeaderComponent={() => (
                 <View style={{ marginBottom: 16 }}>
                   {/* Summary Cards */}
@@ -1478,17 +1521,20 @@ export default function AccountDetailScreen() {
                       <View style={{ width: 100, marginLeft: 8 }}>
                         <TextInput
                           label="Amount"
-                          value={String(item.amount)}
+                          // Keep the text as typed: storing parseFloat(text)
+                          // ate a trailing '.' and made cents impossible.
+                          value={item.amountText ?? String(item.amount)}
                           onChangeText={(text) =>
                             handleUpdateReconcileItem(
                               index,
-                              "amount",
-                              parseFloat(text) || 0,
+                              "amountText",
+                              toDecimalInput(text),
                             )
                           }
                           mode="outlined"
                           dense
                           keyboardType="decimal-pad"
+                          returnKeyType="done"
                           style={styles.reconcileInput}
                         />
                       </View>
@@ -1567,6 +1613,7 @@ export default function AccountDetailScreen() {
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
+                          keyboardShouldPersistTaps="handled"
                         >
                           <View style={{ flexDirection: "row", gap: 6 }}>
                             {categories.map((cat) => (
@@ -1677,7 +1724,12 @@ export default function AccountDetailScreen() {
       )}
 
       {activeTab === "edit" && (
-        <ScrollView contentContainerStyle={styles.tabContent}>
+        <ScrollView
+          contentContainerStyle={styles.tabContent}
+          automaticallyAdjustKeyboardInsets
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
           <Surface
             style={[styles.editCard, { backgroundColor: colors.surface }]}
             elevation={1}
@@ -1701,6 +1753,7 @@ export default function AccountDetailScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
               style={{ marginBottom: 16 }}
               contentContainerStyle={{ gap: 8 }}
             >
@@ -1744,6 +1797,7 @@ export default function AccountDetailScreen() {
               }
               mode="outlined"
               keyboardType="decimal-pad"
+              returnKeyType="done"
               style={styles.input}
             />
 

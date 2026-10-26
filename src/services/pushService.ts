@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
+import type { NotificationPermissionsStatus } from "expo-notifications";
 
 import API_CONFIG, { apiRequest } from "../config/api";
 import { Notifications } from "./notifications";
@@ -34,6 +35,17 @@ export const ensureAndroidChannel = async () => {
     enableLights: true,
   });
 };
+
+/**
+ * The OS push permission without prompting (status + canAskAgain), or null
+ * where push can't work at all (Expo Go, simulator). iOS asks only once:
+ * after "Don't Allow" canAskAgain is false and only Settings can turn it on.
+ */
+export const getPushPermission =
+  async (): Promise<NotificationPermissionsStatus | null> => {
+    if (!Notifications || !Device.isDevice) return null;
+    return Notifications.getPermissionsAsync();
+  };
 
 export const requestPushPermission = async (): Promise<boolean> => {
   if (!Notifications || !Device.isDevice) return false;
@@ -106,6 +118,7 @@ export const unregisterDevice = async (authToken: string): Promise<boolean> => {
 
 export default {
   ensureAndroidChannel,
+  getPushPermission,
   requestPushPermission,
   getExpoPushToken,
   registerDevice,

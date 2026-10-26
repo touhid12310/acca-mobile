@@ -5,6 +5,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Keyboard,
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import {
   Text,
@@ -14,10 +17,14 @@ import {
   Modal,
   ActivityIndicator,
 } from "react-native-paper";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import { pickFromLibrary } from "../src/utils/imagePicker";
 import { SvgXml } from "react-native-svg";
 import { ImageOff } from "lucide-react-native";
@@ -34,13 +41,57 @@ import {
   compatibleImagePickerOptions,
   uploadFileFromAsset,
 } from "../src/utils/uploads";
-import { detectTimeZone, isValidTimeZone, setActiveTimeZone } from "../src/utils/timezone";
+import {
+  detectTimeZone,
+  isValidTimeZone,
+  normalizeTimeZone,
+  setActiveTimeZone,
+} from "../src/utils/timezone";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 import { uploadPart } from "../src/utils/uploadPart";
+import { showPermissionSettingsAlert } from "../src/utils/permissions";
+
+// Paper's Modal centres its dialog over the whole screen and ignores the
+// keyboard. Android pans the window; on iOS the dialog is lifted above the
+// keyboard instead (see modalWrapperStyle).
+const useIosKeyboardHeight = () => {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const show = Keyboard.addListener("keyboardWillShow", (e) =>
+      setHeight(e.endCoordinates.height),
+    );
+    const hide = Keyboard.addListener("keyboardWillHide", () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+};
 
 export default function ProfileScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { user, checkAuthStatus, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useIosKeyboardHeight();
+  // Paper merges `style` after its own safe-area margins on the dialog's
+  // wrapper, so this re-centres the dialog in the space above the keyboard.
+  const modalWrapperStyle = keyboardHeight
+    ? { marginBottom: keyboardHeight }
+    : undefined;
+  // A numeric cap (minus the 20 pt margins) so the dialog's ScrollView can
+  // scroll on small iPhones; Paper's percentage maxHeight has no effect.
+  const modalMaxHeight =
+    Platform.OS === "ios"
+      ? {
+          maxHeight:
+            windowHeight - insets.top - (keyboardHeight || insets.bottom) - 40,
+        }
+      : null;
+  // The deep reds are unreadable on the dark surface.
+  const dangerText = isDark ? colors.error : "#b91c1c";
 
   // Profile form state
   const [profileForm, setProfileForm] = useState({
@@ -227,20 +278,26 @@ export default function ProfileScreen() {
       notifyToast.error("Name is required");
       return;
     }
-    if (!isValidTimeZone(profileForm.timezone)) {
+    const typedTimeZone = profileForm.timezone.trim();
+    if (!isValidTimeZone(typedTimeZone)) {
       notifyToast.error("Please enter a valid timezone, like Asia/Dhaka");
       return;
     }
+
+    // The API refuses old alias names (Asia/Calcutta) that Intl accepts.
+    const timezone = normalizeTimeZone(typedTimeZone);
 
     setIsProfileSaving(true);
     try {
       const result = await authService.updateProfile({
         name: profileForm.name,
         mobile: profileForm.mobile,
-        timezone: profileForm.timezone,
+        timezone,
       });
       if (result.success) {
-        setActiveTimeZone(profileForm.timezone);
+        setActiveTimeZone(
+          isValidTimeZone(timezone) ? timezone : typedTimeZone,
+        );
         notifyToast.success("Profile updated successfully");
         await checkAuthStatus();
       } else {
@@ -254,14 +311,26 @@ export default function ProfileScreen() {
   };
 
   const handlePickImage = async () => {
-    const permissionResult =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
+    // iOS opens the system photo picker, which needs no library access.
+    // Asking anyway adds a prompt that, once declined, never shows again and
+    // would block Change Photo for good.
+    if (Platform.OS !== "ios") {
+      const permissionResult =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (!permissionResult.granted) {
-      notifyToast.warning("Please allow access to your photo library", {
-        title: "Permission required",
-      });
-      return;
+      if (!permissionResult.granted) {
+        if (!permissionResult.canAskAgain) {
+          showPermissionSettingsAlert(
+            "Allow photo access",
+            "Photo access is turned off for AccountE. Open Settings and allow it to choose a profile photo.",
+          );
+        } else {
+          notifyToast.warning("Please allow access to your photo library", {
+            title: "Permission required",
+          });
+        }
+        return;
+      }
     }
 
     const result = await pickFromLibrary({
@@ -367,6 +436,23 @@ export default function ProfileScreen() {
     }
   };
 
+  // Setting up the authenticator on this same phone means the QR code can't
+  // be scanned, so the key has to be easy to copy.
+  const handleCopySecretKey = async () => {
+    try {
+      await Clipboard.setStringAsync(secretKey);
+      notifyToast.success("Key copied");
+    } catch {
+      notifyToast.error("Could not copy the key");
+    }
+  };
+
+  // The iOS number pad has no return key: once the code is complete, get the
+  // keyboard out of the way of the dialog's buttons.
+  const dismissKeyboardWhenComplete = (code: string) => {
+    if (Platform.OS === "ios" && code.length === 6) Keyboard.dismiss();
+  };
+
   const handleVerifyTwoFactor = async () => {
     if (twoFactorCode.length !== 6) {
       notifyToast.error("Please enter a valid 6-digit code");
@@ -444,6 +530,15 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        // Off while a dialog is open: its fields sit outside this ScrollView,
+        // and iOS would push the page down by the keyboard height behind it.
+        automaticallyAdjustKeyboardInsets={
+          !passwordModalVisible &&
+          !twoFactorModalVisible &&
+          !deleteAccountModalVisible
+        }
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
         <BrandedHeader
           title="Profile Settings"
@@ -569,6 +664,7 @@ export default function ProfileScreen() {
             }
             mode="outlined"
             keyboardType="phone-pad"
+            returnKeyType="done"
             style={styles.input}
           />
 
@@ -580,6 +676,7 @@ export default function ProfileScreen() {
             }
             mode="outlined"
             autoCapitalize="none"
+            autoCorrect={false}
             style={styles.input}
           />
 
@@ -620,7 +717,10 @@ export default function ProfileScreen() {
           {user?.has_password !== false && (
           <TouchableOpacity
             style={[styles.securityItem, { borderColor: colors.outline }]}
-            onPress={() => setPasswordModalVisible(true)}
+            onPress={() => {
+              Keyboard.dismiss();
+              setPasswordModalVisible(true);
+            }}
           >
             <View
               style={[
@@ -656,6 +756,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={[styles.securityItem, { borderColor: colors.outline }]}
             onPress={() => {
+              Keyboard.dismiss();
               if (twoFactorStatus.enabled) {
                 setTwoFactorModalVisible(true);
               } else {
@@ -777,6 +878,7 @@ export default function ProfileScreen() {
               },
             ]}
             onPress={() => {
+              Keyboard.dismiss();
               setDeleteAccountPassword("");
               setDeleteAccountConfirm("");
               setDeleteAccountModalVisible(true);
@@ -791,21 +893,21 @@ export default function ProfileScreen() {
               <MaterialCommunityIcons
                 name="trash-can-outline"
                 size={24}
-                color="#dc2626"
+                color={isDark ? colors.error : "#dc2626"}
               />
             </View>
             <View style={styles.securityContent}>
-              <Text variant="bodyLarge" style={{ color: "#b91c1c" }}>
+              <Text variant="bodyLarge" style={{ color: dangerText }}>
                 Delete Account
               </Text>
-              <Text variant="bodySmall" style={{ color: "#b91c1c" }}>
+              <Text variant="bodySmall" style={{ color: dangerText }}>
                 Permanently remove your account and all data
               </Text>
             </View>
             <MaterialCommunityIcons
               name="chevron-right"
               size={24}
-              color="#b91c1c"
+              color={dangerText}
             />
           </TouchableOpacity>
         </Surface>
@@ -815,11 +917,14 @@ export default function ProfileScreen() {
         <Modal
           visible={passwordModalVisible}
           onDismiss={() => setPasswordModalVisible(false)}
+          style={modalWrapperStyle}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
+            modalMaxHeight,
           ]}
         >
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
           <Text
             variant="titleLarge"
             style={{ color: colors.onSurface, marginBottom: 16 }}
@@ -869,6 +974,7 @@ export default function ProfileScreen() {
               Save
             </Button>
           </View>
+          </ScrollView>
         </Modal>
       </Portal>
 
@@ -883,11 +989,14 @@ export default function ProfileScreen() {
             setDisablePassword("");
             setDisableTotpCode("");
           }}
+          style={modalWrapperStyle}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
+            modalMaxHeight,
           ]}
         >
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
           {twoFactorStatus.enabled ? (
             <>
               <Text
@@ -918,11 +1027,14 @@ export default function ProfileScreen() {
               <TextInput
                 label="6-digit code"
                 value={disableTotpCode}
-                onChangeText={(text) =>
-                  setDisableTotpCode(text.replace(/\D/g, "").slice(0, 6))
-                }
+                onChangeText={(text) => {
+                  const code = text.replace(/\D/g, "").slice(0, 6);
+                  setDisableTotpCode(code);
+                  dismissKeyboardWhenComplete(code);
+                }}
                 mode="outlined"
                 keyboardType="number-pad"
+                returnKeyType="done"
                 maxLength={6}
                 style={styles.input}
                 contentStyle={{
@@ -967,11 +1079,14 @@ export default function ProfileScreen() {
               <TextInput
                 label="Verification Code"
                 value={twoFactorCode}
-                onChangeText={(text) =>
-                  setTwoFactorCode(text.replace(/\D/g, "").slice(0, 6))
-                }
+                onChangeText={(text) => {
+                  const code = text.replace(/\D/g, "").slice(0, 6);
+                  setTwoFactorCode(code);
+                  dismissKeyboardWhenComplete(code);
+                }}
                 mode="outlined"
                 keyboardType="number-pad"
+                returnKeyType="done"
                 maxLength={6}
                 style={styles.input}
                 contentStyle={{
@@ -1018,23 +1133,41 @@ export default function ProfileScreen() {
                     execute. */}
                     <SvgXml xml={qrCode} width={180} height={180} />
                   </View>
+                  {/* The card stays light for the QR code, so its text uses
+                  fixed dark colours rather than the theme's. */}
                   <Text
                     variant="labelSmall"
-                    style={{ color: colors.onSurfaceVariant, marginTop: 12 }}
+                    style={{ color: "#475569", marginTop: 12 }}
                   >
                     Manual Entry Key:
                   </Text>
                   <Text
                     variant="bodyMedium"
                     style={{
-                      color: colors.onSurface,
-                      fontFamily: "monospace",
+                      color: "#0f172a",
+                      fontFamily: Platform.select({
+                        ios: "Menlo",
+                        default: "monospace",
+                      }),
                       marginTop: 4,
+                      textAlign: "center",
                     }}
                     selectable
                   >
                     {secretKey}
                   </Text>
+                  {secretKey ? (
+                    <Button
+                      mode="text"
+                      icon="content-copy"
+                      textColor="#4f46e5"
+                      compact
+                      onPress={handleCopySecretKey}
+                      style={{ marginTop: 4 }}
+                    >
+                      Copy key
+                    </Button>
+                  ) : null}
                 </View>
               ) : (
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -1056,6 +1189,7 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+          </ScrollView>
         </Modal>
       </Portal>
 
@@ -1066,20 +1200,27 @@ export default function ProfileScreen() {
           onDismiss={() =>
             !isDeletingAccount && setDeleteAccountModalVisible(false)
           }
+          style={modalWrapperStyle}
           contentContainerStyle={[
             styles.modal,
             { backgroundColor: colors.surface },
+            modalMaxHeight,
           ]}
         >
+          <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
           <Text
             variant="titleLarge"
-            style={{ color: "#b91c1c", marginBottom: 8 }}
+            style={{ color: dangerText, marginBottom: 8 }}
           >
             Delete account
           </Text>
           <Text
             variant="bodyMedium"
-            style={{ color: "#7f1d1d", marginBottom: 16, lineHeight: 20 }}
+            style={{
+              color: isDark ? colors.onSurfaceVariant : "#7f1d1d",
+              marginBottom: 16,
+              lineHeight: 20,
+            }}
           >
             This permanently deletes your account, every transaction, every
             report, and all linked devices. This action cannot be undone.
@@ -1126,6 +1267,7 @@ export default function ProfileScreen() {
               Permanently delete
             </Button>
           </View>
+          </ScrollView>
         </Modal>
       </Portal>
 

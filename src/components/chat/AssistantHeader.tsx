@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CalendarDays, Sparkles } from 'lucide-react-native';
 
 import { useTheme } from '../../contexts/ThemeContext';
@@ -40,7 +40,13 @@ export function AssistantHeader({ dateLabel, isToday, loading, onPickDate, onTod
       </View>
 
       {!isToday && (
-        <Pressable onPress={onToday} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to today">
+        <Pressable
+          onPress={onToday}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Back to today"
+          style={({ pressed }) => pressed && styles.pressed}
+        >
           <Text style={[styles.todayLink, { color: colors.primary }]}>Today</Text>
         </Pressable>
       )}
@@ -50,7 +56,12 @@ export function AssistantHeader({ dateLabel, isToday, loading, onPickDate, onTod
         accessibilityRole="button"
         accessibilityLabel={`Chat day: ${dateLabel}. Change day`}
         android_ripple={{ color: colors.surfaceVariant, borderless: false }}
-        style={[styles.datePill, { borderColor: colors.outlineVariant, backgroundColor: colors.surface }]}
+        // iOS has no ripple, so dim the pill while it is pressed.
+        style={({ pressed }) => [
+          styles.datePill,
+          { borderColor: colors.outlineVariant, backgroundColor: colors.surface },
+          Platform.OS === 'ios' && pressed && styles.pressed,
+        ]}
       >
         {loading ? (
           <ActivityIndicator size="small" color={colors.primary} />
@@ -108,6 +119,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   dateText: { fontSize: 13, fontWeight: '600' },
+  pressed: { opacity: 0.6 },
 });
 
 export default AssistantHeader;

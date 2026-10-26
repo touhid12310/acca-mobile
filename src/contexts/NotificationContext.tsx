@@ -8,8 +8,9 @@ import React, {
   useState,
   ReactNode,
 } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { FullWindowOverlay } from "react-native-screens";
 
 import { Toast, ToastItem } from "../components/ui/Toast";
 import { spacing } from "../constants/theme";
@@ -103,20 +104,39 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, [value]);
 
+  const host = (
+    <View
+      pointerEvents="box-none"
+      style={[
+        styles.host,
+        { paddingTop: insets.top + spacing.sm },
+      ]}
+    >
+      {items.map((item) => (
+        <Toast key={item.id} item={item} onClose={dismiss} />
+      ))}
+    </View>
+  );
+
   return (
     <NotificationContext.Provider value={value}>
       {children}
-      <View
-        pointerEvents="box-none"
-        style={[
-          styles.host,
-          { paddingTop: insets.top + spacing.sm },
-        ]}
-      >
-        {items.map((item) => (
-          <Toast key={item.id} item={item} onClose={dismiss} />
+      {/* Mounted only while toasts show, so on iOS the overlay lands above a
+          sheet (Add/Edit Transaction) or RN Modal that is already open. Keyed
+          per new toast so it is re-added above a sheet opened since. */}
+      {items.length > 0 &&
+        (Platform.OS === "ios" ? (
+          // Not an accessibility-modal container (TopLayer's default), or
+          // VoiceOver could reach only the toasts while they show.
+          <FullWindowOverlay
+            key={items[items.length - 1].id}
+            unstable_accessibilityContainerViewIsModal={false}
+          >
+            {host}
+          </FullWindowOverlay>
+        ) : (
+          host
         ))}
-      </View>
     </NotificationContext.Provider>
   );
 }

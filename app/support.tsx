@@ -9,9 +9,29 @@ import {
   Platform,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Check, ChevronDown, LifeBuoy, Send } from "lucide-react-native";
+import {
+  ArrowLeftRight,
+  BarChart3,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  CreditCard,
+  FileSpreadsheet,
+  HandCoins,
+  HelpCircle,
+  KeyRound,
+  LayoutGrid,
+  LifeBuoy,
+  LucideIcon,
+  PiggyBank,
+  Send,
+  Sparkles,
+  Tags,
+  Target,
+  Wallet,
+} from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useAuth } from "../src/contexts/AuthContext";
@@ -22,25 +42,26 @@ import { Button, HeroCard, Input } from "../src/components/ui";
 import { spacing, radius } from "../src/constants/theme";
 
 // Keep in sync with SupportTicket::CATEGORIES on the backend.
-const CATEGORIES: { key: string; label: string }[] = [
-  { key: "transactions", label: "Transactions" },
-  { key: "accounts", label: "Accounts" },
-  { key: "budgets", label: "Budgets" },
-  { key: "goals", label: "Goals" },
-  { key: "loans", label: "Loans" },
-  { key: "schedules", label: "Schedules" },
-  { key: "reports", label: "Reports" },
-  { key: "categories", label: "Categories" },
-  { key: "ai_chat", label: "AI Chat" },
-  { key: "csv_import", label: "CSV Import" },
-  { key: "account_login", label: "Account & Login" },
-  { key: "billing", label: "Billing" },
-  { key: "other", label: "Other" },
+const CATEGORIES: { key: string; label: string; icon: LucideIcon }[] = [
+  { key: "transactions", label: "Transactions", icon: ArrowLeftRight },
+  { key: "accounts", label: "Accounts", icon: Wallet },
+  { key: "budgets", label: "Budgets", icon: PiggyBank },
+  { key: "goals", label: "Goals", icon: Target },
+  { key: "loans", label: "Loans", icon: HandCoins },
+  { key: "schedules", label: "Schedules", icon: CalendarClock },
+  { key: "reports", label: "Reports", icon: BarChart3 },
+  { key: "categories", label: "Categories", icon: Tags },
+  { key: "ai_chat", label: "AI Chat", icon: Sparkles },
+  { key: "csv_import", label: "CSV Import", icon: FileSpreadsheet },
+  { key: "account_login", label: "Account & Login", icon: KeyRound },
+  { key: "billing", label: "Billing", icon: CreditCard },
+  { key: "other", label: "Other", icon: HelpCircle },
 ];
 
 export default function SupportScreen() {
   const { colors } = useTheme();
   const { token, user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [category, setCategory] = useState<string>("");
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -49,6 +70,7 @@ export default function SupportScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const selectedCategory = CATEGORIES.find((c) => c.key === category);
+  const SelectedIcon = selectedCategory?.icon ?? LayoutGrid;
 
   const handleSubmit = async () => {
     if (!category) {
@@ -124,34 +146,45 @@ export default function SupportScreen() {
             </View>
           </HeroCard>
 
-          <Text style={[styles.fieldLabel, { color: colors.onSurface }]}>
-            What is this about?
-          </Text>
           {/* Mirrors the web's <select> (Support.jsx) — 13 topics as a wrapped
-              chip row filled the screen and read as run-together text. */}
-          <Pressable
-            onPress={() => setShowCategoryPicker(true)}
-            style={[
-              styles.selectField,
-              {
-                backgroundColor: colors.surfaceVariant,
-                borderColor: colors.outlineVariant,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.selectValue,
-                { color: selectedCategory ? colors.onSurface : colors.onSurfaceVariant },
-              ]}
-              numberOfLines={1}
-            >
-              {selectedCategory ? selectedCategory.label : "Select a topic…"}
+              chip row filled the screen and read as run-together text. Label,
+              box and border match the <Input> fields below. */}
+          <View style={styles.fieldWrapper}>
+            <Text style={[styles.fieldLabel, { color: colors.onSurfaceVariant }]}>
+              What is this about?
             </Text>
-            <ChevronDown size={20} color={colors.onSurfaceVariant} />
-          </Pressable>
+            <Pressable
+              onPress={() => setShowCategoryPicker(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Topic: ${selectedCategory?.label ?? "not chosen"}`}
+              style={[
+                styles.selectField,
+                {
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: showCategoryPicker ? colors.primary : colors.outline,
+                  borderWidth: showCategoryPicker ? 1.5 : 1,
+                },
+              ]}
+            >
+              <SelectedIcon
+                size={18}
+                color={selectedCategory ? colors.primary : colors.onSurfaceVariant}
+                strokeWidth={2}
+              />
+              <Text
+                style={[
+                  styles.selectValue,
+                  { color: selectedCategory ? colors.onSurface : colors.onSurfaceVariant },
+                ]}
+                numberOfLines={1}
+              >
+                {selectedCategory ? selectedCategory.label : "Choose a topic"}
+              </Text>
+              <ChevronDown size={18} color={colors.onSurfaceVariant} strokeWidth={2} />
+            </Pressable>
+          </View>
 
-          <View style={{ marginTop: spacing.md }}>
+          <View style={{ marginTop: spacing.lg }}>
             <Input
               label="Subject (optional)"
               value={subject}
@@ -161,17 +194,16 @@ export default function SupportScreen() {
             />
           </View>
 
-          <View style={{ marginTop: spacing.md }}>
+          <View style={{ marginTop: spacing.lg }}>
             <Input
               label="Describe your issue"
               value={message}
               onChangeText={setMessage}
               placeholder="Tell us what happened and what you expected…"
               multiline
-              numberOfLines={6}
+              numberOfLines={7}
               maxLength={5000}
-              textAlignVertical="top"
-              style={{ minHeight: 120 }}
+              helper={message.length > 4500 ? `${message.length} / 5000` : undefined}
             />
           </View>
 
@@ -190,10 +222,12 @@ export default function SupportScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Bottom sheet, like the onboarding currency picker. */}
       <Modal
         visible={showCategoryPicker}
         transparent
-        animationType="fade"
+        animationType="slide"
+        statusBarTranslucent
         onRequestClose={() => setShowCategoryPicker(false)}
       >
         <Pressable
@@ -202,15 +236,31 @@ export default function SupportScreen() {
         >
           {/* Swallow taps inside the sheet so only the backdrop dismisses. */}
           <Pressable
-            style={[styles.modalSheet, { backgroundColor: colors.surface }]}
-            onPress={() => {}}
+            style={[
+              styles.modalSheet,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.outlineVariant,
+                paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
+              },
+            ]}
+            onPress={(e) => e.stopPropagation()}
           >
+            <View style={[styles.sheetHandle, { backgroundColor: colors.outlineVariant }]} />
             <Text style={[styles.modalTitle, { color: colors.onSurface }]}>
               What is this about?
             </Text>
-            <ScrollView bounces={false}>
+            <Text style={[styles.modalSubtitle, { color: colors.onSurfaceVariant }]}>
+              Pick the topic closest to your issue.
+            </Text>
+            <ScrollView
+              bounces={false}
+              style={styles.optionList}
+              contentContainerStyle={styles.optionListContent}
+            >
               {CATEGORIES.map((c) => {
                 const isSelected = c.key === category;
+                const Icon = c.icon;
                 return (
                   <Pressable
                     key={c.key}
@@ -218,21 +268,36 @@ export default function SupportScreen() {
                       setCategory(c.key);
                       setShowCategoryPicker(false);
                     }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isSelected }}
+                    android_ripple={{ color: `${colors.primary}1F` }}
+                    // A plain style array, not a ({ pressed }) => [...] function:
+                    // the function form was dropped on device and every row
+                    // fell back to a vertical stack (icon / label / check).
                     style={[
                       styles.optionRow,
                       isSelected && { backgroundColor: `${colors.primary}1F` },
                     ]}
                   >
+                    <View
+                      style={[
+                        styles.optionIcon,
+                        { backgroundColor: `${colors.primary}${isSelected ? "2E" : "14"}` },
+                      ]}
+                    >
+                      <Icon size={18} color={colors.primary} strokeWidth={2} />
+                    </View>
                     <Text
                       style={[
                         styles.optionLabel,
                         { color: isSelected ? colors.primary : colors.onSurface },
                         isSelected && { fontWeight: "700" },
                       ]}
+                      numberOfLines={1}
                     >
                       {c.label}
                     </Text>
-                    {isSelected && <Check size={20} color={colors.primary} />}
+                    {isSelected && <Check size={20} color={colors.primary} strokeWidth={2.4} />}
                   </Pressable>
                 );
               })}
@@ -273,42 +338,64 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  fieldLabel: { fontSize: 14, fontWeight: "600", marginBottom: spacing.sm },
+  // Same label / box as the shared <Input> (src/components/ui/Input.tsx).
+  fieldWrapper: { gap: 6 },
+  fieldLabel: { fontSize: 13, fontWeight: "600", marginLeft: 4 },
   selectField: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: spacing.md,
     height: 52,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
+    borderRadius: radius.lg,
   },
-  selectValue: { flex: 1, fontSize: 15 },
+  selectValue: { flex: 1, fontSize: 15, fontWeight: "500" },
   modalBackdrop: {
     flex: 1,
-    justifyContent: "center",
-    padding: spacing.xl,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
   },
   modalSheet: {
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md,
-    maxHeight: "70%",
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    paddingTop: spacing.sm,
+    maxHeight: "80%",
+  },
+  sheetHandle: {
+    alignSelf: "center",
+    width: 40,
+    height: 4,
+    borderRadius: radius.pill,
+    marginBottom: spacing.md,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.xl,
   },
+  modalSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+    paddingHorizontal: spacing.xl,
+  },
+  optionList: { marginTop: spacing.md },
+  optionListContent: { paddingHorizontal: spacing.sm, gap: 2 },
   optionRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.lg,
+    gap: spacing.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
   },
-  optionLabel: { flex: 1, fontSize: 15 },
+  optionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionLabel: { flex: 1, fontSize: 15, fontWeight: "500" },
 });

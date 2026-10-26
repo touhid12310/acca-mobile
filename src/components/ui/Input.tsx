@@ -47,6 +47,13 @@ export function Input({
       ? colors.primary
       : colors.outline;
 
+  // A multiline field grows to its numberOfLines instead of the fixed
+  // single-line height (a `style` minHeight only reached the outer wrapper).
+  const multiline = !!rest.multiline;
+  const textMinHeight = multiline
+    ? Math.max(rest.numberOfLines ?? 4, 2) * MULTILINE_LINE_HEIGHT
+    : undefined;
+
   return (
     <View style={[styles.wrapper, style]}>
       {label && (
@@ -57,6 +64,7 @@ export function Input({
       <View
         style={[
           styles.container,
+          multiline && styles.containerMultiline,
           {
             backgroundColor: colors.surfaceVariant,
             borderColor,
@@ -79,7 +87,12 @@ export function Input({
             setFocused(false);
             rest.onBlur?.(e);
           }}
-          style={[styles.input, { color: colors.onSurface }]}
+          textAlignVertical={multiline ? "top" : rest.textAlignVertical}
+          style={[
+            styles.input,
+            multiline && { minHeight: textMinHeight, lineHeight: MULTILINE_LINE_HEIGHT },
+            { color: colors.onSurface },
+          ]}
         />
         {secureToggleable ? (
           <Pressable onPress={() => setHidden((v) => !v)} hitSlop={8}>
@@ -109,6 +122,8 @@ export function Input({
   );
 }
 
+const MULTILINE_LINE_HEIGHT = 22;
+
 const styles = StyleSheet.create({
   wrapper: {
     gap: 6,
@@ -125,6 +140,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     height: 52,
     borderRadius: radius.lg,
+  },
+  containerMultiline: {
+    height: undefined,
+    alignItems: "flex-start",
+    paddingVertical: spacing.md,
   },
   input: {
     flex: 1,

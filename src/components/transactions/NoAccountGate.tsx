@@ -18,6 +18,7 @@ import { AccountTypePicker, Button, IconBadge, Input } from "../ui";
 import { radius, shadow, spacing } from "../../constants/theme";
 import accountService from "../../services/accountService";
 import analyticsService from "../../services/analyticsService";
+import { parseDecimalInput } from "../../utils/number";
 
 /**
  * Blocks the add-transaction screen until the user has at least one account —
@@ -63,7 +64,11 @@ export default function NoAccountGate() {
       const result = await accountService.create({
         account_name: name.trim(),
         type,
-        current_balance: parseFloat(balance) || 0,
+        // parseDecimalInput reads the iOS comma decimal key ('12,50') but
+        // drops a '-', and a starting balance can be negative (credit card).
+        current_balance: balance.trim().startsWith("-")
+          ? -parseDecimalInput(balance)
+          : parseDecimalInput(balance),
       });
       if (!result.success) {
         const res = result as any;
@@ -97,7 +102,8 @@ export default function NoAccountGate() {
     createMutation.mutate();
   };
 
-  const leave = () => router.back();
+  const leave = () =>
+    router.canGoBack() ? router.back() : router.replace("/(tabs)");
 
   return (
     <Modal
@@ -142,6 +148,7 @@ export default function NoAccountGate() {
               value={balance}
               onChangeText={setBalance}
               keyboardType="decimal-pad"
+              returnKeyType="done"
             />
 
             <Text style={[styles.fieldLabel, { color: colors.onSurfaceVariant }]}>

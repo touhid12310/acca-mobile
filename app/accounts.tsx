@@ -54,6 +54,7 @@ import {
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
 import { gradients, radius, shadow, spacing } from "../src/constants/theme";
+import { parseDecimalInput } from "../src/utils/number";
 
 const formatApiError = (result: any): string => {
   const errorData = result.data;
@@ -79,6 +80,13 @@ const getAccountIcon = (type: string = ""): LucideIcon => {
   return Building2;
 };
 
+// parseDecimalInput reads the iOS comma decimal key but drops a '-', and an
+// opening balance can be negative (credit cards, loans).
+const parseBalanceInput = (text: string): number => {
+  const value = parseDecimalInput(text);
+  return text.trim().startsWith("-") ? -value : value;
+};
+
 export default function AccountsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
@@ -97,7 +105,6 @@ export default function AccountsScreen() {
     data: accounts,
     isLoading,
     refetch,
-    isRefetching,
   } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => {
@@ -115,7 +122,7 @@ export default function AccountsScreen() {
       const result = await accountService.create({
         account_name: data.account_name,
         type: data.account_type,
-        current_balance: parseFloat(data.balance) || 0,
+        current_balance: parseBalanceInput(data.balance),
       });
       if (!result.success) throw new Error(formatApiError(result));
       return result;
@@ -141,6 +148,18 @@ export default function AccountsScreen() {
   };
 
   const closeModal = () => setModalVisible(false);
+
+  // The spinner follows the user's pull only, not the refetch after a create
+  // (on iOS a programmatic refresh also shifts the list down).
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const handlePullRefresh = async () => {
+    setPullRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setPullRefreshing(false);
+    }
+  };
 
   const handleSave = () => {
     if (!formData.account_name.trim()) {
@@ -197,8 +216,8 @@ export default function AccountsScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={pullRefreshing}
+            onRefresh={handlePullRefresh}
             colors={[colors.primary]}
             tintColor={colors.primary}
           />
@@ -354,7 +373,13 @@ export default function AccountsScreen() {
 
       {/* FAB */}
       <View style={[styles.fab, { bottom: 20 + insets.bottom }, shadow.lg]}>
-        <Pressable onPress={openAddModal} style={styles.fabPressable}>
+        <Pressable
+          onPress={openAddModal}
+          style={({ pressed }) => [
+            styles.fabPressable,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
           <LinearGradient
             colors={gradients.primary as any}
             start={{ x: 0, y: 0 }}
@@ -404,6 +429,7 @@ export default function AccountsScreen() {
                   value={formData.balance}
                   onChangeText={(t) => setFormData({ ...formData, balance: t })}
                   keyboardType="decimal-pad"
+                  returnKeyType="done"
                 />
 
                 <Text

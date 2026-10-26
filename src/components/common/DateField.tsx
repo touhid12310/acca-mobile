@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { TouchableOpacity, View } from 'react-native';
+import { Keyboard, TouchableOpacity, View } from 'react-native';
 
 
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
@@ -64,7 +64,12 @@ export default function DateField({
   return (
     <>
       <TouchableOpacity
-        onPress={() => !disabled && setShowPicker(true)}
+        onPress={() => {
+          if (disabled) return;
+          // An open decimal pad would otherwise stay over the picker on iOS.
+          Keyboard.dismiss();
+          setShowPicker(true);
+        }}
         activeOpacity={0.8}
         disabled={disabled}
       >

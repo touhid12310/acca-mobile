@@ -1,7 +1,14 @@
-import React from 'react';
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  StyleSheet,
+  View,
+  ActivityIndicator,
+  Platform,
+  useWindowDimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { Portal } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useTheme } from '../src/contexts/ThemeContext';
@@ -17,10 +24,37 @@ import { toDateInputValue } from '../src/utils/date';
 import { maybeAskForReview } from '../src/services/appReviewService';
 import analyticsService from '../src/services/analyticsService';
 
+// Opened as the only route (e.g. from the onboarding finish cards) there is
+// nothing to go back to, and router.back() would leave the user stuck here.
+const close = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)'));
+
 export default function TransactionModalScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
   const toast = useToast();
+  const navigation = useNavigation();
+
+  // On iOS this screen is a page sheet that a swipe down closes. Once the
+  // user has typed something (or scanned a receipt), turn the swipe off so a
+  // stray pull can't throw the transaction away — the sheet bounces back and
+  // the close button stays the way out. Android ignores gestureEnabled here.
+  const [isDirty, setIsDirty] = useState(false);
+  useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !isDirty });
+  }, [navigation, isDirty]);
+
+  // KeyboardAvoidingView measures itself from the top of the sheet but the
+  // keyboard from the top of the window, so it needs the sheet's top offset
+  // or the Save button stays under the keyboard. The iPhone sheet sits at the
+  // bottom of the window; the iPad form sheet is centred.
+  const { height: windowHeight } = useWindowDimensions();
+  const [sheetHeight, setSheetHeight] = useState(windowHeight);
+  const sheetGap = Math.max(0, windowHeight - sheetHeight);
+  const keyboardOffset = Platform.OS === 'ios' ? (Platform.isPad ? sheetGap / 2 : sheetGap) : 0;
+
+  // In dark mode the theme background is transparent (the app gradient shows
+  // through), but an iOS sheet has nothing behind it, so paint the surface.
+  const screenBackground = Platform.OS === 'ios' && isDark ? colors.surface : colors.background;
   const params = useLocalSearchParams<{
     id?: string;
     type?: string;
@@ -278,7 +312,7 @@ export default function TransactionModalScreen() {
       toast.success(
         variables.type === 'transfer' ? 'Transfer completed' : 'Transaction saved',
       );
-      router.back();
+      close();
       analyticsService.logEvent('transaction_created', {
         type: variables.type,
         source: params.chat_message_id ? 'chat' : 'manual',
@@ -395,7 +429,7 @@ export default function TransactionModalScreen() {
         });
       }
 
-      router.back();
+      close();
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Unable to update transaction');
@@ -418,41 +452,52 @@ export default function TransactionModalScreen() {
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
+  // Portal.Host: on iOS this screen is a separate native sheet, so the form's
+  // react-native-paper pickers must portal into it — the app-root host sits
+  // underneath the sheet and they would never be seen.
+
   // Show loading while fetching transaction data
   if (params.id && isFetching) {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: colors.background }]}
-        edges={['top', 'bottom']}
-      >
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
+      <Portal.Host>
+        <SafeAreaView
+          style={[styles.container, { backgroundColor: screenBackground }]}
+          edges={['top', 'bottom']}
+        >
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        </SafeAreaView>
+      </Portal.Host>
     );
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      edges={['top', 'bottom']}
-    >
-      <TransactionFormContent
-        onCancel={() => router.back()}
-        onSubmit={handleSubmit}
-        initialData={initialData}
-        isLoading={isLoading}
-        title={params.id ? 'Edit Transaction' : 'Add Transaction'}
-        applyDefaultCategory={!params.id}
-        autoScanMode={
-          params.scan_mode === 'camera' || params.scan_mode === 'gallery'
-            ? params.scan_mode
-            : undefined
-        }
-      />
-      {/* No accounts yet → must create one before adding a transaction. */}
-      <NoAccountGate />
-    </SafeAreaView>
+    <Portal.Host>
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: screenBackground }]}
+        edges={['top', 'bottom']}
+        onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
+      >
+        <TransactionFormContent
+          onCancel={close}
+          onSubmit={handleSubmit}
+          onDirtyChange={setIsDirty}
+          keyboardOffset={keyboardOffset}
+          initialData={initialData}
+          isLoading={isLoading}
+          title={params.id ? 'Edit Transaction' : 'Add Transaction'}
+          applyDefaultCategory={!params.id}
+          autoScanMode={
+            params.scan_mode === 'camera' || params.scan_mode === 'gallery'
+              ? params.scan_mode
+              : undefined
+          }
+        />
+        {/* No accounts yet → must create one before adding a transaction. */}
+        <NoAccountGate />
+      </SafeAreaView>
+    </Portal.Host>
   );
 }
 

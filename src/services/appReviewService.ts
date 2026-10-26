@@ -211,17 +211,38 @@ export const maybeAskForReview = async (trigger: ReviewTrigger): Promise<void> =
 const fallbackPlayUrl = (): string =>
   `https://play.google.com/store/apps/details?id=${Constants.expoConfig?.android?.package ?? "com.accounte.finance"}`;
 
-/** The admin-set store link for this phone, falling back to app.json's, then Play. */
+/**
+ * iOS may only link to the App Store: a Google Play link (the admin ios_url
+ * has held one) is broken for iPhone users and breaks App Review 2.3.10.
+ */
+const isAppStoreUrl = (url?: string | null): url is string =>
+  !!url && /^(https:\/\/(apps|itunes)\.apple\.com\/|itms-apps:\/\/)/i.test(url.trim());
+
+const isGooglePlayUrl = (url?: string | null): boolean =>
+  !!url && /play\.google\.com|market:\/\//i.test(url);
+
+const WEBSITE_URL = "https://accounte.com";
+
+/**
+ * The admin-set store link for this phone, falling back to app.json's, then
+ * Play (Android only). iOS gets null when no App Store link is known.
+ */
 const storeUrlForThisPlatform = async (): Promise<string | null> => {
   const config = await getCachedAppConfig();
   const appJsonUrl = getStoreReview()?.storeUrl() ?? null;
 
   if (Platform.OS === "ios") {
-    return config?.ios_url || appJsonUrl;
+    const iosUrl = config?.ios_url;
+    if (isAppStoreUrl(iosUrl)) return iosUrl.trim();
+    return isAppStoreUrl(appJsonUrl) ? appJsonUrl : null;
   }
 
   return config?.android_url || appJsonUrl || fallbackPlayUrl();
 };
+
+/** Whether "Rate AccountE" has a store page to open on this platform. */
+export const hasStoreListing = async (): Promise<boolean> =>
+  !!(await storeUrlForThisPlatform());
 
 /**
  * "Rate AccountE" on the More screen. Opens the store listing directly — the
@@ -229,8 +250,13 @@ const storeUrlForThisPlatform = async (): Promise<string | null> => {
  * Returns false when no store link is configured for this platform.
  */
 export const openStoreListing = async (): Promise<boolean> => {
-  const url = await storeUrlForThisPlatform();
+  let url = await storeUrlForThisPlatform();
   if (!url) return false;
+
+  // Open the App Store straight on "Write a Review".
+  if (Platform.OS === "ios" && !/[?&]action=/.test(url)) {
+    url = `${url}${url.includes("?") ? "&" : "?"}action=write-review`;
+  }
 
   // They chose to rate: no automatic prompt for the next 90 days.
   const state = await loadState();
@@ -244,12 +270,19 @@ export const openStoreListing = async (): Promise<boolean> => {
 export const shareApp = async (): Promise<void> => {
   const config = await getCachedAppConfig();
 
+  // iOS never shares a Google Play link: the share link, the App Store page,
+  // else the website.
   const url =
-    config?.share_url ||
-    (Platform.OS === "ios" ? config?.ios_url : config?.android_url) ||
-    config?.android_url ||
-    config?.ios_url ||
-    fallbackPlayUrl();
+    Platform.OS === "ios"
+      ? (config?.share_url && !isGooglePlayUrl(config.share_url)
+          ? config.share_url
+          : null) ||
+        (await storeUrlForThisPlatform()) ||
+        WEBSITE_URL
+      : config?.share_url ||
+        config?.android_url ||
+        config?.ios_url ||
+        fallbackPlayUrl();
   const message = (config?.share_message || DEFAULT_SHARE_MESSAGE).trim();
 
   // iOS shows the url as its own attachment; Android only sends `message`.
@@ -262,6 +295,7 @@ export const shareApp = async (): Promise<void> => {
 export default {
   startReviewTracking,
   maybeAskForReview,
+  hasStoreListing,
   openStoreListing,
   shareApp,
 };
