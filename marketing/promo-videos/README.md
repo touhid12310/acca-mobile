@@ -10,6 +10,8 @@ This folder holds the source for ten 56-second promo spots for AccountE (AI Mone
 | [`docs/04_DELIVERABLES.md`](docs/04_DELIVERABLES.md) | Per video: file names, one-line concept, title, caption, hashtags, QA result |
 | [`docs/05_QA_REPORT.md`](docs/05_QA_REPORT.md) | Technical QA, pacing, claims rules, fonts, WCAG contrast, captions, safe zones and audio |
 
+`videos/11_tutorial_intro` is a separate 20-second, 9:16, silent intro for the Bengali tutorial "recording transactions with AI". It is 1080×1920 at 30 fps and has no audio, so the narrator's voice-over can be added in editing. Render it with `node tools/render.mjs 11_tutorial_intro:9x16`.
+
 The rendered MP4s (`AccountE_NN_<Style>_<16x9|9x16>.mp4`, 10–26 MiB each) are delivered separately and are not committed.
 
 ## How it works
