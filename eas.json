@@ -40,7 +40,10 @@
       },
       "ios": {
         "ascAppId": "6827135074",
-        "appleTeamId": "Z4Y3SDRLA6"
+        "appleTeamId": "Z4Y3SDRLA6",
+        "ascApiKeyPath": "./AuthKey_3X65A9K8TM.p8",
+        "ascApiKeyIssuerId": "381455c7-e922-4038-a99a-340e177f4dc7",
+        "ascApiKeyId": "3X65A9K8TM"
       }
     }
   }

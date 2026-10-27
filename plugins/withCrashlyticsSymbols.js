@@ -1,4 +1,6 @@
-const { withXcodeProject } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
+const { withDangerousMod, withXcodeProject } = require('@expo/config-plugins');
 
 // iOS: upload the app's dSYM files to Firebase Crashlytics after each build so
 // native crash reports show function names and lines instead of raw addresses.
@@ -19,7 +21,28 @@ const SHELL_SCRIPT = [
   'else echo "warning: Crashlytics run script not found, skipping dSYM upload"; fi',
 ].join(' ');
 
+// RNFirebase's own "[RNFB] Crashlytics Configuration" phase (autolinked from
+// its react-native.config.js) runs upload-symbols with
+// -gsp "${PROJECT_DIR}/GoogleService-Info.plist" when Firebase comes through
+// SPM, and `set -e` makes a missing file fail the archive. Expo copies the
+// plist into ios/<ProjectName>/, so also put a copy in ios/ itself.
+const withPlistAtProjectDir = (config) =>
+  withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const source = config.ios?.googleServicesFile;
+      if (source) {
+        fs.copyFileSync(
+          path.resolve(config.modRequest.projectRoot, source),
+          path.join(config.modRequest.platformProjectRoot, 'GoogleService-Info.plist')
+        );
+      }
+      return config;
+    },
+  ]);
+
 module.exports = function withCrashlyticsSymbols(config) {
+  config = withPlistAtProjectDir(config);
   return withXcodeProject(config, (config) => {
     const project = config.modResults;
     const phases = project.hash.project.objects.PBXShellScriptBuildPhase || {};
