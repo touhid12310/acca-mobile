@@ -89,53 +89,60 @@
     const back = E.div('abs', wrap, null, { left: cx - 520 + 'px', top: phY + phH / 2 - 560 + 'px', width: '1040px', height: '1120px', borderRadius: '50%', background: 'radial-gradient(closest-side,rgba(34,211,238,.22),rgba(37,99,235,.18) 50%,rgba(37,99,235,0))' });
     const ph = UI.phone(wrap, phX, phY, sc0);
     ph.style.boxShadow = '0 0 0 2px rgba(103,232,249,.28), 0 50px 120px rgba(0,3,40,.6), 0 0 90px rgba(34,211,238,.18)';
-    const chat = UI.chat(ph.screen, { date: 'Oct 27, 2026' });
-    chat.bot('Hi! Tell me about a transaction and I’ll record it for you.', 560);
+    const A2 = UI.assistant(ph.screen);
     E.ft(wrap, 3.85, { autoAlpha: 0, y: 260, scale: 0.94, transformOrigin: '50% 60%' }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.95, ease: 'power3.out' });
     E.to(wrap, 4.8, { scale: 1.045, duration: 3.2, ease: 'none' });
-    // typing "Lunch 350" in the message field; the mic turns into a send button while typing
-    const field = chat.input.querySelector('.ph'), btn = chat.input.querySelector('.mic');
-    const micHTML = btn.innerHTML, sendHTML = E.icon('send-horizontal', 40, '#fff', 2.2);
+    // typing the app's own example into the input; the mic turns into a send button while typing
+    const MSG = 'Lunch, $450, cash';
+    const field = A2.field, btn = A2.btn, micHTML = btn.innerHTML, sendHTML = E.icon('send-horizontal', 44, '#fff', 2.2);
     E.frame((t) => {
       if (t < 3.8 || t > 8.7) return;
-      const typing = t >= 4.75 && t < 5.72;
-      let html = 'Message';
-      if (typing) { const n = Math.round(Math.min(1, (t - 4.75) / 0.7) * 9); html = 'Lunch 350'.slice(0, n) + (t < 5.45 || Math.floor(t * 4) % 2 ? '<i class="caret"></i>' : ''); }
-      if (field.__l !== html) { field.innerHTML = html; field.__l = html; field.style.color = typing ? '#0f172a' : '#94a3b8'; }
+      const typing = t >= 4.55 && t < 5.25;
+      let html = 'Ask AccountE anything…';
+      if (typing) { const n = Math.round(Math.min(1, (t - 4.55) / 0.55) * MSG.length); html = MSG.slice(0, n) + (t < 5.1 || Math.floor(t * 4) % 2 ? '<i class="caret"></i>' : ''); }
+      if (field.__l !== html) { field.innerHTML = html; field.__l = html; field.style.color = typing ? '#0f172a' : '#64748b'; }
       const st = typing ? 'send' : 'mic';
-      if (btn.__s !== st) { btn.innerHTML = typing ? sendHTML : micHTML; btn.style.background = typing ? '#6366f1' : '#22c55e'; btn.__s = st; }
+      if (btn.__s !== st) { btn.innerHTML = typing ? sendHTML : micHTML; btn.__s = st; }
     });
-    E.ft(btn, 5.6, { scale: 1 }, { scale: 0.86, duration: 0.1, ease: 'power2.out' }); E.to(btn, 5.7, { scale: 1, duration: 0.25, ease: 'back.out(3)' });
-    // user bubble
-    const uRow = chat.user('Lunch 350');
-    E.tl.set(uRow, { display: 'none' }, 0); E.tl.set(uRow, { display: 'flex' }, 5.75);
-    E.ft(uRow.firstChild, 5.75, { autoAlpha: 0, y: 26, scale: 0.94, transformOrigin: '100% 100%' }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.6)' });
-    // AI bubble: processing → recorded
-    const bRow = chat.bot('', 600); const bb = bRow.querySelector('.bb');
-    E.tl.set(bRow, { display: 'none' }, 0); E.tl.set(bRow, { display: 'flex' }, 6.0);
-    const proc = `<span style="display:inline-flex;align-items:center;font:500 29px var(--ui)"><span class="shim" style="background:linear-gradient(90deg,#64748b 0%,#64748b 38%,#6366f1 50%,#64748b 62%,#64748b 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent">Recording transaction</span><span class="dots3"><i></i><i></i><i></i></span></span>`;
-    const row = (k, v, extra) => `<span style="color:#64748b">${k}</span><span style="text-align:right;${extra || ''}">${v}</span>`;
-    const done = `<div style="display:flex;align-items:center;gap:14px"><span style="width:50px;height:50px;border-radius:50%;background:${GREEN};display:flex;align-items:center;justify-content:center;flex:none">${E.icon('check', 32, '#fff', 3)}</span><span style="font:700 30px var(--ui);color:#0f172a">Transaction recorded</span></div>
-      <div style="margin-top:18px;background:#fff;border-radius:22px;padding:20px 26px;font:500 27px var(--ui);color:#0f172a;display:grid;grid-template-columns:auto 1fr;gap:12px 26px">${row('Item', 'Lunch')}${row('Amount', 'BDT 350.00', 'color:#dc2626;font-weight:700')}${row('Category', 'Food &amp; Dining')}${row('Date', 'Today')}</div>`;
+    E.ft(btn, 5.12, { scale: 1 }, { scale: 0.86, duration: 0.1, ease: 'power2.out' }); E.to(btn, 5.22, { scale: 1, duration: 0.25, ease: 'back.out(3)' });
+    // the empty state gives way to the conversation
+    E.to(A2.empty, 5.25, { autoAlpha: 0, y: -50, duration: 0.35, ease: 'power2.in' });
+    const uRow = E.div('', A2.list, `<div style="max-width:560px;background:linear-gradient(135deg,#6366F1,#7C5CF5);color:#fff;font:500 31px/1.35 var(--ui);padding:22px 30px;border-radius:30px 30px 8px 30px">${MSG}</div>`, { display: 'flex', justifyContent: 'flex-end' });
+    E.tl.set(uRow, { display: 'none' }, 0); E.tl.set(uRow, { display: 'flex' }, 5.4);
+    E.ft(uRow.firstChild, 5.4, { autoAlpha: 0, y: 26, scale: 0.94, transformOrigin: '100% 100%' }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.4, ease: 'back.out(1.6)' });
+    // AI reply: reading → suggested transaction → confirmed by the user ("AccountE suggests, you confirm")
+    const bRow = E.div('', A2.list, `${A2.av(58, 16, 32)}<div class="bb"></div>`, { display: 'flex', alignItems: 'flex-start', gap: '16px' });
+    const bb = bRow.querySelector('.bb');
+    E.tl.set(bRow, { display: 'none' }, 0); E.tl.set(bRow, { display: 'flex' }, 5.65);
+    const proc = `<div style="background:#fff;border-radius:8px 30px 30px 30px;padding:22px 28px;box-shadow:0 4px 16px rgba(15,23,42,.06);display:inline-flex;align-items:center;font:500 29px var(--ui)"><span class="shim" style="background:linear-gradient(90deg,#64748b 0%,#64748b 38%,#6366f1 50%,#64748b 62%,#64748b 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent">Reading your message</span><span class="dots3"><i></i><i></i><i></i></span></div>`;
+    const kv = (k, v, extra) => `<span style="color:#64748b">${k}</span><span style="text-align:right;color:#0f172a;${extra || ''}">${v}</span>`;
+    const card = (saved) => `<div style="width:620px;background:#fff;border-radius:8px 30px 30px 30px;padding:26px 28px;box-shadow:0 6px 24px rgba(15,23,42,.08);font:500 28px var(--ui)">
+      <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:700 22px var(--ui);letter-spacing:.08em;color:#6366F1">SUGGESTED TRANSACTION</span>${saved ? `<span style="display:inline-flex;align-items:center;gap:8px;font:700 22px var(--ui);color:#15803D;background:#DCFCE7;border-radius:999px;padding:6px 14px">${E.icon('check', 22, '#15803D', 3)}Saved</span>` : `<span style="font:700 22px var(--ui);color:#DC2626;background:#FEE2E2;border-radius:999px;padding:6px 14px">Expense</span>`}</div>
+      <div style="margin-top:18px;display:grid;grid-template-columns:auto 1fr;gap:14px 26px">${kv('Item', 'Lunch')}${kv('Amount', '$450.00', 'color:#DC2626;font-weight:700')}${kv('Category', 'Food &amp; Dining')}${kv('Account', 'Cash')}${kv('Date', 'Today')}</div>
+      <div style="margin-top:22px;height:76px">${saved ? `<div style="height:76px;border-radius:20px;background:#DCFCE7;color:#15803D;font:700 28px var(--ui);display:flex;align-items:center;justify-content:center;gap:12px">${E.icon('circle-check', 34, '#15803D', 2.4)}Saved to transactions</div>` : `<div style="display:flex;gap:16px;height:76px"><div style="flex:1;border:2px solid #E2E8F0;border-radius:20px;display:flex;align-items:center;justify-content:center;font:600 28px var(--ui);color:#334155">Edit</div><div class="cf" style="flex:1.4;position:relative;overflow:hidden;background:#6366F1;border-radius:20px;display:flex;align-items:center;justify-content:center;font:700 28px var(--ui);color:#fff">Confirm<i class="rip" style="position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px;border-radius:50%;background:rgba(255,255,255,.5);opacity:0"></i></div></div>`}</div></div>`;
     E.frame((t) => {
       if (t < 3.8 || t > 8.7) return;
-      const st = t < 6.85 ? 'p' : 'd';
-      if (bb.__s !== st) { bb.innerHTML = st === 'p' ? proc : done; bb.__s = st; }
-      if (st === 'p') { const sh = bb.querySelector('.shim'); sh.style.backgroundPosition = `${(100 - ((t - 6.0) / 0.8) * 100).toFixed(1)}% 0`; bb.querySelectorAll('.dots3 i').forEach((d, i) => { d.style.transform = `translateY(${(-Math.max(0, Math.sin((t * 7 - i * 0.9))) * 8).toFixed(1)}px)`; }); }
+      const st = t < 6.4 ? 'p' : t < 7.05 ? 's' : 'd';
+      if (bb.__s !== st) { bb.innerHTML = st === 'p' ? proc : card(st === 'd'); bb.__s = st; }
+      if (st === 'p') { const sh = bb.querySelector('.shim'); sh.style.backgroundPosition = `${(100 - ((t - 5.65) / 0.75) * 100).toFixed(1)}% 0`; bb.querySelectorAll('.dots3 i').forEach((d, i) => { d.style.transform = `translateY(${(-Math.max(0, Math.sin((t * 7 - i * 0.9))) * 8).toFixed(1)}px)`; }); }
+      if (st === 's') { const cf = bb.querySelector('.cf'), rip = bb.querySelector('.rip'); const u = (t - 6.82) / 0.23; cf.style.transform = `scale(${(u > 0 && u < 1 ? 1 - Math.sin(u * Math.PI) * 0.05 : 1).toFixed(3)})`; rip.style.opacity = (u > 0 ? Math.max(0, 0.9 - u * 0.9) : 0).toFixed(2); rip.style.transform = `scale(${(u > 0 ? 1 + u * 7 : 1).toFixed(2)})`; }
     });
-    E.ft(bb, 6.0, { autoAlpha: 0, y: 20, scale: 0.95, transformOrigin: '0% 100%' }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.35, ease: 'power3.out' });
-    E.to(bb, 6.85, { scale: 0.97, duration: 0.08 }); E.to(bb, 6.93, { scale: 1, duration: 0.35, ease: 'back.out(2)' });
+    E.ft(bb, 5.65, { autoAlpha: 0, y: 20, scale: 0.95, transformOrigin: '0% 0%' }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.35, ease: 'power3.out' });
+    E.to(bb, 6.4, { scale: 0.98, duration: 0.06 }); E.to(bb, 6.46, { scale: 1, duration: 0.3, ease: 'back.out(2)' });
+    // a touch indicator taps "Confirm" (tutorial style)
+    const touch = E.div('abs', ph.screen, '<i style="position:absolute;inset:0;border-radius:50%;background:rgba(15,23,42,.18);border:4px solid rgba(255,255,255,.9);box-shadow:0 4px 14px rgba(0,0,0,.25)"></i>', { width: '78px', height: '78px', zIndex: 70, opacity: 0 });
+    E.frame((t) => { if (t < 6.6 || t > 7.35) { touch.style.opacity = 0; return; } const cf = bb.querySelector('.cf') || touch.__cf; if (cf) { touch.__cf = cf; const sr = ph.screen.getBoundingClientRect(), r = cf.getBoundingClientRect(), k = sr.width / ph.screen.offsetWidth; touch.style.left = ((r.left - sr.left) / k + (r.width / k) * 0.5 - 39).toFixed(1) + 'px'; touch.style.top = ((r.top - sr.top) / k + (r.height / k) * 0.5 - 39).toFixed(1) + 'px'; } const a = t < 6.75 ? (t - 6.6) / 0.15 : t > 7.15 ? Math.max(0, 1 - (t - 7.15) / 0.2) : 1; touch.style.opacity = a.toFixed(2); touch.style.transform = `scale(${(t > 6.82 && t < 7.0 ? 0.85 : 1)})`; });
     // AI processing: light sweep across the screen + cyan rim pulse
     const sweep = E.div('fill', ph.screen, null, { background: 'linear-gradient(115deg,rgba(103,232,249,0) 38%,rgba(103,232,249,.22) 50%,rgba(103,232,249,0) 62%)', backgroundSize: '300% 100%', zIndex: 60, opacity: 0 });
-    E.ft(sweep, 6.0, { opacity: 0, backgroundPosition: '100% 0' }, { opacity: 1, backgroundPosition: '0% 0', duration: 0.8, ease: 'power1.inOut' }); E.to(sweep, 6.8, { opacity: 0, duration: 0.2 });
+    E.ft(sweep, 5.65, { opacity: 0, backgroundPosition: '100% 0' }, { opacity: 1, backgroundPosition: '0% 0', duration: 0.75, ease: 'power1.inOut' }); E.to(sweep, 6.4, { opacity: 0, duration: 0.15 });
     const rim = E.div('abs', wrap, null, { left: phX - 6 + 'px', top: phY - 6 + 'px', width: phW + 12 + 'px', height: phH + 12 + 'px', borderRadius: '44px', boxShadow: `0 0 0 3px ${CYAN}, 0 0 60px rgba(34,211,238,.55)`, opacity: 0 });
-    E.ft(rim, 6.0, { opacity: 0 }, { opacity: 0.9, duration: 0.35 }); E.to(rim, 6.6, { opacity: 0, duration: 0.5 });
+    E.ft(rim, 5.65, { opacity: 0 }, { opacity: 0.9, duration: 0.3 }); E.to(rim, 6.2, { opacity: 0, duration: 0.45 });
     // success chip (readable at phone size)
     const chip = E.div('abs', wrap, `<span class="ck" style="position:relative;width:72px;height:72px;border-radius:50%;background:${GREEN};display:flex;align-items:center;justify-content:center;box-shadow:0 0 30px rgba(34,197,94,.55)">${E.icon('check', 44, '#fff', 3)}<i class="rp" style="position:absolute;inset:-6px;border-radius:50%;border:3px solid rgba(52,211,153,.8)"></i></span><span style="font:700 42px Urbanist;color:#fff;letter-spacing:-.01em">Transaction recorded</span>`, { left: cx + 'px', top: phY + phH - 150 + 'px', display: 'flex', alignItems: 'center', gap: '22px', padding: '18px 38px 18px 18px', borderRadius: '999px', background: 'linear-gradient(135deg,rgba(15,30,80,.92),rgba(10,24,70,.88))', border: '2px solid rgba(52,211,153,.55)', boxShadow: '0 24px 60px rgba(0,3,30,.55), 0 0 40px rgba(34,197,94,.18)', whiteSpace: 'nowrap' });
     gsap.set(chip, { xPercent: -50 });
-    E.ft(chip, 7.0, { autoAlpha: 0, y: 40, scale: 0.85 }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.55, ease: 'back.out(1.7)' });
+    E.ft(chip, 7.15, { autoAlpha: 0, y: 40, scale: 0.85 }, { autoAlpha: 1, y: 0, scale: 1, duration: 0.55, ease: 'back.out(1.7)' });
     const rp = chip.querySelector('.rp');
-    E.frame((t) => { if (t < 7.0 || t > 8.7) return; const u = ((t - 7.15) % 0.9) / 0.9; rp.style.transform = `scale(${(1 + Math.max(0, u) * 0.45).toFixed(3)})`; rp.style.opacity = (t < 7.15 ? 0 : 0.8 * (1 - u)).toFixed(3); });
+    E.frame((t) => { if (t < 7.15 || t > 8.7) return; const u = ((t - 7.3) % 0.9) / 0.9; rp.style.transform = `scale(${(1 + Math.max(0, u) * 0.45).toFixed(3)})`; rp.style.opacity = (t < 7.3 ? 0 : 0.8 * (1 - u)).toFixed(3); });
     E.to(head, 8.0, { autoAlpha: 0, y: -30, duration: 0.45, ease: 'power2.in' });
     E.to(wrap, 8.0, { autoAlpha: 0, y: 200, scale: 0.92, duration: 0.6, ease: 'power2.in' }); }
 

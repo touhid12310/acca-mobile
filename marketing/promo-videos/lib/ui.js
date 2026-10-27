@@ -101,6 +101,37 @@
     };
     return api;
   };
+  /* ---------- AI Chat, current UX (Oct 2026 screenshot): header, "Hi, I'm AccountE." empty state,
+     four suggestion cards, "you confirm" note, input pill + mic button. Positions are the screenshot's ×0.946. ---------- */
+  UI.assistant = function (screen) {
+    const IND = '#6366F1', SL = '#64748b', INK = '#0f172a';
+    screen.style.background = '#F5F6FA';
+    const st = UI.status(screen); st.style.height = '95px'; st.style.background = '#F8F9FB';
+    const hdr = E.div('abs', screen, null, { left: 0, right: 0, top: '95px', height: '125px', background: '#EEF0F4' });
+    E.wordmark(hdr, { width: 310, left: 38, top: 39, color: '#0b1220' });
+    E.div('abs', hdr, I('bell', 46, INK, 2), { right: '60px', top: '40px' });
+    const av = (sz, r, ic) => `<div style="width:${sz}px;height:${sz}px;border-radius:${r}px;background:linear-gradient(135deg,#5B5FEF,#7062F6);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 20px rgba(99,102,241,.28)">${I('sparkles', ic, '#fff', 2)}</div>`;
+    E.div('abs', screen, av(106, 26, 52) + `<i style="position:absolute;right:-4px;bottom:-4px;width:26px;height:26px;border-radius:50%;background:#22c55e;border:4px solid #F5F6FA"></i>`, { left: '38px', top: '248px' });
+    E.div('abs', screen, `<div style="display:flex;align-items:center;gap:16px"><span style="font:700 44px var(--ui);color:${INK}">AccountE</span><span style="font:700 25px var(--ui);color:#4F46E5;background:#E8EAFD;border-radius:999px;padding:5px 15px">AI</span></div><div style="font:400 29px var(--ui);color:${SL};margin-top:6px">Your AI bookkeeper, always on</div>`, { left: '172px', top: '258px' });
+    E.div('abs', screen, `${I('calendar-days', 34, IND, 2)}<span>Today</span>`, { right: '41px', top: '263px', height: '76px', padding: '0 30px', display: 'flex', alignItems: 'center', gap: '14px', background: '#fff', border: '2px solid #E8EAF0', borderRadius: '40px', font: `700 31px var(--ui)`, color: INK });
+    // empty state
+    const empty = E.div('abs', screen, null, { left: 0, right: 0, top: '380px', height: '1060px' });
+    E.div('abs', empty, av(143, 34, 84), { left: '359px', top: '8px' });
+    E.div('abs', empty, 'Hi, I’m AccountE.', { left: 0, right: 0, top: '186px', textAlign: 'center', font: `800 56px var(--ui)`, color: INK, letterSpacing: '-.01em' });
+    E.div('abs', empty, 'Snap a receipt, say what you spent, or ask about<br>your money. I’ll keep your books tidy.', { left: 0, right: 0, top: '262px', textAlign: 'center', font: `400 32px/51px var(--ui)`, color: SL });
+    const CARDS = [['scan-line', 'Scan a receipt', 40, 405, 216], ['mic', '“Lunch, $450, cash”', 443, 405, 216], ['chart-column', 'Where did my money<br>go this month?', 40, 653, 252], ['piggy-bank', 'How are my budgets<br>doing?', 443, 653, 252]];
+    const cards = CARDS.map(([ic, txt, x, y, h]) => E.div('abs', empty, `<div style="width:76px;height:76px;border-radius:18px;background:#EEF0FF;display:flex;align-items:center;justify-content:center">${I(ic, 38, IND, 2)}</div><div style="position:absolute;left:28px;right:20px;${h > 230 ? 'top:122px' : 'top:132px'};font:600 31px/46px var(--ui);color:${INK}">${txt}</div>`, { left: x + 'px', top: y + 'px', width: '377px', height: h + 'px', padding: '28px', boxSizing: 'border-box', background: '#fff', borderRadius: '34px', boxShadow: '0 2px 10px rgba(15,23,42,.05)' }));
+    E.div('abs', empty, `<span style="position:absolute;left:58px;top:2px">${I('lock', 30, SL, 2)}</span>AccountE suggests, you confirm. Nothing is saved<br>without you.`, { left: 0, right: 0, top: '944px', textAlign: 'center', font: `400 27px/40px var(--ui)`, color: SL, paddingLeft: '40px' });
+    // conversation list (bottom-anchored above the input band)
+    const list = E.div('abs', screen, null, { left: '32px', right: '32px', bottom: '410px', display: 'flex', flexDirection: 'column', gap: '26px' });
+    // input band
+    const band = E.div('abs', screen, null, { left: 0, right: 0, top: '1470px', height: '166px', background: '#F8F9FB', borderTop: '2px solid #E9EBF0' });
+    const pill = E.div('abs', band, `<span class="ph" style="flex:1;font:400 34px var(--ui);color:${SL};white-space:nowrap;overflow:hidden">Ask AccountE anything…</span>${I('paperclip', 44, SL, 2)}<span style="width:40px"></span>${I('scan-line', 44, SL, 2)}`, { left: '21px', top: '20px', width: '676px', height: '121px', borderRadius: '61px', background: '#EEF0F5', display: 'flex', alignItems: 'center', padding: '0 38px', boxSizing: 'border-box' });
+    const btn = E.div('abs', band, I('mic', 46, '#fff', 2.2), { left: '717px', top: '20px', width: '123px', height: '123px', borderRadius: '50px', background: IND, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(99,102,241,.35)' });
+    const bar = UI.tabbar(screen, 'AI Chat'); bar.style.bottom = '72px'; bar.style.height = '152px';
+    E.div('abs', screen, '<i style="display:block;width:150px;height:9px;border-radius:9px;background:#1f2937;opacity:.55;margin:32px auto 0"></i>', { left: 0, right: 0, bottom: 0, height: '72px', background: '#fff' });
+    return { empty, cards, list, field: pill.querySelector('.ph'), pill, btn, av };
+  };
   UI.txCard = function (merchant, meta, amount, kind) {
     const exp = kind !== 'income';
     return `<div style="margin-top:16px;background:#fff;border-radius:22px;padding:22px 24px;display:flex;align-items:center;gap:18px;box-shadow:0 2px 8px rgba(15,23,42,.06)"><div style="width:52px;height:52px;border-radius:50%;background:${exp ? '#ef4444' : '#10b981'};display:flex;align-items:center;justify-content:center;flex:none">${I(exp ? 'arrow-up' : 'arrow-down', 30, '#fff', 3)}</div><div style="flex:1"><div style="font:600 29px var(--ui)">${merchant}</div><div style="font:400 23px var(--ui);color:#64748b;margin-top:4px">${meta}</div></div><div style="font:600 30px var(--ui);color:${exp ? '#ef4444' : '#10b981'}">${amount}</div></div>`;
