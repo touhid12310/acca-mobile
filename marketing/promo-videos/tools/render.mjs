@@ -40,7 +40,7 @@ async function renderJob(spec) {
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log(`[${spec}] ${m.type()}: ${m.text()}`); });
   page.on('pageerror', (e) => console.log(`[${spec}] PAGEERROR: ${e.message}`));
-  await page.goto(`http://127.0.0.1:${PORT}/videos/${id}/index.html?ar=${ar}`, { waitUntil: 'load' });
+  await page.goto(`http://127.0.0.1:${PORT}/videos/${id}/index.html?ar=${ar}${process.env.CUES ? '&cues=' + encodeURIComponent(process.env.CUES) : ''}`, { waitUntil: 'load' });   // CUES="voice:5.2,s3:11.4" retimes videos that read a cue table
   await page.waitForFunction(() => window.__ready === true, null, { timeout: 120000 });
   const meta = await page.evaluate(() => window.__meta());
   const outDir = path.join(ROOT, 'out', id); fs.mkdirSync(outDir, { recursive: true });

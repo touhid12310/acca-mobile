@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AccountE Outro Preview</title>
+<style>
+  :root { --bg: #0b1020; --panel: #121a33; --line: #26315a; --text: #e6ecff; --muted: #9fb0d3; --accent: #22d3ee; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; display: flex; gap: 24px; padding: 20px; min-height: 100vh; }
+  .stage { flex: none; width: 405px; height: 720px; border-radius: 22px; overflow: hidden; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); position: relative; }
+  .stage iframe { width: 1080px; height: 1920px; border: 0; transform: scale(.375); transform-origin: 0 0; position: absolute; left: 0; top: 0; }
+  .side { flex: 1; min-width: 320px; max-width: 760px; display: flex; flex-direction: column; gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 4px; } h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+  .row { display: flex; align-items: center; gap: 12px; }
+  button { background: var(--accent); color: #03122e; border: 0; border-radius: 10px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .time { font: 600 16px ui-monospace, monospace; min-width: 120px; }
+  .track { position: relative; height: 54px; margin-top: 10px; }
+  .track input { position: absolute; left: 0; right: 0; top: 18px; width: 100%; }
+  .seg { position: absolute; top: 0; height: 14px; border-radius: 4px; font-size: 10px; line-height: 14px; padding-left: 4px; color: #03122e; overflow: hidden; white-space: nowrap; }
+  .mk { position: absolute; top: 40px; font-size: 10px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; cursor: pointer; }
+  .mk::before { content: ''; position: absolute; left: 50%; top: -8px; width: 1px; height: 7px; background: var(--muted); }
+  code, textarea { font: 12px ui-monospace, monospace; }
+  textarea { width: 100%; height: 64px; background: #0b1020; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  pre { background: #0b1020; border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow-x: auto; margin: 6px 0 0; }
+  table { border-collapse: collapse; width: 100%; } td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; } td:first-child { color: var(--accent); white-space: nowrap; font-family: ui-monospace, monospace; }
+  @media (max-width: 900px) { body { flex-direction: column; align-items: center; } .side { width: 100%; } }
+</style>
+</head>
+<body>
+  <div class="stage"><iframe id="f" title="AccountE outro"></iframe></div>
+  <div class="side">
+    <div class="card">
+      <h1>AccountE · 20 s tutorial outro</h1>
+      <div class="row">
+        <button id="play">Play</button><button class="ghost" id="restart">Restart</button>
+        <span class="time" id="tm">0.00 s</span><span id="scene" style="color:var(--muted)"></span>
+      </div>
+      <div class="track" id="track"><input type="range" id="scrub" min="0" max="20" step="0.0333" value="0"></div>
+    </div>
+    <div class="card">
+      <h2>Retime to the final voiceover</h2>
+      <p style="margin:0 0 8px;color:var(--muted)">Edit any cue (seconds) and press Apply. The animation reloads with the new timing; the same string works on the render command.</p>
+      <textarea id="cues"></textarea>
+      <div class="row" style="margin-top:8px"><button id="apply">Apply</button><button class="ghost" id="reset">Reset to defaults</button></div>
+      <h2 style="margin-top:14px">Export (1080 × 1920 · 30 fps · H.264)</h2>
+      <pre id="cmd"></pre>
+    </div>
+    <div class="card">
+      <h2>Cues</h2>
+      <table id="tbl"></table>
+    </div>
+  </div>
+<script>
+  const DEF = { phone: 0, recorded: 2.0, s2: 4.0, text: 4.0, voice: 5.0, receipt: 6.0, email: 7.2, sms: 8.4, all: 9.6, s3: 11.0, b2: 12.5, b3: 14.0, s4: 16.0, logo: 16.9, tag: 17.5 };
+  const NOTE = { phone: 'S1 phone floats in', recorded: 'Green check · "Transaction Recorded!"', s2: 'Scene 2 starts', text: 'Text card', voice: 'Voice card', receipt: 'Receipt Scan card', email: 'Email card', sms: 'SMS card', all: '2-2-1 grid · "Your Money. Your Way."', s3: 'Save Time', b2: 'Less Manual Work', b3: 'All in One Place', s4: 'Light trails', logo: 'AccountE logo', tag: 'Tagline' };
+  const SCENES = [['S1 Recorded', 0, 's2', '#67e8f9'], ['S2 Five ways', 's2', 's3', '#38bdf8'], ['S3 Benefits', 's3', 's4', '#818cf8'], ['S4 Brand', 's4', 20, '#34d399']];
+  const qs = new URLSearchParams(location.search);
+  const cueStr = qs.get('cues') || '';
+  const cues = Object.assign({}, DEF);
+  cueStr.split(',').filter(Boolean).forEach((kv) => { const [k, v] = kv.split(':'); if (k in cues && !isNaN(+v)) cues[k] = +v; });
+  const f = document.getElementById('f'), scrub = document.getElementById('scrub'), tm = document.getElementById('tm'), sceneEl = document.getElementById('scene');
+  f.src = 'index.html?ar=9x16' + (cueStr ? '&cues=' + encodeURIComponent(cueStr) : '');
+  document.getElementById('cues').value = Object.entries(cues).map(([k, v]) => `${k}:${v}`).join(',');
+  const changed = Object.entries(cues).filter(([k, v]) => DEF[k] !== v).map(([k, v]) => `${k}:${v}`).join(',');
+  document.getElementById('cmd').textContent = `cd marketing/promo-videos\npython3 tools/mkpage.py\n${changed ? `CUES="${changed}" ` : ''}node tools/render.mjs 18_outro20:9x16\n# → out/18_outro20/video_9x16.mp4 (H.264, 1080×1920, 30 fps, 600 frames, silent)`;
+  // timeline segments + cue markers
+  const track = document.getElementById('track'), val = (x) => (typeof x === 'string' ? cues[x] : x);
+  SCENES.forEach(([n, a, b, c]) => { const s = document.createElement('div'); s.className = 'seg'; s.style.left = (val(a) / 20 * 100) + '%'; s.style.width = ((val(b) - val(a)) / 20 * 100) + '%'; s.style.background = c; s.textContent = n; track.appendChild(s); });
+  Object.entries(cues).forEach(([k, v]) => { if (k === 'phone' || k === 's2') return; const m = document.createElement('div'); m.className = 'mk'; m.style.left = (v / 20 * 100) + '%'; m.textContent = k; m.onclick = () => go(v); track.appendChild(m); });
+  document.getElementById('tbl').innerHTML = Object.entries(cues).map(([k, v]) => `<tr><td>${k}</td><td>${v.toFixed(2)} s</td><td>${NOTE[k]}</td></tr>`).join('');
+  // playback
+  let t = 0, playing = false, last = 0;
+  const go = (x) => { t = Math.max(0, Math.min(20, x)); scrub.value = t; tm.textContent = t.toFixed(2) + ' s'; const sc = SCENES.find(([, a, b]) => t >= val(a) && t < val(b)); sceneEl.textContent = sc ? sc[0] : 'S4 Brand'; try { f.contentWindow.seek && f.contentWindow.seek(t); } catch (e) {} };
+  const tick = (now) => { if (!playing) return; t += (now - last) / 1000; last = now; if (t >= 20) { t = 20; playing = false; document.getElementById('play').textContent = 'Play'; } go(t); requestAnimationFrame(tick); };
+  document.getElementById('play').onclick = (e) => { playing = !playing; e.target.textContent = playing ? 'Pause' : 'Play'; if (playing) { if (t >= 20) t = 0; last = performance.now(); requestAnimationFrame(tick); } };
+  document.getElementById('restart').onclick = () => go(0);
+  scrub.oninput = () => go(+scrub.value);
+  f.onload = () => { const w = setInterval(() => { if (f.contentWindow.__ready) { clearInterval(w); go(t); } }, 100); };
+  document.getElementById('apply').onclick = () => { location.search = '?cues=' + encodeURIComponent(document.getElementById('cues').value.replace(/\s+/g, '')); };
+  document.getElementById('reset').onclick = () => { location.search = ''; };
+</script>
+</body>
+</html>

@@ -12,6 +12,11 @@ This folder holds the source for ten 56-second promo spots for AccountE (AI Mone
 
 `videos/11_tutorial_intro` is a separate 20-second, 9:16, silent intro for the Bengali tutorial "recording transactions with AI". It is 1080×1920 at 30 fps and has no audio, so the narrator's voice-over can be added in editing. Render it with `node tools/render.mjs 11_tutorial_intro:9x16`.
 
+`videos/18_outro20` is the 20-second tutorial outro, synced to its Bengali voice-over. Every beat hangs off a `CUE` table at the top of `video.js`.
+- **Preview:** serve the folder (`npx http-server .` or `python3 -m http.server`) and open `videos/18_outro20/preview.html`. It has a scrubber, play/pause, cue markers and a retiming field.
+- **Render with the default cues:** `node tools/render.mjs 18_outro20:9x16`.
+- **Render retimed:** `CUES="voice:5.2,s3:11.4" node tools/render.mjs 18_outro20:9x16`.
+
 The rendered MP4s (`AccountE_NN_<Style>_<16x9|9x16>.mp4`, 10–26 MiB each) are delivered separately and are not committed.
 
 ## How it works
