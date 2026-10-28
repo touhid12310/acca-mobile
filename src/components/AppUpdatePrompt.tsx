@@ -26,12 +26,7 @@ const RECHECK_MS = 60 * 60 * 1000;
 export function AppUpdatePrompt() {
   const { locked, privacyCover, ready } = useAppLock();
   const { colors, isDark } = useTheme();
-  // TEMP PREVIEW (reverted after the screenshot): force a decision on web.
-  const [decision, setDecision] = useState<UpdateDecision>(
-    Platform.OS === 'web'
-      ? { kind: String(globalThis.location?.search).includes('required') ? 'required' : 'available', version: '1.9.3', storeUrl: 'https://example.test' }
-      : null,
-  );
+  const [decision, setDecision] = useState<UpdateDecision>(null);
   // The popup shows once per app run; "Later" also waits a few days.
   const [popupDone, setPopupDone] = useState(false);
   const lastCheck = useRef(0);
