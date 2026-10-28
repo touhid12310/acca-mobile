@@ -22,6 +22,8 @@ interface ConfirmDialogProps {
   loading?: boolean;
   /** "danger" (default) for deletes / archives; "primary" for neutral prompts. */
   tone?: "danger" | "primary";
+  /** A solid colour for the icon circle (white icon) and the confirm button. */
+  accentColor?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -35,6 +37,7 @@ export function ConfirmDialog({
   confirmLabel,
   loading,
   tone = "danger",
+  accentColor,
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -44,7 +47,7 @@ export function ConfirmDialog({
   const accentContainer = isDanger
     ? colors.errorContainer
     : colors.primaryContainer;
-  const confirmBackground = isDanger ? "#ef4444" : "#6366f1";
+  const confirmBackground = accentColor ?? (isDanger ? "#ef4444" : "#6366f1");
 
   return (
     <Modal
@@ -59,9 +62,16 @@ export function ConfirmDialog({
           onPress={(event) => event.stopPropagation()}
         >
           <View
-            style={[styles.iconWrap, { backgroundColor: accentContainer }]}
+            style={[
+              styles.iconWrap,
+              { backgroundColor: accentColor ?? accentContainer },
+            ]}
           >
-            <Icon size={28} color={accent} strokeWidth={2.2} />
+            <Icon
+              size={28}
+              color={accentColor ? "#ffffff" : accent}
+              strokeWidth={2.2}
+            />
           </View>
 
           <Text style={[styles.title, { color: colors.onSurface }]}>

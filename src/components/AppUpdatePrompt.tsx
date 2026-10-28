@@ -6,7 +6,8 @@ import { useAppLock } from '../contexts/AppLockContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { notifyToast } from '../contexts/NotificationContext';
 import { checkForUpdate, openStore, snoozeUpdate, storeName, type UpdateDecision } from '../services/appUpdate';
-import { AppDarkBackground, Button, ConfirmDialog } from './ui';
+import { AppDarkBackground, ConfirmDialog } from './ui';
+import { PrimaryButton } from './auth/AuthButtons';
 import { TopLayer } from './common/TopLayer';
 import { radius, spacing } from '../constants/theme';
 
@@ -15,6 +16,9 @@ const LOGO_DARK = require('../../assets/logo-dark.png');
 
 /** Coming back to the app checks again, at most this often. */
 const RECHECK_MS = 60 * 60 * 1000;
+
+/** The sign-in button's brand indigo, for the icon circle and Update button. */
+const BRAND_INDIGO = '#4f46e5';
 
 /**
  * "A new version is available" (Update / Later) and "Update required" (a
@@ -87,8 +91,8 @@ export function AppUpdatePrompt() {
         >
           {isDark && <AppDarkBackground />}
           <Image source={isDark ? LOGO_DARK : LOGO_LIGHT} style={styles.logo} resizeMode="contain" />
-          <View style={[styles.iconCircle, { backgroundColor: colors.primaryContainer }]}>
-            <Download size={34} color={colors.primary} strokeWidth={2} />
+          <View style={[styles.iconCircle, { backgroundColor: BRAND_INDIGO }]}>
+            <Download size={34} color="#ffffff" strokeWidth={2.2} />
           </View>
           <Text style={[styles.title, { color: colors.onSurface }]}>Update required</Text>
           <Text style={[styles.subtitle, { color: colors.onSurfaceVariant }]}>
@@ -96,7 +100,7 @@ export function AppUpdatePrompt() {
             {storeName()} to keep using the app. Your data stays safe.
           </Text>
           <View style={styles.actions}>
-            <Button label="Update now" icon={Download} fullWidth onPress={update} />
+            <PrimaryButton label="Update now" icon={Download} onPress={update} style={styles.updateButton} />
           </View>
         </View>
       </TopLayer>
@@ -108,6 +112,7 @@ export function AppUpdatePrompt() {
       visible={!popupDone && ready && !locked && !privacyCover}
       tone="primary"
       icon={Download}
+      accentColor={BRAND_INDIGO}
       title="A new version is available"
       message={`AccountE ${decision.version} is ready in the ${storeName()}, with the latest fixes and improvements.`}
       confirmLabel="Update now"
@@ -155,6 +160,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     maxWidth: 320,
+  },
+  updateButton: {
+    alignSelf: 'stretch',
   },
   actions: {
     alignSelf: 'stretch',
