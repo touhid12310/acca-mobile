@@ -34,6 +34,8 @@ export type AppExit = {
 
 type AccounteDiagnosticsNative = {
   getExitReasons(sinceMillis: number, limit: number): Promise<AppExit[]>;
+  /** Missing in builds made before it was added. */
+  isTestLab?: () => boolean;
 };
 
 // Android-only local Expo module (modules/accounte-diagnostics). Null on iOS,
@@ -44,6 +46,23 @@ const native =
     : null;
 
 export const isExitReasonReaderAvailable = (): boolean => native != null;
+
+let testLab: boolean | undefined;
+
+/**
+ * True on Google's test devices (Firebase Test Lab, which runs the Play
+ * Console pre-launch report on every upload) — robots, not users.
+ */
+export const isTestLab = (): boolean => {
+  if (testLab === undefined) {
+    try {
+      testLab = native?.isTestLab?.() === true;
+    } catch {
+      testLab = false;
+    }
+  }
+  return testLab;
+};
 
 /** Why the app's earlier runs ended (Android 11+), newest first. */
 export const getAppExits = async (sinceMillis: number, limit = 10): Promise<AppExit[]> => {

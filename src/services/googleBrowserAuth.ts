@@ -39,8 +39,12 @@ export async function startGoogleBrowserAuth(
   }
 
   const authUrl = urlResult.url;
-  const result = await withFlow("Google sign-in page", () =>
-    WebBrowser.openAuthSessionAsync(authUrl, RETURN_URL),
+  // If the phone closes AccountE meanwhile, the page's return link starts it
+  // again on app/auth/callback.tsx, which finishes the sign-in.
+  const result = await withFlow(
+    "Google sign-in page",
+    () => WebBrowser.openAuthSessionAsync(authUrl, RETURN_URL),
+    { returnUrl: RETURN_URL },
   );
 
   if (result.type !== "success" || !result.url) {

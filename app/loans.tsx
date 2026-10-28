@@ -225,7 +225,8 @@ export default function LoansScreen() {
         original_amount: parseDecimalInput(data.original_amount),
         interest_rate: parseDecimalInput(data.interest_rate),
         next_payment: parseDecimalInput(data.next_payment),
-        term: parseInt(data.term) || 0,
+        // Term is optional: an empty box sends no term, not 0.
+        term: parseInt(data.term) || undefined,
         term_period: data.term_period,
         start_date: data.start_date || todayDateInputValue(),
         next_payment_date: data.next_payment_date || undefined,

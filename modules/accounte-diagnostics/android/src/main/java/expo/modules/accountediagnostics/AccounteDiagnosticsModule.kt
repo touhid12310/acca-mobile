@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import androidx.annotation.RequiresApi
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -28,6 +29,18 @@ class AccounteDiagnosticsModule : Module() {
         emptyList<Map<String, Any?>>()
       } else {
         readExits(sinceMillis.toLong(), limit.coerceIn(1, 20))
+      }
+    }
+
+    // Firebase Test Lab, which also runs Google Play's pre-launch report:
+    // Google's robots install every upload and crawl it. Their errors (and
+    // their test network's 504s) are not real users'. Test Lab sets this
+    // system setting on its devices for exactly this check.
+    Function("isTestLab") {
+      try {
+        Settings.System.getString(context.contentResolver, "firebase.test.lab") == "true"
+      } catch (error: Exception) {
+        false
       }
     }
   }

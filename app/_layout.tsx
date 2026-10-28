@@ -29,6 +29,7 @@ import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
 import metaEvents from '../src/services/metaEvents';
 import { installErrorReporting, setCurrentScreen } from '../src/services/errorReporter';
+import { installFetchRetry } from '../src/services/fetchRetry';
 import crashlytics from '../src/services/crashlytics';
 import { noteScreen, startAppExitMonitor } from '../src/services/appExitMonitor';
 import { Notifications } from '../src/services/notifications';
@@ -38,7 +39,9 @@ import '../global.css';
 // Errors users hit reach the admin panel's App errors page. First, so
 // problems during start-up are caught too. Crashlytics then wraps the same
 // handler (native crashes + stack traces), and appExitMonitor reports how the
-// previous run ended — crashes, freezes, the phone closing the app.
+// previous run ended — crashes, freezes, the phone closing the app. The fetch
+// retry goes underneath the reporter, so a retried request isn't reported.
+installFetchRetry();
 installErrorReporting();
 crashlytics.init();
 startAppExitMonitor();

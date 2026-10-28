@@ -1,3 +1,4 @@
+import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getAppExits, isExitReasonReaderAvailable, type AppExit } from '../../modules/accounte-diagnostics';
@@ -16,7 +17,9 @@ import { FATAL_JS_CRASH_KEY, reportError } from './errorReporter';
  *   using it, or while they were away in a picker / camera app / browser page
  *   and coming back (the "tapped ✓ and the app restarted on Home" case).
  *
- * Closing a backgrounded app later to free memory is normal and not reported.
+ * Closing a backgrounded app later to free memory is normal and not reported,
+ * and so is a close the person got back from: a flow that names its return
+ * link (`returnUrl`) and the app was started again by that link.
  * Flows that leave the app are wrapped in withFlow() / markFlow(), and the
  * current screen is remembered with noteScreen(), so reports can say where.
  */
@@ -31,7 +34,11 @@ const FLOW_WINDOW_MS = 15 * 60 * 1000;
 const IMPORTANCE_VISIBLE = 200;
 const MAX_EXITS = 3;
 
-type Flow = { name: string; screen: string; at: number };
+type Flow = { name: string; screen: string; at: number; returnUrl?: string };
+type FlowOptions = {
+  /** The deep link the flow comes back by (a sign-in or payment page). */
+  returnUrl?: string;
+};
 
 let started = false;
 let lastScreen = '';
@@ -59,7 +66,12 @@ const parseFlow = (raw: string | null): Flow | null => {
   try {
     const flow = JSON.parse(raw) as Partial<Flow>;
     return typeof flow?.name === 'string' && typeof flow.at === 'number'
-      ? { name: flow.name, screen: typeof flow.screen === 'string' ? flow.screen : '', at: flow.at }
+      ? {
+          name: flow.name,
+          screen: typeof flow.screen === 'string' ? flow.screen : '',
+          at: flow.at,
+          ...(typeof flow.returnUrl === 'string' && flow.returnUrl ? { returnUrl: flow.returnUrl } : {}),
+        }
       : null;
   } catch {
     return null;
@@ -87,8 +99,8 @@ export function noteScreen(pathname: string): void {
  * function when it closes. If the app dies meanwhile, the next launch reports
  * which flow was open. Flows can nest — the innermost one is reported.
  */
-export function markFlow(name: string): () => void {
-  const flow: Flow = { name, screen: lastScreen, at: Date.now() };
+export function markFlow(name: string, options: FlowOptions = {}): () => void {
+  const flow: Flow = { name, screen: lastScreen, at: Date.now(), ...(options.returnUrl ? { returnUrl: options.returnUrl } : {}) };
   openFlows.push(flow);
   void enqueue(saveOpenFlow);
   crashlytics.log(`opened ${name}`);
@@ -109,8 +121,8 @@ export function markFlow(name: string): () => void {
  * picker, the phone's camera app, the file picker, a browser sign-in or
  * payment page. The marker is on disk before the app goes to the background.
  */
-export async function withFlow<T>(name: string, task: () => Promise<T>): Promise<T> {
-  const end = markFlow(name);
+export async function withFlow<T>(name: string, task: () => Promise<T>, options: FlowOptions = {}): Promise<T> {
+  const end = markFlow(name, options);
   // Never hold the picker up for long over a slow write.
   await Promise.race([writes, new Promise((resolve) => setTimeout(resolve, 300))]);
   try {
@@ -126,6 +138,14 @@ type PreviousRun = {
   jsCrashAt: number;
   exitsCheckedAt: number;
 };
+
+/**
+ * The phone closed the app during a sign-in or payment page, but finishing
+ * that page opened the app again by the flow's return link, which carries on
+ * from there (app/auth/callback.tsx, the billing screen): nothing was lost.
+ */
+const cameBackBy = (flow: Flow | null, launchUrl: string | null): boolean =>
+  Boolean(flow?.returnUrl && launchUrl?.startsWith(flow.returnUrl));
 
 const readPreviousRun = async (): Promise<PreviousRun> => {
   const entries = await AsyncStorage.multiGet([LAST_SCREEN_KEY, FLOW_KEY, FATAL_JS_CRASH_KEY, EXITS_CHECKED_KEY]);
@@ -181,7 +201,7 @@ const describeExit = (exit: AppExit): { kind: 'native_crash' | 'app_not_respondi
 };
 
 /** Android 11+: report from the reasons Android recorded. */
-const reportAndroidExits = (exits: AppExit[], previous: PreviousRun) => {
+const reportAndroidExits = (exits: AppExit[], previous: PreviousRun, launchUrl: string | null) => {
   exits.slice(0, MAX_EXITS).forEach((exit, index) => {
     const found = describeExit(exit);
     if (!found) return;
@@ -214,6 +234,7 @@ const reportAndroidExits = (exits: AppExit[], previous: PreviousRun) => {
 
     // A closed app is only a problem if the person was using it or coming back to it.
     if (flow) {
+      if (cameBackBy(flow, launchUrl)) return;
       report('app_closed', `Android closed the app while the ${flow.name} was open`, run, {
         reason: found.reason,
         away: duration(exit.timestamp - flow.at),
@@ -230,6 +251,7 @@ const reportAndroidExits = (exits: AppExit[], previous: PreviousRun) => {
 
 const checkPreviousRun = async (previous: PreviousRun): Promise<void> => {
   const crashed = await crashlytics.didCrashLastTime();
+  const launchUrl = await Linking.getInitialURL().catch(() => null);
   const flowStillOpen = previous.flow && Date.now() - previous.flow.at < FLOW_WINDOW_MS ? previous.flow : null;
 
   if (isExitReasonReaderAvailable()) {
@@ -239,7 +261,7 @@ const checkPreviousRun = async (previous: PreviousRun): Promise<void> => {
     // from before the update isn't reported.
     const exits = previous.exitsCheckedAt ? await getAppExits(previous.exitsCheckedAt, 10) : [];
     if (exits.length > 0) {
-      reportAndroidExits(exits, previous);
+      reportAndroidExits(exits, previous, launchUrl);
       return;
     }
   }
@@ -250,7 +272,7 @@ const checkPreviousRun = async (previous: PreviousRun): Promise<void> => {
     report('native_crash', `The app crashed${onScreen(flowStillOpen?.screen || previous.screen)}`, run, {
       reason: 'crash',
     });
-  } else if (!crashed && flowStillOpen) {
+  } else if (!crashed && flowStillOpen && !cameBackBy(flowStillOpen, launchUrl)) {
     report('app_closed', `The app was closed while the ${flowStillOpen.name} was open`, run, {
       reason: 'unknown',
       away: duration(Date.now() - flowStillOpen.at),

@@ -1,5 +1,7 @@
 import { Platform, TurboModuleRegistry } from "react-native";
 
+import { isTestLab } from "../../modules/accounte-diagnostics";
+
 /**
  * Firebase Crashlytics wrapper — native crashes (Java / Kotlin / Swift / C++),
  * Android freezes (ANR) and JS crashes, with full stack traces, in the
@@ -55,7 +57,13 @@ export const crashlytics = {
    * right after installErrorReporting() — both then see every JS crash.
    */
   init(): void {
-    run((m) => m.getCrashlytics());
+    run((m) => {
+      const instance = m.getCrashlytics();
+      // Google's test robots (Play pre-launch report) open library screens
+      // directly and crash them; none of that is a real user's crash. The
+      // setting sticks, so later launches on that device collect nothing.
+      return isTestLab() ? m.setCrashlyticsCollectionEnabled(instance, false) : instance;
+    });
   },
 
   /** Backend user id only — never email or name. Pass null on logout. */

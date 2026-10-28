@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import NetInfo from '@react-native-community/netinfo';
 
+import { isTestLab } from '../../modules/accounte-diagnostics';
 import { buildApiUrl, getAuthToken, RETRYABLE_HEADER } from '../config/api';
 
 /**
@@ -54,7 +55,9 @@ const MAX_QUEUE = 30;
 const MAX_PER_SESSION = 30;
 const MAX_REPEATS = 3;
 
-const ENABLED = !__DEV__ || process.env.EXPO_PUBLIC_REPORT_ERRORS === '1';
+// Off on Google's test devices (Play pre-launch report): their robots crawl
+// every upload, and their test network answers sign-in with 504s.
+const ENABLED = (!__DEV__ || process.env.EXPO_PUBLIC_REPORT_ERRORS === '1') && !isTestLab();
 const APP_VERSION = `${Constants.expoConfig?.version ?? 'unknown'}${__DEV__ ? ' (dev)' : ''}`;
 
 // Lost connectivity says nothing about our code. expo/fetch passes the

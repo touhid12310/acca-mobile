@@ -206,8 +206,12 @@ export default function BillingScreen() {
         metaEvents.logCheckout(paid.planSlug, paid.cycle, paid.value, paid.currency);
       }
       const checkoutUrl = checkoutData.redirect_url;
-      const result = await withFlow("payment page", () =>
-        WebBrowser.openAuthSessionAsync(checkoutUrl, returnUrl),
+      // If the phone closes AccountE meanwhile, the return link reopens this
+      // screen with ?payment=…, which checks the payment as usual.
+      const result = await withFlow(
+        "payment page",
+        () => WebBrowser.openAuthSessionAsync(checkoutUrl, returnUrl),
+        { returnUrl },
       );
       if (result.type === "success" && result.url) {
         const parsed = Linking.parse(result.url);
