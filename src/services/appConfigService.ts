@@ -1,5 +1,18 @@
 import { apiRequest } from '../config/api';
 
+/** One platform's update prompt settings (admin → Settings → App updates). Blank = off. */
+export interface AppUpdateTarget {
+  latest_version: string;
+  min_version: string;
+  store_url: string;
+}
+
+const updateTarget = (value: Partial<AppUpdateTarget> | undefined): AppUpdateTarget => ({
+  latest_version: typeof value?.latest_version === 'string' ? value.latest_version : '',
+  min_version: typeof value?.min_version === 'string' ? value.min_version : '',
+  store_url: typeof value?.store_url === 'string' ? value.store_url : '',
+});
+
 export interface PublicAppConfig {
   ios_url: string;
   android_url: string;
@@ -12,6 +25,11 @@ export interface PublicAppConfig {
     web_client_id: string;
     ios_client_id: string;
     android_client_id: string;
+  };
+  /** Empty on an API from before the update prompt existed. */
+  app_update: {
+    android: AppUpdateTarget;
+    ios: AppUpdateTarget;
   };
 }
 
@@ -38,6 +56,10 @@ export async function getPublicAppConfig(): Promise<PublicAppConfig | null> {
         web_client_id: data.google_oauth?.web_client_id ?? '',
         ios_client_id: data.google_oauth?.ios_client_id ?? '',
         android_client_id: data.google_oauth?.android_client_id ?? '',
+      },
+      app_update: {
+        android: updateTarget(data.app_update?.android),
+        ios: updateTarget(data.app_update?.ios),
       },
     };
   } catch {

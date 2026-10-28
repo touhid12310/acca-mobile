@@ -24,6 +24,7 @@ import { NotificationProvider } from '../src/contexts/NotificationContext';
 import { AppLockProvider, useAppLock } from '../src/contexts/AppLockContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
 import { AppLockOverlay } from '../src/components/AppLockOverlay';
+import { AppUpdatePrompt } from '../src/components/AppUpdatePrompt';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { useSmsAutoSync } from '../src/hooks/useSmsAutoSync';
 import analyticsService from '../src/services/analyticsService';
@@ -296,6 +297,8 @@ function RootLayoutNav() {
         <OfflineBanner />
         {/* Biometric app lock + app-switcher privacy cover, above everything. */}
         <AppLockOverlay />
+        {/* "New version available" / "Update required" (admin → Settings → App updates). */}
+        <AppUpdatePrompt />
       </View>
     </PaperProvider>
   );
