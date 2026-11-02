@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { View } from 'react-native';
+import { Linking, View } from 'react-native';
 import {
   Stack,
   router,
@@ -81,21 +81,59 @@ const ROUTABLE_TYPES: Record<string, string> = {
   subscription_invoice_due: '/billing',
 };
 
+// Admin → Broadcasts pushes (`type: admin_broadcast`) name a screen by key;
+// keep in step with Broadcast::DESTINATIONS in the backend.
+const BROADCAST_SCREENS: Record<string, string> = {
+  home: '/(tabs)',
+  add_transaction: '/transaction-modal',
+  transactions: '/(tabs)/transactions',
+  reports: '/(tabs)/reports',
+  chat: '/(tabs)/chat',
+  accounts: '/accounts',
+  budgets: '/budgets',
+  goals: '/goals',
+  schedules: '/schedules',
+  loans: '/loans',
+  billing: '/billing',
+  notification_settings: '/notification-settings',
+  support: '/support',
+};
+
 // Strict allow-list: only these routes may ever come from a push payload.
 // The server-controlled `route` field is deliberately ignored — trusting it
 // would let a compromised backend (or crafted FCM/APNs payload) force
 // navigation to any screen, including purchase sheets.
-const ALLOWED_PUSH_ROUTES = new Set<string>(Object.values(ROUTABLE_TYPES));
+const ALLOWED_PUSH_ROUTES = new Set<string>([
+  ...Object.values(ROUTABLE_TYPES),
+  ...Object.values(BROADCAST_SCREENS),
+]);
 
 // Root segments a signed-out user may sit on: the sign-in group, the social
 // sign-in return (incl. its 2FA step) and the email-verification link.
 const PUBLIC_ROOTS = new Set(['(auth)', 'auth', 'verify-email']);
 
+type PushData = { type?: string; screen?: string; url?: string } | undefined;
+
 const routeFromNotificationData = (data: unknown): string | undefined => {
-  const d = data as { type?: string } | undefined;
-  const mapped = d?.type ? ROUTABLE_TYPES[d.type] : undefined;
+  const d = data as PushData;
+  const mapped =
+    d?.type === 'admin_broadcast'
+      ? d.screen
+        ? BROADCAST_SCREENS[d.screen]
+        : undefined
+      : d?.type
+        ? ROUTABLE_TYPES[d.type]
+        : undefined;
   if (mapped && ALLOWED_PUSH_ROUTES.has(mapped)) return mapped;
   return undefined;
+};
+
+// A broadcast can point at a web page instead; it opens in the browser,
+// never inside the app, and only over https.
+const linkFromNotificationData = (data: unknown): string | undefined => {
+  const d = data as PushData;
+  if (d?.type !== 'admin_broadcast' || typeof d.url !== 'string') return undefined;
+  return /^https:\/\/[^\s]+$/i.test(d.url) ? d.url : undefined;
 };
 
 // Create a client
@@ -213,11 +251,15 @@ function RootLayoutNav() {
   const lastNotificationResponse = useLastNotificationResponse();
   useEffect(() => {
     if (!lastNotificationResponse || loading || !lockReady || locked || privacyCover) return;
-    const route = routeFromNotificationData(
-      lastNotificationResponse.notification.request.content.data,
-    );
+    const data = lastNotificationResponse.notification.request.content.data;
+    const route = routeFromNotificationData(data);
+    const link = linkFromNotificationData(data);
     // Clear so a remount doesn't replay the same tap.
     Notifications?.clearLastNotificationResponseAsync();
+    if (link) {
+      Linking.openURL(link).catch(() => {});
+      return;
+    }
     // Dropped after "Sign out instead" on the lock screen.
     if (route && isAuthenticated) {
       router.push(route as any);
