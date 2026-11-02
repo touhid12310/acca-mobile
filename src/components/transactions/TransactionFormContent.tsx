@@ -2306,18 +2306,28 @@ export default function TransactionFormContent({
             Select Account
           </Text>
           <ScrollView style={styles.pickerList}>
-            {accounts.map((account) => (
-              <React.Fragment key={account.id}>
+            {accounts.map((account) => {
+              const isSelected = formData.account_id === account.id;
+              return (
                 <List.Item
+                  key={account.id}
                   title={account.account_name}
+                  titleStyle={[styles.categoryParentTitle, isSelected && { color: colors.primary }]}
                   description={formatAccountType(account.account_type)}
+                  // Same rows as the category picker: rounded, tinted when picked.
+                  style={[
+                    styles.categoryRow,
+                    styles.accountRow,
+                    isSelected && { backgroundColor: `${colors.primary}1F` },
+                  ]}
+                  rippleColor={`${colors.primary}29`}
                   left={() => (
                     <View style={[styles.categoryIcon, { backgroundColor: `${colors.primary}20` }]}>
                       <MaterialCommunityIcons name="wallet" size={20} color={colors.primary} />
                     </View>
                   )}
                   right={() =>
-                    formData.account_id === account.id ? (
+                    isSelected ? (
                       <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                     ) : null
                   }
@@ -2326,9 +2336,8 @@ export default function TransactionFormContent({
                     setShowAccountPicker(false);
                   }}
                 />
-                <Divider />
-              </React.Fragment>
-            ))}
+              );
+            })}
           </ScrollView>
           <Button mode="text" onPress={() => setShowAccountPicker(false)}>
             Cancel
@@ -2349,18 +2358,27 @@ export default function TransactionFormContent({
           <ScrollView style={styles.pickerList}>
             {accounts
               .filter((a) => a.id !== formData.account_id)
-              .map((account) => (
-                <React.Fragment key={account.id}>
+              .map((account) => {
+                const isSelected = formData.to_account_id === account.id;
+                return (
                   <List.Item
+                    key={account.id}
                     title={account.account_name}
+                    titleStyle={[styles.categoryParentTitle, isSelected && { color: colors.primary }]}
                     description={formatAccountType(account.account_type)}
+                    style={[
+                      styles.categoryRow,
+                      styles.accountRow,
+                      isSelected && { backgroundColor: `${colors.primary}1F` },
+                    ]}
+                    rippleColor={`${colors.primary}29`}
                     left={() => (
                       <View style={[styles.categoryIcon, { backgroundColor: `${colors.primary}20` }]}>
                         <MaterialCommunityIcons name="wallet" size={20} color={colors.primary} />
                       </View>
                     )}
                     right={() =>
-                      formData.to_account_id === account.id ? (
+                      isSelected ? (
                         <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
                       ) : null
                     }
@@ -2369,9 +2387,8 @@ export default function TransactionFormContent({
                       setShowToAccountPicker(false);
                     }}
                   />
-                  <Divider />
-                </React.Fragment>
-              ))}
+                );
+              })}
           </ScrollView>
           <Button mode="text" onPress={() => setShowToAccountPicker(false)}>
             Cancel
@@ -2559,6 +2576,9 @@ const styles = StyleSheet.create({
   },
   categoryParentTitle: {
     fontWeight: '600',
+  },
+  accountRow: {
+    marginVertical: 2,
   },
   subcategoryList: {
     borderTopWidth: 1,
