@@ -5,6 +5,7 @@ import { ChevronRight, LucideIcon } from "lucide-react-native";
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing } from "../../constants/theme";
 import { IconBadge } from "./IconBadge";
+import { Sensitive } from "../common/Sensitive";
 
 interface ListRowProps {
   icon?: LucideIcon;
@@ -62,7 +63,7 @@ export function ListRow({
         )}
       </View>
       {right ?? (
-        <View style={styles.valueBlock}>
+        <Sensitive style={styles.valueBlock}>
           {value && (
             <Text
               style={[
@@ -82,7 +83,7 @@ export function ListRow({
               {valueSub}
             </Text>
           )}
-        </View>
+        </Sensitive>
       )}
       {showChevron && (
         <ChevronRight size={18} color={colors.onSurfaceVariant} strokeWidth={2} />

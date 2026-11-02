@@ -5,6 +5,7 @@ import { LucideIcon, TrendingDown, TrendingUp } from "lucide-react-native";
 import { useTheme } from "../../contexts/ThemeContext";
 import { radius, spacing, shadow } from "../../constants/theme";
 import { IconBadge } from "./IconBadge";
+import { Sensitive } from "../common/Sensitive";
 
 interface StatTileProps {
   label: string;
@@ -61,12 +62,14 @@ export function StatTile({
       >
         {label}
       </Text>
-      <Text
-        style={[styles.value, { color: colors.onSurface }]}
-        numberOfLines={1}
-      >
-        {value}
-      </Text>
+      <Sensitive>
+        <Text
+          style={[styles.value, { color: colors.onSurface }]}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      </Sensitive>
     </View>
   );
 }

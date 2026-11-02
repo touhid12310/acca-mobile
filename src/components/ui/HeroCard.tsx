@@ -10,6 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../contexts/ThemeContext";
 import { gradients, radius, shadow } from "../../constants/theme";
 import { splitShadowStyle } from "./shadowSplit";
+import { Sensitive } from "../common/Sensitive";
 
 interface HeroCardProps {
   children?: React.ReactNode;
@@ -21,8 +22,17 @@ interface HeroCardProps {
  * Brand hero/balance card with a unified look across the app.
  * - Dark mode: deep navy `#0f213d` base + indigo/violet glow blobs.
  * - Light mode: ocean (sky-blue → indigo) linear gradient.
+ * Masked in Smartlook recordings — it holds balances and the profile.
  */
-export function HeroCard({
+export function HeroCard(props: HeroCardProps) {
+  return (
+    <Sensitive>
+      <HeroCardBody {...props} />
+    </Sensitive>
+  );
+}
+
+function HeroCardBody({
   children,
   style,
   withShadow = true,

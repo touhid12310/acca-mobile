@@ -32,6 +32,7 @@ import metaEvents from '../src/services/metaEvents';
 import { installErrorReporting, setCurrentScreen } from '../src/services/errorReporter';
 import { installFetchRetry } from '../src/services/fetchRetry';
 import crashlytics from '../src/services/crashlytics';
+import smartlook, { isPrivateScreen } from '../src/services/smartlook';
 import { noteScreen, startAppExitMonitor } from '../src/services/appExitMonitor';
 import { Notifications } from '../src/services/notifications';
 
@@ -42,10 +43,13 @@ import '../global.css';
 // handler (native crashes + stack traces), and appExitMonitor reports how the
 // previous run ended — crashes, freezes, the phone closing the app. The fetch
 // retry goes underneath the reporter, so a retried request isn't reported.
+// Smartlook session recordings start black; RootLayoutNav shows the screen
+// once the app lock is settled.
 installFetchRetry();
 installErrorReporting();
 crashlytics.init();
 startAppExitMonitor();
+smartlook.init();
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -179,14 +183,24 @@ function RootLayoutNav() {
     }
   }, [loading, isAuthenticated, user, segments]);
 
-  // Screen views for Firebase Analytics. Built from the route pattern
-  // (e.g. "edit-transaction/[id]") rather than the pathname so record ids
-  // never end up in screen names; route groups like "(tabs)" are dropped.
+  // Screen views for Firebase Analytics and the Smartlook timeline. Built
+  // from the route pattern (e.g. "edit-transaction/[id]") rather than the
+  // pathname so record ids never end up in screen names; route groups like
+  // "(tabs)" are dropped.
   const screenName =
     (segments as readonly string[]).filter((s) => !s.startsWith('(')).join('/') || 'index';
   useEffect(() => {
     analyticsService.logScreenView(screenName);
+    smartlook.setScreen(screenName);
   }, [screenName]);
+
+  // Smartlook records a black screen while the app lock (or its app-switcher
+  // cover) is up, until the lock state is known, and on private screens
+  // (password / 2FA, payment, SMS import — see smartlook.ts).
+  const recordingPrivate = !lockReady || locked || privacyCover || isPrivateScreen(pathname);
+  useEffect(() => {
+    smartlook.setPrivate(recordingPrivate);
+  }, [recordingPrivate]);
 
   // Route the user to the right screen when they tap a push notification.
   // useLastNotificationResponse (not addNotificationResponseReceivedListener)

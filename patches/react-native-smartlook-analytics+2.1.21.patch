@@ -1,0 +1,43 @@
+diff --git a/node_modules/react-native-smartlook-analytics/android/src/turbo/SmartlookSensitivityViewManager.kt b/node_modules/react-native-smartlook-analytics/android/src/turbo/SmartlookSensitivityViewManager.kt
+index 8055b6e..97d8e72 100644
+--- a/node_modules/react-native-smartlook-analytics/android/src/turbo/SmartlookSensitivityViewManager.kt
++++ b/node_modules/react-native-smartlook-analytics/android/src/turbo/SmartlookSensitivityViewManager.kt
+@@ -43,6 +43,8 @@ class SmartlookSensitiveViewManager(reactContext: ReactApplicationContext) : Vie
+       commandId: String?,
+       args: ReadableArray?
+     ) {
++        // RN 0.80+: the delegate takes non-null command name and args.
++        if (commandId == null || args == null) return
+         delegate.receiveCommand(view, commandId, args)
+     }
+ }
+diff --git a/node_modules/react-native-smartlook-analytics/ios/SmartlookSensitiveView.mm b/node_modules/react-native-smartlook-analytics/ios/SmartlookSensitiveView.mm
+index 9bd4e06..7bb6300 100644
+--- a/node_modules/react-native-smartlook-analytics/ios/SmartlookSensitiveView.mm
++++ b/node_modules/react-native-smartlook-analytics/ios/SmartlookSensitiveView.mm
+@@ -40,6 +40,9 @@ using namespace facebook::react;
+ 
+     _view = [[UIView alloc] init];
+     _view.slSensitive = defaultProps->isSensitive;
++    // Fabric mounts the React children into self, beside contentView, so
++    // the flag goes on self too (as on Android) to mask them.
++    self.slSensitive = defaultProps->isSensitive;
+       
+     self.contentView = _view;
+   }
+@@ -59,6 +62,7 @@ using namespace facebook::react;
+     if (oldViewProps.isSensitive != newViewProps.isSensitive) {
+         
+         _view.slSensitive = newViewProps.isSensitive;
++        self.slSensitive = newViewProps.isSensitive;
+     }
+ 
+     [super updateProps:props oldProps:oldProps];
+@@ -71,6 +75,7 @@ Class<RCTComponentViewProtocol> SmartlookSensitiveViewCls(void)
+ 
+ - (void)changeIsViewSensitive:(BOOL)isSensitive {
+     _view.slSensitive = isSensitive;
++    self.slSensitive = isSensitive;
+ }
+ 
+ - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
