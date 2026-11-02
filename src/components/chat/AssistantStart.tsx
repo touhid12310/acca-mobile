@@ -4,7 +4,6 @@ import {
   CalendarDays,
   ChartColumn,
   HandCoins,
-  Lock,
   Mic,
   PiggyBank,
   Repeat,
@@ -89,26 +88,13 @@ export function AssistantStart({ suggestions, onScanReceipt, onSuggestion }: Pro
           </Pressable>
         ))}
       </View>
-
-      <View style={styles.footer}>
-        <Lock size={12} color={colors.onSurfaceVariant} style={styles.footerIcon} />
-        <Text style={[styles.footerText, { color: colors.onSurfaceVariant }]}>
-          {ASSISTANT_NAME} suggests, you confirm. Nothing is saved without you.
-        </Text>
-      </View>
-      {/* App Review 5.1.2(i): say plainly that a third-party AI reads what is sent
-          as "AccountE AI", without naming the provider — the consent prompt
-          says a third-party provider runs it. */}
-      <Text style={[styles.footerNote, { color: colors.onSurfaceVariant }]}>
-        Answers come from AccountE AI, which reads what you send.
-      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   // Top-weighted rather than centred: on shorter phones a centred block ran
-  // under the composer and cut the footer off.
+  // under the composer and cut the last row off.
   wrap: {
     flexGrow: 1,
     justifyContent: 'flex-start',
@@ -158,23 +144,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardLabel: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.sm,
-  },
-  footerIcon: { marginTop: 2 },
-  footerText: { flexShrink: 1, fontSize: 12, lineHeight: 17, textAlign: 'center' },
-  footerNote: {
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
 });
 
 export default AssistantStart;
