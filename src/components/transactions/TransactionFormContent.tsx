@@ -2210,7 +2210,9 @@ export default function TransactionFormContent({
                       )}
                       right={() =>
                         isCategorySelected ? (
-                          <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
+                          <View style={styles.pickerCheck}>
+                            <MaterialCommunityIcons name="check-circle" size={26} color={colors.tertiary} />
+                          </View>
                         ) : null
                       }
                       onPress={() => {
@@ -2267,9 +2269,9 @@ export default function TransactionFormContent({
                               </Text>
                               {isSubSelected && (
                                 <MaterialCommunityIcons
-                                  name="check"
-                                  size={20}
-                                  color={colors.primary}
+                                  name="check-circle"
+                                  size={22}
+                                  color={colors.tertiary}
                                 />
                               )}
                             </TouchableOpacity>
@@ -2328,7 +2330,9 @@ export default function TransactionFormContent({
                   )}
                   right={() =>
                     isSelected ? (
-                      <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
+                      <View style={styles.pickerCheck}>
+                        <MaterialCommunityIcons name="check-circle" size={26} color={colors.tertiary} />
+                      </View>
                     ) : null
                   }
                   onPress={() => {
@@ -2379,7 +2383,9 @@ export default function TransactionFormContent({
                     )}
                     right={() =>
                       isSelected ? (
-                        <MaterialCommunityIcons name="check" size={24} color={colors.primary} />
+                        <View style={styles.pickerCheck}>
+                          <MaterialCommunityIcons name="check-circle" size={26} color={colors.tertiary} />
+                        </View>
                       ) : null
                     }
                     onPress={() => {
@@ -2579,6 +2585,13 @@ const styles = StyleSheet.create({
   },
   accountRow: {
     marginVertical: 2,
+  },
+  // List.Item puts `right` at the top of the row; centre the tick instead.
+  // The tick is emerald (theme tertiary) so "picked" reads at a glance.
+  pickerCheck: {
+    alignSelf: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
   },
   subcategoryList: {
     borderTopWidth: 1,
