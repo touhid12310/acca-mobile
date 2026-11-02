@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { KeyRound, Lock, Mail, MailCheck, ShieldCheck } from "lucide-react-native";
@@ -20,6 +20,7 @@ import {
   OutlineButton,
 } from "../../src/components/auth/AuthButtons";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
+import { PressableScale } from "../../src/components/auth/PressableScale";
 import { SocialProvider } from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
 import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
@@ -303,13 +304,9 @@ export default function LoginScreen() {
   const strong = { fontWeight: "700" as const, color: colors.onSurface };
 
   return (
-    <AuthShell
-      prompt={{
-        text: "Don't have an account?",
-        action: "Get started",
-        onPress: () => router.push("/(auth)/register"),
-      }}
-    >
+    // "Get started" sits under the sign-in button rather than in the
+    // header, where it competed with the logo.
+    <AuthShell>
       {panel === "password" && (
         <React.Fragment key="password">
           <AuthTitle
@@ -356,8 +353,16 @@ export default function LoginScreen() {
               onSubmitEditing={submitLogin}
               error={errors.password}
             />
+            {/* Plain views do the layout: a Pressable's style function
+                wasn't applied on Android (see GradientFab). */}
+            <View style={styles.forgotRow}>
+              <AuthLink
+                label="Forgot password?"
+                onPress={() => router.push("/(auth)/forgot-password")}
+              />
+            </View>
           </Reveal>
-          <Reveal index={3} style={styles.actionTop}>
+          <Reveal index={3}>
             <PrimaryButton
               label="Sign in securely"
               icon={Lock}
@@ -365,24 +370,34 @@ export default function LoginScreen() {
               onPress={() => handleLogin()}
               loading={isLoading}
             />
+            <View style={styles.signUpRow}>
+              <Text style={[styles.signUpText, { color: colors.onSurfaceVariant }]}>
+                Don&apos;t have an account?
+              </Text>
+              <PressableScale
+                onPress={() => router.push("/(auth)/register")}
+                accessibilityRole="button"
+                accessibilityLabel="Sign up"
+                style={[
+                  styles.signUpButton,
+                  { borderColor: colors.primary, backgroundColor: colors.primaryContainer },
+                ]}
+              >
+                <Text style={[styles.signUpButtonText, { color: colors.primary }]}>Sign up</Text>
+              </PressableScale>
+            </View>
           </Reveal>
-          <Reveal index={4}>
-            <AuthLink
-              label="Forgot your password?"
-              onPress={() => router.push("/(auth)/forgot-password")}
-            />
-          </Reveal>
-          <Reveal index={5} style={styles.alternatives}>
+          <Reveal index={4} style={styles.alternatives}>
             <SocialAuthButtons
               heading="Or sign in with"
               onSelect={handleSocialLogin}
               activeProvider={socialProvider}
               disabled={isLoading}
-            />
-            <OutlineButton
-              label="Sign in with an email code"
-              icon={Mail}
-              onPress={openMagicAuth}
+              extra={{
+                name: "Email code",
+                icon: <Mail size={20} color={colors.primary} strokeWidth={2.2} />,
+                onPress: openMagicAuth,
+              }}
             />
           </Reveal>
         </React.Fragment>
@@ -582,6 +597,32 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   actionTop: {
     marginTop: 4,
+  },
+  forgotRow: {
+    alignItems: "flex-end",
+    marginTop: 2,
+  },
+  signUpRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 12,
+  },
+  signUpButton: {
+    height: 34,
+    paddingHorizontal: 16,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signUpButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  signUpText: {
+    fontSize: 14,
   },
   alternatives: {
     gap: 14,

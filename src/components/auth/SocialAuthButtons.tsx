@@ -12,6 +12,8 @@ interface SocialAuthButtonsProps {
   activeProvider?: SocialProvider | null;
   disabled?: boolean;
   heading?: string;
+  /** Another way to sign in, shown on the same row (the email code). */
+  extra?: { name: string; icon: React.ReactNode; onPress: () => void };
 }
 
 const GoogleSvg = () => (
@@ -33,16 +35,18 @@ const AppleSvg = ({ color }: { color: string }) => (
 );
 
 /**
- * Divider plus the social sign-in buttons. Android offers Google only, as a
- * full-width "Continue with Google". iOS shows Apple and Google side by side
- * as equal logo buttons (Apple first, App Store 4.8; logo-only per Apple's
- * button guidelines).
+ * Divider plus the sign-in alternatives on one row. Android offers Google
+ * (plus `extra`, e.g. the email code); iOS puts Apple first (App Store 4.8).
+ * One button reads "Continue with Google"; two share the row with short
+ * labels ("Google", "Email code"); three are logo-only (Apple's button
+ * guidelines allow a logo-only Apple button) with full accessibility labels.
  */
 export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
   onSelect,
   activeProvider,
   disabled,
   heading = 'Or continue with',
+  extra,
 }) => {
   const { colors, isDark } = useTheme();
 
@@ -62,8 +66,24 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
     border: isDark ? '#ffffff' : '#000000',
     color: isDark ? '#0f172a' : '#ffffff',
   };
-  const buttons = Platform.OS === 'ios' ? [apple, google] : [google];
-  const compact = buttons.length > 1;
+  const providers = Platform.OS === 'ios' ? [apple, google] : [google];
+  const buttons = [
+    ...providers.map((btn) => ({ ...btn, onPress: () => onSelect(btn.key), a11y: `Continue with ${btn.name}` })),
+    ...(extra
+      ? [
+          {
+            key: 'extra',
+            name: extra.name,
+            icon: extra.icon,
+            background: isDark ? 'rgba(129,140,248,0.08)' : '#f7f7ff',
+            border: isDark ? colors.outline : '#dfe3f0',
+            color: colors.primary,
+            onPress: extra.onPress,
+            a11y: extra.name,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <View style={styles.wrapper}>
@@ -75,11 +95,11 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
           return (
             <PressableScale
               key={btn.key}
-              onPress={() => onSelect(btn.key)}
+              onPress={btn.onPress}
               disabled={isDisabled}
               scaleTo={0.96}
               accessibilityRole="button"
-              accessibilityLabel={`Continue with ${btn.name}`}
+              accessibilityLabel={btn.a11y}
               accessibilityState={{ disabled: isDisabled, busy: isBusy }}
               style={[
                 styles.button,
@@ -93,9 +113,9 @@ export const SocialAuthButtons: React.FC<SocialAuthButtonsProps> = ({
               <View style={styles.iconWrap}>
                 {isBusy ? <ActivityIndicator size="small" color={btn.color} /> : btn.icon}
               </View>
-              {!compact ? (
+              {buttons.length < 3 ? (
                 <Text style={[styles.label, { color: btn.color }]} numberOfLines={1}>
-                  Continue with {btn.name}
+                  {buttons.length === 1 ? `Continue with ${btn.name}` : btn.name}
                 </Text>
               ) : null}
             </PressableScale>
