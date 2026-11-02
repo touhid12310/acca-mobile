@@ -14,9 +14,13 @@ const SIZE = 56;
  *
  * Every layer has an explicit size: on iOS a `flex: 1` Pressable inside the
  * absolutely placed button didn't fill it, so only the top half of the circle
- * was drawn. The shadow sits on the outer view, which doesn't clip — iOS drops
- * shadows on a view with `overflow: hidden` — and the inner one clips the
- * gradient and the Android ripple to the circle.
+ * was drawn. On Android a Pressable with a style function (and a borderless
+ * ripple) wasn't laid out at all — the gradient showed as an unclipped square
+ * over the top half and the "+" sat in a corner — and an absolute-fill one
+ * only got its width. So a plain view clips the circle, the gradient fills it,
+ * and the Pressable has a static 56×56 style; iOS dims the "+" while pressed
+ * through the children function instead. The shadow sits on the outer view,
+ * which doesn't clip — iOS drops shadows on a view with `overflow: hidden`.
  */
 export default function GradientFab({
   onPress,
@@ -29,29 +33,27 @@ export default function GradientFab({
 
   return (
     <View style={[styles.fab, { bottom: 20 + insets.bottom }, shadow.lg]}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        // iOS ignores android_ripple, so dim the button while pressed there.
-        style={({ pressed }) => [
-          styles.pressable,
-          Platform.OS === "ios" && pressed && { opacity: 0.85 },
-        ]}
-        android_ripple={{
-          color: "rgba(255,255,255,0.25)",
-          borderless: true,
-          radius: SIZE / 2,
-        }}
-      >
+      <View style={styles.clip}>
         <LinearGradient
           colors={gradients.primary as any}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <Plus size={26} color="#ffffff" strokeWidth={2.6} />
-      </Pressable>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel}
+          style={styles.pressable}
+          android_ripple={{ color: "rgba(255,255,255,0.25)" }}
+        >
+          {({ pressed }) => (
+            <View style={Platform.OS === "ios" && pressed ? styles.pressed : undefined}>
+              <Plus size={26} color="#ffffff" strokeWidth={2.6} />
+            </View>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -65,12 +67,17 @@ const styles = StyleSheet.create({
     borderRadius: SIZE / 2,
     backgroundColor: gradients.primary[0],
   },
-  pressable: {
+  clip: {
     width: SIZE,
     height: SIZE,
     borderRadius: SIZE / 2,
     overflow: "hidden",
+  },
+  pressable: {
+    width: SIZE,
+    height: SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
+  pressed: { opacity: 0.6 },
 });
