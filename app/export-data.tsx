@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Platform,
   Linking,
   RefreshControl,
   ActivityIndicator,
@@ -212,28 +213,39 @@ export default function ExportDataScreen() {
             const active = format === option.key;
             const Icon = option.icon;
             return (
+              // The row layout sits on a plain View: on Android a Pressable
+              // styled through a function didn't get the style, so the icon,
+              // text and check stacked in a column.
               <Pressable
                 key={option.key}
                 onPress={() => setFormat(option.key)}
-                style={({ pressed }) => [
-                  styles.formatRow,
-                  {
-                    borderBottomColor: colors.outlineVariant,
-                    borderBottomWidth: index === FORMATS.length - 1 ? 0 : StyleSheet.hairlineWidth,
-                    backgroundColor: active ? colors.primaryContainer : 'transparent',
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: active }}
+                android_ripple={{ color: colors.surfaceVariant }}
               >
-                <Icon size={20} color={active ? colors.primary : colors.onSurfaceVariant} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.formatLabel, { color: active ? colors.primary : colors.onSurface }]}>
-                    {option.label}
-                    {option.key === 'xlsx' ? '  · Recommended' : ''}
-                  </Text>
-                  <Text style={[styles.formatHint, { color: colors.onSurfaceVariant }]}>{option.hint}</Text>
-                </View>
-                {active && <Check size={18} color={colors.primary} strokeWidth={2.4} />}
+                {({ pressed }) => (
+                  <View
+                    style={[
+                      styles.formatRow,
+                      {
+                        borderBottomColor: colors.outlineVariant,
+                        borderBottomWidth: index === FORMATS.length - 1 ? 0 : StyleSheet.hairlineWidth,
+                        backgroundColor: active ? colors.primaryContainer : 'transparent',
+                        opacity: Platform.OS === 'ios' && pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Icon size={20} color={active ? colors.primary : colors.onSurfaceVariant} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.formatLabel, { color: active ? colors.primary : colors.onSurface }]}>
+                        {option.label}
+                        {option.key === 'xlsx' ? '  · Recommended' : ''}
+                      </Text>
+                      <Text style={[styles.formatHint, { color: colors.onSurfaceVariant }]}>{option.hint}</Text>
+                    </View>
+                    {active && <Check size={18} color={colors.primary} strokeWidth={2.4} />}
+                  </View>
+                )}
               </Pressable>
             );
           })}
