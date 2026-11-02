@@ -31,7 +31,7 @@ export const ensureAiConsent = async (userId?: number | string | null): Promise<
   const ask = new Promise<boolean>((resolve) => {
     Alert.alert(
       'Use AI features?',
-      "To answer your questions and read receipts, SMS and bank statements, AccountE sends what you type, say or attach, plus the transactions, accounts and budgets needed for the answer, to Google's Gemini AI through our servers. Nothing is saved to your books until you confirm it.",
+      "To answer your questions and read receipts, SMS and bank statements, AccountE sends what you type, say or attach, plus the transactions, accounts and budgets needed for the answer, to a third-party AI service through our servers. Nothing is saved to your books until you confirm it.",
       [
         { text: 'Not now', style: 'cancel', onPress: () => resolve(false) },
         {

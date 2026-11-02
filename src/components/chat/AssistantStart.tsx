@@ -96,9 +96,10 @@ export function AssistantStart({ suggestions, onScanReceipt, onSuggestion }: Pro
           {ASSISTANT_NAME} suggests, you confirm. Nothing is saved without you.
         </Text>
       </View>
-      {/* App Review 5.1.2(i): say plainly that a third-party AI reads what is sent. */}
+      {/* App Review 5.1.2(i): say plainly that a third-party AI reads what is sent
+          (without naming the provider — the consent prompt carries the details). */}
       <Text style={[styles.footerNote, { color: colors.onSurfaceVariant }]}>
-        Answers come from Google&apos;s Gemini AI, which reads what you send.
+        Answers come from a third-party AI service, which reads what you send.
       </Text>
     </View>
   );
