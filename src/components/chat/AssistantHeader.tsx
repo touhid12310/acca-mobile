@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { CalendarDays, Sparkles } from 'lucide-react-native';
+import { CalendarDays, Sparkles, X } from 'lucide-react-native';
 
 import { useTheme } from '../../contexts/ThemeContext';
 import { radius, shadow, spacing } from '../../constants/theme';
@@ -39,37 +39,54 @@ export function AssistantHeader({ dateLabel, isToday, loading, onPickDate, onTod
         </Text>
       </View>
 
-      {!isToday && (
-        <Pressable
-          onPress={onToday}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Back to today"
-          style={({ pressed }) => pressed && styles.pressed}
-        >
-          <Text style={[styles.todayLink, { color: colors.primary }]}>Today</Text>
-        </Pressable>
-      )}
-
-      <Pressable
-        onPress={onPickDate}
-        accessibilityRole="button"
-        accessibilityLabel={`Chat day: ${dateLabel}. Change day`}
-        android_ripple={{ color: colors.surfaceVariant, borderless: false }}
-        // iOS has no ripple, so dim the pill while it is pressed.
-        style={({ pressed }) => [
+      {/* One pill for the chat day. On an older day it is highlighted and
+          carries its own ✕ back to today, instead of a bare "Today" link
+          beside it that read like part of the date ("Today 10 Oct"). */}
+      <View
+        style={[
           styles.datePill,
-          { borderColor: colors.outlineVariant, backgroundColor: colors.surface },
-          Platform.OS === 'ios' && pressed && styles.pressed,
+          isToday
+            ? { borderColor: colors.outlineVariant, backgroundColor: colors.surface }
+            : { borderColor: colors.primary, backgroundColor: colors.primaryContainer },
         ]}
       >
-        {loading ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <CalendarDays size={15} color={colors.primary} strokeWidth={2.2} />
+        <Pressable
+          onPress={onPickDate}
+          accessibilityRole="button"
+          accessibilityLabel={`Chat day: ${dateLabel}. Change day`}
+          android_ripple={{ color: colors.surfaceVariant }}
+          style={[styles.dateButton, !isToday && styles.dateButtonWithClear]}
+        >
+          {({ pressed }) => (
+            // iOS has no ripple, so dim the pill's content while it is pressed.
+            <View style={[styles.dateContent, Platform.OS === 'ios' && pressed && styles.pressed]}>
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <CalendarDays size={15} color={colors.primary} strokeWidth={2.2} />
+              )}
+              <Text style={[styles.dateText, { color: isToday ? colors.onSurface : colors.primary }]}>
+                {dateLabel}
+              </Text>
+            </View>
+          )}
+        </Pressable>
+        {!isToday && (
+          <Pressable
+            onPress={onToday}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Back to today"
+            style={[styles.clearButton, { backgroundColor: colors.primary }]}
+          >
+            {({ pressed }) => (
+              <View style={pressed ? styles.pressed : undefined}>
+                <X size={11} color={colors.onPrimary} strokeWidth={3} />
+              </View>
+            )}
+          </Pressable>
         )}
-        <Text style={[styles.dateText, { color: colors.onSurface }]}>{dateLabel}</Text>
-      </Pressable>
+      </View>
     </View>
   );
 }
@@ -107,18 +124,30 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.sm },
   badgeText: { fontSize: 11, fontWeight: '800' },
   subtitle: { fontSize: 12.5, marginTop: 1 },
-  todayLink: { fontSize: 12.5, fontWeight: '700' },
   datePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
     height: 34,
-    paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     overflow: 'hidden',
   },
+  dateButton: {
+    height: 32,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  dateButtonWithClear: { paddingRight: 6 },
+  dateContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateText: { fontSize: 13, fontWeight: '600' },
+  clearButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pressed: { opacity: 0.6 },
 });
 
