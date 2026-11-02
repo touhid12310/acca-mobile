@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { KeyRound, Lock, Mail, MailCheck, ShieldCheck } from "lucide-react-native";
+import { KeyRound, Lock, Mail, MailCheck, ShieldCheck, UserPlus } from "lucide-react-native";
 
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
@@ -20,7 +20,6 @@ import {
   OutlineButton,
 } from "../../src/components/auth/AuthButtons";
 import SocialAuthButtons from "../../src/components/auth/SocialAuthButtons";
-import { PressableScale } from "../../src/components/auth/PressableScale";
 import { SocialProvider } from "../../src/services/socialAuthService";
 import authService from "../../src/services/authService";
 import { startGoogleBrowserAuth } from "../../src/services/googleBrowserAuth";
@@ -370,22 +369,12 @@ export default function LoginScreen() {
               onPress={() => handleLogin()}
               loading={isLoading}
             />
-            <View style={styles.signUpRow}>
-              <Text style={[styles.signUpText, { color: colors.onSurfaceVariant }]}>
-                Don&apos;t have an account?
-              </Text>
-              <PressableScale
-                onPress={() => router.push("/(auth)/register")}
-                accessibilityRole="button"
-                accessibilityLabel="Sign up"
-                style={[
-                  styles.signUpButton,
-                  { borderColor: colors.primary, backgroundColor: colors.primaryContainer },
-                ]}
-              >
-                <Text style={[styles.signUpButtonText, { color: colors.primary }]}>Sign up</Text>
-              </PressableScale>
-            </View>
+            <OutlineButton
+              label="Create a free account"
+              icon={UserPlus}
+              style={styles.signUpButton}
+              onPress={() => router.push("/(auth)/register")}
+            />
           </Reveal>
           <Reveal index={4} style={styles.alternatives}>
             <SocialAuthButtons
@@ -602,27 +591,11 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginTop: 2,
   },
-  signUpRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    marginTop: 12,
-  },
+  // Same size as "Sign in securely" right above it.
   signUpButton: {
-    height: 34,
-    paddingHorizontal: 16,
-    borderRadius: 17,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  signUpButtonText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  signUpText: {
-    fontSize: 14,
+    marginTop: 12,
+    height: 56,
+    borderRadius: 28,
   },
   alternatives: {
     gap: 14,
