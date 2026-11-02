@@ -1279,49 +1279,53 @@ export default function TransactionFormContent({
               Transfers have no receipt/items (web parity), so hide it. */}
           {formData.type !== 'transfer' && !initialData?.id && !formData.receipt && !formData.receipt_path && !hasMeaningfulItems && (
             <View style={styles.section}>
-              <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
-                Scan Receipt (Optional)
-              </Text>
-              <Surface style={[styles.scanReceiptContainer, { backgroundColor: colors.surfaceVariant }]} elevation={1}>
-                <MaterialCommunityIcons
-                  name="receipt"
-                  size={32}
-                  color={colors.primary}
-                  style={styles.scanReceiptIcon}
-                />
-                <Text style={[styles.scanReceiptText, { color: colors.onSurface }]}>
-                  Upload a receipt image to auto-fill transaction details
-                </Text>
-                {isProcessingReceipt ? (
-                  <View style={styles.processingContainer}>
-                    <ActivityIndicator size="small" color={colors.primary} />
-                    <Text style={[styles.processingText, { color: colors.primary }]}>
+              {/* One slim row: the form below is what matters, the scan is a shortcut. */}
+              <View
+                style={[
+                  styles.scanReceiptRow,
+                  { backgroundColor: colors.surfaceVariant, borderColor: colors.outlineVariant },
+                ]}
+              >
+                <View style={[styles.scanReceiptIconTile, { backgroundColor: colors.primaryContainer }]}>
+                  <MaterialCommunityIcons name="receipt-text-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={styles.scanReceiptCopy}>
+                  <Text style={[styles.scanReceiptTitle, { color: colors.onSurface }]} numberOfLines={1}>
+                    Scan a receipt
+                  </Text>
+                  {isProcessingReceipt ? (
+                    <Text style={[styles.scanReceiptHint, { color: colors.primary }]} numberOfLines={1}>
                       {processingStage}
                     </Text>
-                  </View>
+                  ) : (
+                    <Text style={[styles.scanReceiptHint, { color: colors.onSurfaceVariant }]} numberOfLines={1}>
+                      AI fills in the details
+                    </Text>
+                  )}
+                </View>
+                {isProcessingReceipt ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <View style={styles.scanReceiptButtons}>
-                    <Button
-                      mode="contained"
-                      icon="image"
+                    <TouchableOpacity
                       onPress={handleScanReceipt}
-                      style={styles.scanButton}
-                      compact
+                      style={[styles.scanReceiptButton, { backgroundColor: colors.primary }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Scan a receipt from the gallery"
                     >
-                      Gallery
-                    </Button>
-                    <Button
-                      mode="contained"
-                      icon="camera"
+                      <MaterialCommunityIcons name="image-outline" size={20} color={colors.onPrimary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       onPress={handleOpenCamera}
-                      style={styles.scanButton}
-                      compact
+                      style={[styles.scanReceiptButton, { backgroundColor: colors.primary }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Scan a receipt with the camera"
                     >
-                      Camera
-                    </Button>
+                      <MaterialCommunityIcons name="camera-outline" size={20} color={colors.onPrimary} />
+                    </TouchableOpacity>
                   </View>
                 )}
-              </Surface>
+              </View>
             </View>
           )}
 
@@ -2667,31 +2671,45 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
     marginBottom: 12,
   },
-  scanReceiptContainer: {
-    borderRadius: 12,
-    padding: 20,
+  scanReceiptRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
   },
-  scanReceiptIcon: {
-    marginBottom: 12,
+  scanReceiptIconTile: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scanReceiptText: {
-    textAlign: 'center',
-    marginBottom: 16,
+  scanReceiptCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  scanReceiptTitle: {
     fontSize: 14,
-    lineHeight: 20,
+    fontWeight: '600',
+  },
+  scanReceiptHint: {
+    fontSize: 12,
+    marginTop: 1,
   },
   scanReceiptButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
-  scanButton: {
-    minWidth: 100,
-  },
-  processingContainer: {
-    flexDirection: 'row',
+  scanReceiptButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
   },
   processingText: {
     fontSize: 14,
