@@ -17,10 +17,7 @@ import {
   Modal,
   Platform,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useQuery,
   useQueryClient,
@@ -39,7 +36,6 @@ import {
   ChevronDown,
   CreditCard,
   Edit3,
-  Plus,
   Check,
   Clock,
   Copy,
@@ -86,6 +82,7 @@ import {
   Account,
 } from "../../src/types";
 import { gradients, radius, shadow, spacing } from "../../src/constants/theme";
+import GradientFab from "../../src/components/common/GradientFab";
 import { NativeTextInput as TextInput } from "../../src/components/ui/SafeTextInput";
 
 type FilterType = "all" | TransactionType;
@@ -103,7 +100,6 @@ export default function TransactionsScreen() {
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
   const toast = useToast();
 
   const routeParams = useLocalSearchParams<{
@@ -1309,39 +1305,10 @@ export default function TransactionsScreen() {
         }
       />
 
-      {/* FAB */}
-      <View
-        style={[
-          styles.fab,
-          {
-            bottom: 20 + insets.bottom,
-            backgroundColor: colors.primary,
-          },
-          shadow.lg,
-        ]}
-      >
-        <Pressable
-          onPress={() => router.push("/transaction-modal")}
-          // iOS ignores android_ripple, so dim the button while pressed there.
-          style={({ pressed }) => [
-            styles.fabPressable,
-            Platform.OS === "ios" && pressed && { opacity: 0.85 },
-          ]}
-          android_ripple={{
-            color: "rgba(255,255,255,0.25)",
-            borderless: true,
-            radius: 28,
-          }}
-        >
-          <LinearGradient
-            colors={gradients.primary as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[StyleSheet.absoluteFill, { borderRadius: 28 }]}
-          />
-          <Plus size={26} color="#ffffff" strokeWidth={2.6} />
-        </Pressable>
-      </View>
+      <GradientFab
+        onPress={() => router.push("/transaction-modal")}
+        accessibilityLabel="Add transaction"
+      />
 
       {/* Action Sheet Modal */}
       <Modal
@@ -2166,24 +2133,6 @@ const styles = StyleSheet.create({
   txnAmount: {
     fontSize: 15,
     fontWeight: "700",
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fabPressable: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
   },
   modalBackdrop: {
     flex: 1,

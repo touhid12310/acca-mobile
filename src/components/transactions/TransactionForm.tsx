@@ -12,7 +12,6 @@ import {
   Button,
   SegmentedButtons,
   Portal,
-  Modal,
   List,
   Divider,
   IconButton,
@@ -20,6 +19,7 @@ import {
   Surface,
   Chip,
 } from 'react-native-paper';
+import DialogModal from '../common/DialogModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -329,7 +329,7 @@ export default function TransactionForm({
 
   return (
     <Portal>
-      <Modal
+      <DialogModal
         visible={visible}
         onDismiss={onDismiss}
         contentContainerStyle={[styles.modal, { backgroundColor: colors.surface }]}
@@ -696,7 +696,7 @@ export default function TransactionForm({
         </KeyboardAvoidingView>
 
         {/* Category Picker Modal */}
-        <Modal
+        <DialogModal
           visible={showCategoryPicker}
           onDismiss={() => setShowCategoryPicker(false)}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
@@ -760,10 +760,10 @@ export default function TransactionForm({
           <Button mode="text" onPress={() => setShowCategoryPicker(false)}>
             Cancel
           </Button>
-        </Modal>
+        </DialogModal>
 
         {/* Account Picker Modal */}
-        <Modal
+        <DialogModal
           visible={showAccountPicker}
           onDismiss={() => setShowAccountPicker(false)}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
@@ -808,10 +808,10 @@ export default function TransactionForm({
           <Button mode="text" onPress={() => setShowAccountPicker(false)}>
             Cancel
           </Button>
-        </Modal>
+        </DialogModal>
 
         {/* To Account Picker Modal */}
-        <Modal
+        <DialogModal
           visible={showToAccountPicker}
           onDismiss={() => setShowToAccountPicker(false)}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
@@ -858,8 +858,8 @@ export default function TransactionForm({
           <Button mode="text" onPress={() => setShowToAccountPicker(false)}>
             Cancel
           </Button>
-        </Modal>
-      </Modal>
+        </DialogModal>
+      </DialogModal>
     </Portal>
   );
 }

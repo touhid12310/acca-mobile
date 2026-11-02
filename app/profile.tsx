@@ -14,9 +14,9 @@ import {
   Surface,
   Button,
   Portal,
-  Modal,
   ActivityIndicator,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -914,7 +914,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <Portal>
-        <Modal
+        <DialogModal
           visible={passwordModalVisible}
           onDismiss={() => setPasswordModalVisible(false)}
           style={modalWrapperStyle}
@@ -975,12 +975,12 @@ export default function ProfileScreen() {
             </Button>
           </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Two-Factor Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={twoFactorModalVisible}
           onDismiss={() => {
             setTwoFactorModalVisible(false);
@@ -1190,12 +1190,12 @@ export default function ProfileScreen() {
             </>
           )}
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Delete Account Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={deleteAccountModalVisible}
           onDismiss={() =>
             !isDeletingAccount && setDeleteAccountModalVisible(false)
@@ -1268,7 +1268,7 @@ export default function ProfileScreen() {
             </Button>
           </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog

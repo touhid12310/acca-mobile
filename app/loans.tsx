@@ -14,13 +14,13 @@ import {
   FAB,
   ActivityIndicator,
   Portal,
-  Modal,
   Button,
   ProgressBar,
   Chip,
   SegmentedButtons,
   Divider,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -1327,7 +1327,7 @@ export default function LoansScreen() {
 
       {/* Add Loan Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={modalVisible}
           onDismiss={closeModal}
           contentContainerStyle={[
@@ -1718,12 +1718,12 @@ export default function LoansScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Statement — the running two-way ledger, PDF and share link */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={statementVisible}
           onDismiss={closeStatement}
           contentContainerStyle={[
@@ -2181,12 +2181,12 @@ export default function LoansScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Make Payment Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={paymentModalVisible}
           onDismiss={closePaymentModal}
           contentContainerStyle={[
@@ -2491,12 +2491,12 @@ export default function LoansScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Action Sheet Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showActionSheet}
           onDismiss={closeActionSheet}
           contentContainerStyle={[
@@ -2635,7 +2635,7 @@ export default function LoansScreen() {
               </Button>
             </>
           )}
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog

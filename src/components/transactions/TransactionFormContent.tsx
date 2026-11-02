@@ -18,13 +18,13 @@ import {
   Button,
   SegmentedButtons,
   Portal,
-  Modal,
   List,
   Divider,
   IconButton,
   Surface,
   Chip,
 } from 'react-native-paper';
+import DialogModal from '../common/DialogModal';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedDatePicker } from '../ui/ThemedDatePicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -1619,10 +1619,20 @@ export default function TransactionFormContent({
                         left={<TextInput.Affix text={currencySymbol} />}
                         dense
                       />
-                      <Text style={[styles.itemTotal, { color: colors.onSurface }]}>
-                        {currencySymbol}{item.total}
-                      </Text>
                     </View>
+                    {/* Under the fields, not beside them, so large prices keep the
+                        width they need. With Qty 1 it would only repeat the price. */}
+                    {parseFloat(item.quantity) !== 1 && !!item.quantity && (
+                      <Text
+                        style={[styles.itemTotal, { color: colors.onSurfaceVariant }]}
+                        numberOfLines={1}
+                      >
+                        Line total{' '}
+                        <Text style={{ color: colors.onSurface, fontWeight: 'bold' }}>
+                          {currencySymbol}{item.total}
+                        </Text>
+                      </Text>
+                    )}
                     <TouchableOpacity
                       style={[
                         styles.itemCategoryButton,
@@ -2062,7 +2072,7 @@ export default function TransactionFormContent({
 
       {/* Category Picker Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showCategoryPicker}
           onDismiss={() => {
             setShowCategoryPicker(false);
@@ -2277,12 +2287,12 @@ export default function TransactionFormContent({
           >
             Cancel
           </Button>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Account Picker Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showAccountPicker}
           onDismiss={() => setShowAccountPicker(false)}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
@@ -2318,12 +2328,12 @@ export default function TransactionFormContent({
           <Button mode="text" onPress={() => setShowAccountPicker(false)}>
             Cancel
           </Button>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* To Account Picker Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showToAccountPicker}
           onDismiss={() => setShowToAccountPicker(false)}
           contentContainerStyle={[styles.pickerModal, { backgroundColor: colors.surface }]}
@@ -2361,7 +2371,7 @@ export default function TransactionFormContent({
           <Button mode="text" onPress={() => setShowToAccountPicker(false)}>
             Cancel
           </Button>
-        </Modal>
+        </DialogModal>
       </Portal>
     </View>
   );
@@ -2735,15 +2745,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemQtyInput: {
-    width: 70,
+    width: 84,
   },
   itemPriceInput: {
     flex: 1,
   },
   itemTotal: {
-    minWidth: 70,
+    marginTop: 6,
+    fontSize: 13,
     textAlign: 'right',
-    fontWeight: 'bold',
   },
   itemCategoryButton: {
     flexDirection: 'row',

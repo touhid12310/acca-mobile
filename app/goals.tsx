@@ -14,10 +14,10 @@ import {
   FAB,
   ActivityIndicator,
   Portal,
-  Modal,
   Button,
   ProgressBar,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -821,7 +821,7 @@ export default function GoalsScreen() {
 
       {/* Add Goal Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={modalVisible}
           onDismiss={closeModal}
           contentContainerStyle={[
@@ -930,12 +930,12 @@ export default function GoalsScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Add Contribution Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={addAmountModalVisible}
           onDismiss={closeAddAmountModal}
           // Re-centres the sheet in the space above the iOS keyboard; on
@@ -1050,7 +1050,7 @@ export default function GoalsScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog

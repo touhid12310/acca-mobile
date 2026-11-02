@@ -15,12 +15,12 @@ import {
   FAB,
   ActivityIndicator,
   Portal,
-  Modal,
   Button,
   ProgressBar,
   Chip,
   Divider,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -901,7 +901,7 @@ export default function BudgetsScreen() {
 
       {/* Add/Edit Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={modalVisible}
           onDismiss={handleModalDismiss}
           contentContainerStyle={[
@@ -1222,12 +1222,12 @@ export default function BudgetsScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Action Sheet Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showActionSheet}
           onDismiss={closeActionSheet}
           contentContainerStyle={[
@@ -1345,7 +1345,7 @@ export default function BudgetsScreen() {
               </Button>
             </>
           )}
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog

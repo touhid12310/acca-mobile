@@ -11,13 +11,9 @@ import {
   Modal,
   Text,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Banknote,
   BanknoteArrowUp,
@@ -28,7 +24,6 @@ import {
   CreditCard,
   HandCoins,
   PiggyBank,
-  Plus,
   Smartphone,
   Sparkles,
   Star,
@@ -53,7 +48,8 @@ import {
 } from "../src/components/ui";
 import accountService from "../src/services/accountService";
 import { Account } from "../src/types";
-import { gradients, radius, shadow, spacing } from "../src/constants/theme";
+import { radius, shadow, spacing } from "../src/constants/theme";
+import GradientFab from "../src/components/common/GradientFab";
 import { parseDecimalInput } from "../src/utils/number";
 
 const formatApiError = (result: any): string => {
@@ -91,7 +87,6 @@ export default function AccountsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
   const toast = useToast();
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -371,24 +366,7 @@ export default function AccountsScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
-      <View style={[styles.fab, { bottom: 20 + insets.bottom }, shadow.lg]}>
-        <Pressable
-          onPress={openAddModal}
-          style={({ pressed }) => [
-            styles.fabPressable,
-            pressed && { opacity: 0.85 },
-          ]}
-        >
-          <LinearGradient
-            colors={gradients.primary as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Plus size={24} color="#ffffff" strokeWidth={2.4} />
-        </Pressable>
-      </View>
+      <GradientFab onPress={openAddModal} accessibilityLabel="Add account" />
 
       {/* Add Modal */}
       <Modal
@@ -618,19 +596,6 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: "600",
     opacity: 0.85,
-  },
-  fab: {
-    position: "absolute",
-    right: spacing.lg,
-    width: 56,
-    height: 56,
-    borderRadius: radius.pill,
-    overflow: "hidden",
-  },
-  fabPressable: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
   modalBackdrop: {
     flex: 1,

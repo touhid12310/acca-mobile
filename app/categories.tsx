@@ -14,10 +14,10 @@ import {
   FAB,
   ActivityIndicator,
   Portal,
-  Modal,
   Button,
   Switch,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -734,7 +734,7 @@ export default function CategoriesScreen() {
 
       {/* Create Category Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={modalVisible}
           onDismiss={dismissKeyboardOr(closeModal)}
           style={dialogStyle}
@@ -852,12 +852,12 @@ export default function CategoriesScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Create Subcategory Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={subcategoryModalVisible}
           onDismiss={dismissKeyboardOr(closeSubcategoryModal)}
           style={dialogStyle}
@@ -920,7 +920,7 @@ export default function CategoriesScreen() {
               Create
             </Button>
           </View>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog

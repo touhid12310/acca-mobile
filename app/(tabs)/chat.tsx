@@ -16,9 +16,9 @@ import {
   ActivityIndicator,
   Button,
   Portal,
-  Modal,
   Divider,
 } from "react-native-paper";
+import DialogModal from "../../src/components/common/DialogModal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -2339,7 +2339,7 @@ export default function ChatScreen() {
 
       {/* Preview Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={previewVisible}
           onDismiss={() => setPreviewVisible(false)}
           contentContainerStyle={[
@@ -2472,7 +2472,7 @@ export default function ChatScreen() {
               </View>
             </View>
           )}
-        </Modal>
+        </DialogModal>
       </Portal>
     </SafeAreaView>
   );

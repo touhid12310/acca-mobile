@@ -15,10 +15,10 @@ import {
   FAB,
   ActivityIndicator,
   Portal,
-  Modal,
   Button,
   Divider,
 } from "react-native-paper";
+import DialogModal from "../src/components/common/DialogModal";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -838,7 +838,7 @@ export default function SchedulesScreen() {
 
       {/* Add Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={modalVisible}
           onDismiss={handleModalDismiss}
           contentContainerStyle={[
@@ -1323,12 +1323,12 @@ export default function SchedulesScreen() {
               </Button>
             </View>
           </ScrollView>
-        </Modal>
+        </DialogModal>
       </Portal>
 
       {/* Action Sheet Modal */}
       <Portal>
-        <Modal
+        <DialogModal
           visible={showActionSheet}
           onDismiss={closeActionSheet}
           contentContainerStyle={[
@@ -1437,7 +1437,7 @@ export default function SchedulesScreen() {
               </Button>
             </>
           )}
-        </Modal>
+        </DialogModal>
       </Portal>
 
       <ConfirmDialog
