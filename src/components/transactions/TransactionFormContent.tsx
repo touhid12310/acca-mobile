@@ -1243,6 +1243,16 @@ export default function TransactionFormContent({
     router.push((Platform.OS === 'ios' ? '/categories-modal' : '/categories') as any);
   };
 
+  const currencyAdornment = (
+    <TextInput.Icon
+      icon={() => (
+        <Text style={[styles.currencyAdornment, { color: colors.onSurfaceVariant }]}>
+          {currencySymbol}
+        </Text>
+      )}
+    />
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       {/* Android is configured with softwareKeyboardLayoutMode "pan", so the OS
@@ -1524,7 +1534,9 @@ export default function TransactionFormContent({
                 placeholder="0.00"
                 value={formData.amount}
                 onChangeText={(v) => updateField('amount', toDecimalInput(v))}
-                left={<TextInput.Affix text={currencySymbol} />}
+                // Paper hides an Affix on an empty, unfocused field, so the
+                // currency sits in the icon slot, which always shows.
+                left={currencyAdornment}
               />
               {errors.amount && (
                 <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
@@ -1560,7 +1572,7 @@ export default function TransactionFormContent({
                     placeholder="0.00"
                     value={formData.transfer_fee}
                     onChangeText={(v) => updateField('transfer_fee', toDecimalInput(v))}
-                    left={<TextInput.Affix text={currencySymbol} />}
+                    left={currencyAdornment}
                   />
                   {errors.transfer_fee && (
                     <Text variant="bodySmall" style={{ color: colors.error, marginTop: 4 }}>
@@ -2751,6 +2763,10 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  currencyAdornment: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   processingText: {
     fontSize: 14,
