@@ -2188,11 +2188,12 @@ export default function TransactionFormContent({
                         styles.categoryParentTitle,
                         isCategorySelected && { color: colors.primary },
                       ]}
-                      style={
-                        isCategorySelected
-                          ? { backgroundColor: `${colors.primary}1F` }
-                          : undefined
-                      }
+                      style={[
+                        styles.categoryRow,
+                        isCategorySelected && { backgroundColor: `${colors.primary}1F` },
+                      ]}
+                      // A soft brand tint instead of the grey full-width ripple.
+                      rippleColor={`${colors.primary}29`}
                       left={() => (
                         <View
                           style={[
@@ -2548,6 +2549,13 @@ const styles = StyleSheet.create({
   // bold parent, tinted indented subcategory group with a "›" bullet.
   categoryOption: {
     overflow: 'hidden',
+    borderRadius: 12,
+    marginVertical: 2,
+  },
+  // Inset so the icon doesn't touch the edge of the highlight.
+  categoryRow: {
+    borderRadius: 12,
+    paddingLeft: 12,
   },
   categoryParentTitle: {
     fontWeight: '600',
