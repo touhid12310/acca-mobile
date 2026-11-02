@@ -97,9 +97,10 @@ export function AssistantStart({ suggestions, onScanReceipt, onSuggestion }: Pro
         </Text>
       </View>
       {/* App Review 5.1.2(i): say plainly that a third-party AI reads what is sent
-          (without naming the provider — the consent prompt carries the details). */}
+          as "AccountE AI", without naming the provider — the consent prompt
+          says a third-party provider runs it. */}
       <Text style={[styles.footerNote, { color: colors.onSurfaceVariant }]}>
-        Answers come from a third-party AI service, which reads what you send.
+        Answers come from AccountE AI, which reads what you send.
       </Text>
     </View>
   );

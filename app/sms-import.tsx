@@ -81,7 +81,7 @@ const rangeButtonLabel = (key: RangeKey) =>
 // complete: what is read, what is uploaded, where it goes and why.
 const SMS_DISCLOSURE_POINTS = [
   'Personal messages, messages from phone numbers and one-time codes are filtered out on your phone and never uploaded.',
-  "With Premium, alerts our built-in reader can't read are sent to a third-party AI service to be read.",
+  "With Premium, alerts our built-in reader can't read are read by AccountE AI (run on a third-party AI provider).",
   'Uploaded message text is deleted after 90 days, and nothing is added to your books until you approve it.',
   'You can turn SMS import off at any time on this screen.',
 ];
