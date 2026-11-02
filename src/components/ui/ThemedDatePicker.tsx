@@ -240,11 +240,11 @@ export function ThemedDatePicker({
                       styles.dayWrap,
                       isSelected && {
                         backgroundColor: colors.primary,
+                        borderColor: colors.primary,
                       },
                       !isSelected &&
                         isToday && {
                           borderColor: colors.primary,
-                          borderWidth: 1.5,
                         },
                     ]}
                   >
@@ -376,10 +376,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  // Every day keeps a (transparent) border: on Android a fill added to a view
+  // with a radius but no border drew the picked day as a square, while
+  // today's ring came out round.
   dayWrap: {
     width: 36,
     height: 36,
     borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
