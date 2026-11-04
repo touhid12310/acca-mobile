@@ -1100,9 +1100,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
   },
+  // Two tiles a row. Paper's Surface on iOS keeps only some layout props
+  // (width, flexGrow…) on its outer shadow view, so a minWidth never reached
+  // the row there and all tiles squeezed onto one line.
   statCard: {
-    flex: 1,
-    minWidth: "47%",
+    flexGrow: 1,
+    width: "47%",
     padding: 8,
     borderRadius: 10,
     flexDirection: "row",
