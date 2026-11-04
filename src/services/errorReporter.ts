@@ -69,6 +69,8 @@ const IGNORED_MESSAGES = [
   /The Internet connection appears to be offline/i,
   /AbortError|Aborted|signal is aborted/i,
   /Fetch request has been canceled/i,
+  // iOS expo/fetch when the request is cancelled (app suspended, screen left).
+  /UnexpectedException: cancell?ed/i,
   /timed? ?out/i,
   /UnknownHostException|Unable to resolve host/i,
   /SocketException|ConnectException|NoRouteToHostException|SSLException|SSLHandshakeException|StreamResetException/i,
