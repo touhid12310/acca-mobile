@@ -1311,6 +1311,16 @@ export default function LoansScreen() {
                 ? `${viewLoans.length} loan(s) archived/paid off`
                 : "Track your loans and payments here"}
             </Text>
+            <TouchableOpacity
+              style={[
+                styles.createFirstButton,
+                { backgroundColor: colors.primary },
+              ]}
+              onPress={() => openModal()}
+            >
+              <MaterialCommunityIcons name="plus" size={20} color="#fff" />
+              <Text style={styles.createFirstButtonText}>Add Loan</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
@@ -2871,6 +2881,25 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: "center",
     paddingVertical: 64,
+  },
+  createFirstButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    minHeight: 44,
+    marginTop: 20,
+  },
+  createFirstButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 8,
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
+    lineHeight: 20,
   },
   fab: {
     position: "absolute",
