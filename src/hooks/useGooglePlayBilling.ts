@@ -11,6 +11,7 @@ import {
 import type { Purchase, ProductSubscription } from 'expo-iap';
 
 import billingService, { StoreProduct } from '../services/billingService';
+import { reportError } from '../services/errorReporter';
 
 /** A store purchase the backend has just verified, priced from the store listing. */
 export type GrantedPurchase = {
@@ -112,7 +113,22 @@ const recurringAmountOf = (offer: AndroidOffer | null): { value: number; currenc
   return { value: micros / 1_000_000, currency: phase.priceCurrencyCode };
 };
 
-const apiError = (response: { message?: string; error?: string; data?: unknown }, fallback: string) => {
+/**
+ * A store error as text, with its code and debug message. expo-iap replaces
+ * the native message with "Failed to request purchase", so without these the
+ * App Store's / Play's real reason never reached the user or App errors.
+ */
+const storeErrorText = (error: unknown, fallback: string): string => {
+  const details = error as { message?: unknown; code?: unknown; debugMessage?: unknown } | null | undefined;
+  const message = typeof details?.message === 'string' && details.message ? details.message : fallback;
+  const extra = [details?.code, details?.debugMessage]
+    .filter((part) => (typeof part === 'string' && part) || typeof part === 'number')
+    .map(String)
+    .filter((part) => !message.includes(part));
+  return extra.length ? `${message} (${extra.join(': ')})` : message;
+};
+
+const apiError = (response:{ message?: string; error?: string; data?: unknown }, fallback: string) => {
   const data = response.data as { message?: string } | undefined;
   return response.message || response.error || data?.message || fallback;
 };
@@ -145,6 +161,18 @@ export function useGooglePlayBilling({
   // Set once the store catalogue is known (below); redeem() runs before that.
   const grantedPurchaseRef = useRef<((purchase: Purchase) => GrantedPurchase | null) | null>(null);
   const recoveryDone = useRef(false);
+
+  /** Show a store failure with its real code, and send it to App errors. */
+  const reportStoreError = useCallback(
+    (error: unknown, fallback: string) => {
+      const text = storeErrorText(error, fallback);
+      reportError('js_error', new Error(text), {
+        location: isIos ? 'App Store purchase' : 'Play Store purchase',
+      });
+      onError?.(text);
+    },
+    [isIos, onError],
+  );
 
   const productsQuery = useQuery({
     queryKey: ['store-products', Platform.OS],
@@ -235,11 +263,11 @@ export function useGooglePlayBilling({
       if (!backendEnabledRef.current) return;
       setPurchasing(null);
       if (error?.code !== ErrorCode.UserCancelled) {
-        onError?.(
-          error?.message ||
-            (isIos
-              ? 'The App Store could not complete the purchase.'
-              : 'The Play Store could not complete the purchase.'),
+        reportStoreError(
+          error,
+          isIos
+            ? 'The App Store could not complete the purchase.'
+            : 'The Play Store could not complete the purchase.',
         );
       }
     },
@@ -442,7 +470,9 @@ export function useGooglePlayBilling({
           });
         } catch (error) {
           setPurchasing(null);
-          onError?.(error instanceof Error ? error.message : 'Could not open the App Store.');
+          if ((error as { code?: unknown } | null)?.code !== ErrorCode.UserCancelled) {
+            reportStoreError(error, 'Could not open the App Store.');
+          }
         }
         return;
       }
@@ -506,7 +536,9 @@ export function useGooglePlayBilling({
         });
       } catch (error) {
         setPurchasing(null);
-        onError?.(error instanceof Error ? error.message : 'Could not open the Play Store.');
+        if ((error as { code?: unknown } | null)?.code !== ErrorCode.UserCancelled) {
+          reportStoreError(error, 'Could not open the Play Store.');
+        }
       }
     },
     [
@@ -518,6 +550,7 @@ export function useGooglePlayBilling({
       productIds,
       productMappingFor,
       reconnect,
+      reportStoreError,
       requestPurchase,
     ],
   );
