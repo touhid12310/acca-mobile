@@ -364,7 +364,8 @@ export default function ProfileScreen() {
         body: formData,
       });
 
-      const data = await response.json();
+      // A 502 from the proxy is plain text ("Bad Gateway"), not JSON.
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok && data.success) {
         notifyToast.success("Profile picture updated");
@@ -399,7 +400,7 @@ export default function ProfileScreen() {
         },
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (response.ok && data.success) {
         notifyToast.success("Profile picture removed");
