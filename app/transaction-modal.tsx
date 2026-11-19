@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { Portal } from 'react-native-paper';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Trash2 } from 'lucide-react-native';
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
@@ -17,8 +18,10 @@ import TransactionFormContent, {
   TransactionFormData,
 } from '../src/components/transactions/TransactionFormContent';
 import NoAccountGate from '../src/components/transactions/NoAccountGate';
+import { ConfirmDialog } from '../src/components/ui';
 import transactionService from '../src/services/transactionService';
 import ruleService, { RuleSuggestion } from '../src/services/ruleService';
+import { invalidateMoneyQueries } from '../src/services/moneyQueries';
 import { Transaction, TransactionType } from '../src/types';
 import { toDateInputValue } from '../src/utils/date';
 import { maybeAskForReview } from '../src/services/appReviewService';
@@ -27,6 +30,10 @@ import analyticsService from '../src/services/analyticsService';
 // Opened as the only route (e.g. from the onboarding finish cards) there is
 // nothing to go back to, and router.back() would leave the user stuck here.
 const close = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)'));
+
+// How long "Make it a rule?" stays up (QA AE-31: 9 s was too short; the web
+// keeps it 14 s).
+const RULE_SUGGESTION_MS = 20000;
 
 export default function TransactionModalScreen() {
   const { colors, isDark } = useTheme();
@@ -42,6 +49,36 @@ export default function TransactionModalScreen() {
   useEffect(() => {
     navigation.setOptions({ gestureEnabled: !isDirty });
   }, [navigation, isDirty]);
+
+  // Leaving with unsaved input — Android back, the X, any router.back() —
+  // asks "Discard changes?" first (QA AE-16). A save, or archiving the draft,
+  // leaves without asking.
+  const leaveAllowed = useRef(false);
+  const [pendingLeave, setPendingLeave] = useState<{ action: any } | null>(null);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (event: any) => {
+      if (!isDirty || leaveAllowed.current) return;
+      event.preventDefault();
+      setPendingLeave({ action: event.data?.action });
+    });
+    return unsubscribe;
+  }, [navigation, isDirty]);
+
+  const closeWithoutAsking = useCallback(() => {
+    leaveAllowed.current = true;
+    close();
+  }, []);
+
+  const discardAndLeave = () => {
+    const action = pendingLeave?.action;
+    setPendingLeave(null);
+    leaveAllowed.current = true;
+    if (action) {
+      navigation.dispatch(action);
+    } else {
+      close();
+    }
+  };
 
   // KeyboardAvoidingView measures itself from the top of the sheet but the
   // keyboard from the top of the window, so it needs the sheet's top offset
@@ -303,16 +340,16 @@ export default function TransactionModalScreen() {
       return result;
     },
     onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      // Every screen showing money (Home sections, Activity, accounts,
+      // reports, budgets…) refetches — not just the list (C9).
+      void invalidateMoneyQueries(queryClient);
       if (params.chat_message_id) {
         queryClient.invalidateQueries({ queryKey: ['chat', 'messages'] });
       }
       toast.success(
         variables.type === 'transfer' ? 'Transfer completed' : 'Transaction saved',
       );
-      close();
+      closeWithoutAsking();
       analyticsService.logEvent('transaction_created', {
         type: variables.type,
         source: params.chat_message_id ? 'chat' : 'manual',
@@ -392,10 +429,8 @@ export default function TransactionModalScreen() {
       return result;
     },
     onSuccess: (result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['transaction', params.id] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      // Includes ['transaction', id] and every money screen (C9).
+      void invalidateMoneyQueries(queryClient);
       toast.success(
         variables.data.type === 'transfer' ? 'Transfer updated' : 'Transaction updated',
       );
@@ -405,7 +440,7 @@ export default function TransactionModalScreen() {
       if (suggestion) {
         toast.info(`Always file “${suggestion.pattern}” as ${suggestion.category_label}?`, {
           title: 'Make it a rule?',
-          duration: 9000,
+          duration: RULE_SUGGESTION_MS,
           action: {
             label: 'Create rule',
             onPress: async () => {
@@ -420,7 +455,8 @@ export default function TransactionModalScreen() {
               if (created.success) {
                 toast.success((created.data as any)?.message || 'Rule created');
                 queryClient.invalidateQueries({ queryKey: ['categorization-rules'] });
-                queryClient.invalidateQueries({ queryKey: ['transactions'] });
+                // The rule may re-file earlier transactions.
+                void invalidateMoneyQueries(queryClient);
               } else {
                 toast.error(created.error || 'Could not create the rule');
               }
@@ -429,7 +465,7 @@ export default function TransactionModalScreen() {
         });
       }
 
-      close();
+      closeWithoutAsking();
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Unable to update transaction');
@@ -481,6 +517,7 @@ export default function TransactionModalScreen() {
       >
         <TransactionFormContent
           onCancel={close}
+          onFinished={closeWithoutAsking}
           onSubmit={handleSubmit}
           onDirtyChange={setIsDirty}
           keyboardOffset={keyboardOffset}
@@ -496,6 +533,20 @@ export default function TransactionModalScreen() {
         />
         {/* No accounts yet → must create one before adding a transaction. */}
         <NoAccountGate />
+        <ConfirmDialog
+          visible={!!pendingLeave}
+          title="Discard changes?"
+          message={
+            params.id
+              ? 'Your changes to this transaction haven’t been saved.'
+              : 'This transaction hasn’t been saved yet.'
+          }
+          icon={Trash2}
+          cancelLabel="Keep editing"
+          confirmLabel="Discard"
+          onCancel={() => setPendingLeave(null)}
+          onConfirm={discardAndLeave}
+        />
       </SafeAreaView>
     </Portal.Host>
   );

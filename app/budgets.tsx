@@ -43,30 +43,14 @@ import budgetService from "../src/services/budgetService";
 import categoryService from "../src/services/categoryService";
 import { Budget } from "../src/types";
 import { todayDateInputValue } from "../src/utils/date";
+import BudgetDetailModal from "../src/components/budgets/BudgetDetailModal";
 import { toDecimalInput } from "../src/utils/number";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import { apiErrorMessage } from "../src/utils/apiError";
 
-// Helper function to extract detailed validation errors from API response
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
-
-  return errorMsg;
-};
+// Plain words only: the field messages, never "Validation failed / field: …"
+// (QA AE-108).
+const formatApiError = (result: any): string => apiErrorMessage(result);
 
 interface SelectedCategory {
   categoryId: number;
@@ -88,6 +72,8 @@ export default function BudgetsScreen() {
   const [selectedBudget, setSelectedBudget] = useState<Budget | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Tapping a card opens its period and counted transactions (QA AE-115).
+  const [detailBudget, setDetailBudget] = useState<Budget | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     budgeted_amount: "",
@@ -464,6 +450,12 @@ export default function BudgetsScreen() {
     setSelectedBudget(null);
   };
 
+  // Edit from the detail view: close it first so the form opens on top.
+  const handleEditFromDetail = (budget: Budget) => {
+    setDetailBudget(null);
+    setTimeout(() => openModal(budget), 200);
+  };
+
   const getProgressColor = (percentage: number, status?: string) => {
     if (
       status === "over_budget" ||
@@ -693,8 +685,10 @@ export default function BudgetsScreen() {
                 elevation={1}
               >
                 <TouchableOpacity
-                  onPress={() => openModal(budget)}
+                  onPress={() => setDetailBudget(budget)}
                   onLongPress={() => showBudgetActions(budget)}
+                  accessibilityRole="button"
+                  accessibilityHint="Shows this period's transactions"
                 >
                   {/* Header */}
                   <View style={styles.budgetHeader}>
@@ -1367,6 +1361,18 @@ export default function BudgetsScreen() {
         loading={deleteMutation.isPending}
         onCancel={() => setShowDeleteConfirm(false)}
         onConfirm={handleConfirmDelete}
+      />
+
+      <BudgetDetailModal
+        visible={!!detailBudget}
+        // The list refetches after a money write; show the fresh copy.
+        budget={
+          (detailBudget &&
+            viewBudgets.find((b: any) => b.id === detailBudget.id)) ||
+          detailBudget
+        }
+        onClose={() => setDetailBudget(null)}
+        onEdit={handleEditFromDetail}
       />
     </SafeAreaView>
   );

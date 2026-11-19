@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
-  Linking,
   ActivityIndicator,
   Keyboard,
   Modal as RNModal,
@@ -50,7 +49,11 @@ import { Transaction, TransactionType, Category, Account, AccountType, PossibleD
 import { formatDate, parseCalendarDate, toDateInputValue } from '../../utils/date';
 import { toDecimalInput } from '../../utils/number';
 import { showPermissionSettingsAlert } from '../../utils/permissions';
+import { categoryIconName } from '../../utils/categoryIcons';
+import { invalidateMoneyQueries } from '../../services/moneyQueries';
 import PossibleDuplicateNotice from './PossibleDuplicateNotice';
+import { ReceiptViewer, isPdfReceipt, openReceiptInBrowser } from './ReceiptViewer';
+import { Sensitive } from '../common/Sensitive';
 import { compatibleImagePickerOptions, uploadFileFromAsset } from '../../utils/uploads';
 import { PaperTextInput as TextInput } from '../ui/SafeTextInput';
 
@@ -142,6 +145,11 @@ type Props = {
   onDirtyChange?: (dirty: boolean) => void;
   /** iOS sheet: distance from the top of the window to the top of the form. */
   keyboardOffset?: number;
+  /**
+   * Close after the form finished its own job (a draft archived from the
+   * duplicate notice) — never asks "Discard changes?". Falls back to onCancel.
+   */
+  onFinished?: () => void;
 };
 
 export default function TransactionFormContent({
@@ -154,9 +162,10 @@ export default function TransactionFormContent({
   applyDefaultCategory = false,
   onDirtyChange,
   keyboardOffset = 0,
+  onFinished,
 }: Props) {
   const { colors } = useTheme();
-  const { currencySymbol } = useCurrency();
+  const { currencySymbol, formatAmount } = useCurrency();
   const { user } = useAuth();
 
   // Convert API items to form items. Always yields at least one row — the grid
@@ -209,7 +218,7 @@ export default function TransactionFormContent({
   };
 
   // Initialize with initialData values if available to avoid unnecessary refetches
-  const [formData, setFormData] = useState<TransactionFormData>(() => {
+  const [formData, setFormDataState] = useState<TransactionFormData>(() => {
     if (initialData) {
       const normalizedType = (initialData.type?.toLowerCase() || 'expense') as TransactionType;
       return {
@@ -261,6 +270,26 @@ export default function TransactionFormContent({
       receipt: null,
     };
   });
+
+  // Every write goes through setFormData, which applies it to this ref at
+  // once. Save, validation and the item / category helpers read the ref, so
+  // they always see the newest typing — even when the tap lands before the
+  // screen has re-rendered after the last keystrokes (a busy phone, a toast
+  // animating). A stale render once saved a typed merchant as "Unknown"
+  // (QA AE-123).
+  const latestFormRef = useRef<TransactionFormData>(formData);
+  const setFormData = useCallback(
+    (
+      update:
+        | TransactionFormData
+        | ((prev: TransactionFormData) => TransactionFormData),
+    ) => {
+      const next = typeof update === 'function' ? update(latestFormRef.current) : update;
+      latestFormRef.current = next;
+      setFormDataState(next);
+    },
+    [],
+  );
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -403,7 +432,7 @@ export default function TransactionFormContent({
           : { ...item, category_id: defaultCategoryId, subcategory_id: null },
       ),
     }));
-  }, [defaultCategoryId, formData.items]);
+  }, [defaultCategoryId, formData.items, setFormData]);
 
   // --- Auto-categorization rules (web parity: TransactionManager) ---
   // A known merchant files the rows under the user's rule. Only blank rows,
@@ -425,8 +454,6 @@ export default function TransactionFormContent({
   } | null>(null);
   const ruleFilledRows = useRef(new Set<number>());
   const dismissedRuleMerchant = useRef('');
-  const formDataRef = useRef(formData);
-  formDataRef.current = formData;
 
   useEffect(() => {
     if (formData.type === 'transfer') return undefined;
@@ -435,11 +462,11 @@ export default function TransactionFormContent({
     if (!rules?.length || available.length === 0) return undefined;
 
     const timer = setTimeout(() => {
-      const merchant = formDataRef.current.merchant_name || '';
+      const merchant = latestFormRef.current.merchant_name || '';
       const merchantKey = merchant.trim().toLowerCase();
       if (dismissedRuleMerchant.current && dismissedRuleMerchant.current === merchantKey) return;
 
-      const rule = findMatchingRule(rules, merchant, formDataRef.current.type);
+      const rule = findMatchingRule(rules, merchant, latestFormRef.current.type);
       if (!rule) {
         setRuleHint(null);
         return;
@@ -447,7 +474,7 @@ export default function TransactionFormContent({
       if (!available.some((c) => c.id === rule.category_id)) return;
 
       const replaced: { index: number; category_id: number | null; subcategory_id: number | null }[] = [];
-      const nextItems = formDataRef.current.items.map((item, index) => {
+      const nextItems = latestFormRef.current.items.map((item, index) => {
         const alreadyRule =
           item.category_id === rule.category_id &&
           (item.subcategory_id ?? null) === (rule.subcategory_id ?? null);
@@ -474,7 +501,7 @@ export default function TransactionFormContent({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [formData.merchant_name, formData.type, rulesPayload, categoriesData, defaultCategoryId]);
+  }, [formData.merchant_name, formData.type, rulesPayload, categoriesData, defaultCategoryId, setFormData]);
 
   const undoRuleFill = () => {
     if (!ruleHint) return;
@@ -488,7 +515,7 @@ export default function TransactionFormContent({
         return { ...item, category_id: entry.category_id, subcategory_id: entry.subcategory_id };
       }),
     }));
-    dismissedRuleMerchant.current = (formData.merchant_name || '').trim().toLowerCase();
+    dismissedRuleMerchant.current = (latestFormRef.current.merchant_name || '').trim().toLowerCase();
     setRuleHint(null);
   };
 
@@ -507,7 +534,7 @@ export default function TransactionFormContent({
     setFormData((prev) =>
       prev.account_id ? prev : { ...prev, account_id: preferred.id },
     );
-  }, [accounts, formData.account_id, initialData, isInitialized]);
+  }, [accounts, formData.account_id, initialData, isInitialized, setFormData]);
 
   // Initialize form with initial data - only once when data first becomes available
   useEffect(() => {
@@ -550,7 +577,7 @@ export default function TransactionFormContent({
       setIsInitialized(true); // Mark as initialized
     }
     setErrors({});
-  }, [initialData, isInitialized]);
+  }, [initialData, isInitialized, setFormData]);
 
   // Every user edit (and a receipt scan) goes through updateField; the
   // automatic prefills (initial data, default account / category, rules) set
@@ -581,7 +608,7 @@ export default function TransactionFormContent({
     // the id isn't in the newly fetched list.
     updateField(
       'items',
-      formData.items.map((item) => ({
+      latestFormRef.current.items.map((item) => ({
         ...item,
         category_id: null,
         subcategory_id: null,
@@ -610,12 +637,35 @@ export default function TransactionFormContent({
         const data = responseData.data || responseData;
 
         // Extract items from response
-        const items = data.items || data.expense_candidates?.[0]?.items || [];
+        const items: any[] = [...(data.items || data.expense_candidates?.[0]?.items || [])];
+        const lineTotal = (item: any) =>
+          item.total != null && item.total !== ''
+            ? parseFloat(String(item.total)) || 0
+            : (parseFloat(String(item.quantity ?? 1)) || 0) * (parseFloat(String(item.price ?? 0)) || 0);
+
+        // The receipt's own total wins (QA AE-57: tax was dropped). Newer API
+        // builds already add a "Tax & fees" (or "Discount") line so the items
+        // add up; on older ones the gap is added here the same way, so the
+        // items and the amount never disagree.
+        const receiptTotal = parseFloat(String(data.amount ?? data.total ?? ''));
+        const itemsSum = items.reduce((sum, item) => sum + lineTotal(item), 0);
+        if (items.length > 0 && Number.isFinite(receiptTotal) && receiptTotal > 0) {
+          const gap = Math.round((receiptTotal - itemsSum) * 100) / 100;
+          if (Math.abs(gap) >= 0.01) {
+            items.push({
+              name: gap > 0 ? 'Tax & fees' : 'Discount',
+              quantity: 1,
+              price: gap,
+              total: gap,
+            });
+          }
+        }
+
         const formItems: TransactionItemData[] = items.map((item: any) => ({
           name: item.name || '',
           quantity: item.quantity?.toString() || '1',
           price: item.price?.toString() || '0',
-          total: item.total?.toString() || (parseFloat(item.quantity || 1) * parseFloat(item.price || 0)).toFixed(2),
+          total: lineTotal(item).toFixed(2),
           category_id: null,
           subcategory_id: null,
         }));
@@ -623,13 +673,23 @@ export default function TransactionFormContent({
         // Update form with extracted data
         if (formItems.length > 0) {
           updateField('items', formItems);
-          // Calculate total amount from items
           const totalAmount = formItems.reduce((sum, item) => {
             return sum + (parseFloat(item.total) || 0);
           }, 0);
           updateField('amount', totalAmount.toFixed(2));
-        } else if (data.amount) {
-          updateField('amount', data.amount.toString());
+        } else if (Number.isFinite(receiptTotal) && receiptTotal > 0) {
+          updateField('amount', receiptTotal.toFixed(2));
+        }
+
+        // The card / wallet named on the receipt, matched to one of the
+        // user's accounts by the API (C7). Only an account the user has.
+        const matchedAccountId = Number(data.payment_method_account_id);
+        if (
+          Number.isFinite(matchedAccountId) &&
+          matchedAccountId > 0 &&
+          accounts.some((account) => account.id === matchedAccountId)
+        ) {
+          updateField('account_id', matchedAccountId);
         }
 
         // Set merchant name (could be in merchant_name or item field)
@@ -719,7 +779,22 @@ export default function TransactionFormContent({
                   }
                   return formItem;
                 });
-                updateField('items', resolvedItems);
+                // A "Tax & fees" / "Discount" line with no category of its
+                // own follows the receipt's first categorised line.
+                const firstFiled = resolvedItems.find((item) => item.category_id);
+                const withAdjustments = resolvedItems.map((item, index) =>
+                  !item.category_id &&
+                  firstFiled &&
+                  !items[index]?.category &&
+                  /^(tax & fees|discount)$/i.test(item.name.trim())
+                    ? {
+                        ...item,
+                        category_id: firstFiled.category_id,
+                        subcategory_id: firstFiled.subcategory_id,
+                      }
+                    : item,
+                );
+                updateField('items', withAdjustments);
               }
             }
           } catch (e) {
@@ -736,7 +811,7 @@ export default function TransactionFormContent({
 
         toast.success(
           formItems.length > 0
-            ? `Found ${formItems.length} item(s) totaling ${currencySymbol}${formItems.reduce((sum, item) => sum + parseFloat(item.total), 0).toFixed(2)}`
+            ? `Found ${formItems.length} item(s) totaling ${formatAmount(formItems.reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0))}`
             : 'Transaction details extracted successfully',
           { title: 'Receipt processed' },
         );
@@ -847,6 +922,22 @@ export default function TransactionFormContent({
   // launch reports it (admin → App errors).
   useEffect(() => (cameraVisible ? markFlow('receipt camera') : undefined), [cameraVisible]);
 
+  // While the keyboard is up the merchant suggestions open ABOVE the field:
+  // Android pans the focused field to just above the keyboard (app.json
+  // "pan"), so a list dropping downward sat behind the keyboard and only
+  // appeared once it closed (QA AE-127).
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Fetch merchant suggestions while user types
   useEffect(() => {
     if (formData.type === 'transfer') return;
@@ -911,13 +1002,14 @@ export default function TransactionFormContent({
   const addItem = () => {
     // Inherit the previous row's category so single-category receipts
     // don't need re-selection on every row (web parity).
-    const lastItem = formData.items[formData.items.length - 1];
+    const currentItems = latestFormRef.current.items;
+    const lastItem = currentItems[currentItems.length - 1];
     const newItem: TransactionItemData = {
       ...makeEmptyItem(),
       category_id: lastItem?.category_id ?? null,
       subcategory_id: lastItem?.subcategory_id ?? null,
     };
-    updateField('items', [...formData.items, newItem]);
+    updateField('items', [...currentItems, newItem]);
   };
 
   const updateItemCategory = (
@@ -927,7 +1019,7 @@ export default function TransactionFormContent({
   ) => {
     // A hand-picked category is the user's choice; rules leave it alone now.
     ruleFilledRows.current.delete(index);
-    const updatedItems = [...formData.items];
+    const updatedItems = [...latestFormRef.current.items];
     updatedItems[index] = {
       ...updatedItems[index],
       category_id: categoryId,
@@ -963,7 +1055,7 @@ export default function TransactionFormContent({
         };
 
   const updateItem = (index: number, field: keyof TransactionItemData, value: string) => {
-    const updatedItems = [...formData.items];
+    const updatedItems = [...latestFormRef.current.items];
     updatedItems[index] = { ...updatedItems[index], [field]: value };
 
     // Auto-calculate total when quantity or price changes
@@ -987,7 +1079,7 @@ export default function TransactionFormContent({
   const removeItem = (index: number) => {
     // Row indexes shift, so forget which rows a rule filled.
     ruleFilledRows.current.clear();
-    const remaining = formData.items.filter((_, i) => i !== index);
+    const remaining = latestFormRef.current.items.filter((_, i) => i !== index);
     // Removing the last row leaves a fresh blank one so the grid never collapses
     // to an empty state.
     const updatedItems = remaining.length > 0 ? remaining : [makeEmptyItem()];
@@ -1000,7 +1092,7 @@ export default function TransactionFormContent({
     updateField('amount', totalAmount.toFixed(2));
   };
 
-  const validate = (): boolean => {
+  const validate = (formData: TransactionFormData): boolean => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.amount || parseFloat(formData.amount) <= 0) {
@@ -1150,8 +1242,7 @@ export default function TransactionFormContent({
       return draftId;
     },
     onSuccess: (draftId) => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void invalidateMoneyQueries(queryClient);
       toast.success('Duplicate draft moved to Archived', {
         duration: 6000,
         action: {
@@ -1159,7 +1250,7 @@ export default function TransactionFormContent({
           onPress: async () => {
             const restored = await transactionService.restore(draftId);
             if (restored.success) {
-              queryClient.invalidateQueries({ queryKey: ['transactions'] });
+              void invalidateMoneyQueries(queryClient);
               toast.success('Draft is back in Pending review');
             } else {
               toast.error('Could not restore the draft');
@@ -1168,29 +1259,33 @@ export default function TransactionFormContent({
         },
       });
       // The screen's own close — it falls back to the tabs when there is
-      // nothing to go back to.
-      onCancel();
+      // nothing to go back to. The draft is dealt with, so no "Discard
+      // changes?" question.
+      (onFinished ?? onCancel)();
     },
     onError: (error: Error) => toast.error(error.message || 'Could not archive this draft'),
   });
 
   const handleSubmit = async () => {
-    if (!validate()) return;
+    // The newest values, not this render's: a tap can arrive before the
+    // last keystrokes have re-rendered the screen (QA AE-123).
+    const current = latestFormRef.current;
+    if (!validate(current)) return;
 
     // The form no longer asks for a transaction-level category, so derive it
     // from the first categorised item — same as the web app, which builds the
     // transaction's categories out of the item rows on submit.
-    const firstCategorised = formData.items.find(
+    const firstCategorised = current.items.find(
       (item) => item.name.trim() !== '' && item.category_id,
     );
 
-    if (formData.type === 'transfer' || !firstCategorised) {
-      await onSubmit(formData);
+    if (current.type === 'transfer' || !firstCategorised) {
+      await onSubmit(current);
       return;
     }
 
     await onSubmit({
-      ...formData,
+      ...current,
       category_id: firstCategorised.category_id,
       subcategory_id: firstCategorised.subcategory_id,
     });
@@ -1241,6 +1336,27 @@ export default function TransactionFormContent({
   const openCategoriesManager = () => {
     setShowCategoryPicker(false);
     router.push((Platform.OS === 'ios' ? '/categories-modal' : '/categories') as any);
+  };
+
+  // The attached receipt: a fresh camera / gallery photo (local uri) or the
+  // stored file. Photos open in the in-app viewer; PDFs in the browser.
+  const [receiptViewerUri, setReceiptViewerUri] = useState<string | null>(null);
+  const receiptViewTarget =
+    formData.receipt?.uri || (formData.receipt_path ? buildFileUrl(formData.receipt_path) : null);
+  const receiptIsPdf =
+    !formData.receipt?.uri && isPdfReceipt(receiptViewTarget, formData.receipt_type);
+  const openReceiptView = () => {
+    if (!receiptViewTarget) return;
+    Keyboard.dismiss();
+    if (receiptIsPdf) {
+      if (/^https?:\/\//i.test(receiptViewTarget)) {
+        void openReceiptInBrowser(receiptViewTarget);
+      } else {
+        toast.error('Unable to open this file.', { title: 'Cannot open' });
+      }
+      return;
+    }
+    setReceiptViewerUri(receiptViewTarget);
   };
 
   const currencyAdornment = (
@@ -1424,31 +1540,21 @@ export default function TransactionFormContent({
               <Text variant="labelLarge" style={[styles.label, { color: colors.onSurfaceVariant }]}>
                 Attached Receipt
               </Text>
-              {/* Open in Browser Button - only show for remote paths (not local camera/gallery images) */}
-              {formData.receipt_path && !formData.receipt_path.startsWith('file://') && !formData.receipt_path.startsWith('content://') && (
+              {/* View the receipt: photos open in the in-app viewer (QA
+                  AE-37); a PDF still opens in the browser. */}
+              {!!receiptViewTarget && (
                 <TouchableOpacity
                   style={[styles.openBrowserButtonTop, { backgroundColor: colors.primary }]}
-                  onPress={async () => {
-                    if (formData.receipt_path) {
-                      try {
-                        const fullUrl = buildFileUrl(formData.receipt_path);
-                        if (fullUrl) {
-                          const canOpen = await Linking.canOpenURL(fullUrl);
-                          if (canOpen) {
-                            await Linking.openURL(fullUrl);
-                          } else {
-                            toast.error('Unable to open this file.', { title: 'Cannot open' });
-                          }
-                        }
-                      } catch (error) {
-                        toast.error('Failed to open file.');
-                      }
-                    }
-                  }}
+                  onPress={openReceiptView}
+                  accessibilityRole="button"
                 >
-                  <MaterialCommunityIcons name="open-in-new" size={20} color="#fff" />
+                  <MaterialCommunityIcons
+                    name={receiptIsPdf ? 'open-in-new' : 'magnify-plus-outline'}
+                    size={20}
+                    color="#fff"
+                  />
                   <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>
-                    Open in Browser
+                    {receiptIsPdf ? 'Open PDF' : 'View receipt'}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1460,16 +1566,23 @@ export default function TransactionFormContent({
                 {/* Show image preview - prefer local receipt, fallback to remote path */}
                 {/* Default to image type if not specified */}
                 {(formData.receipt?.uri || ((!formData.receipt_type || formData.receipt_type === 'image') && formData.receipt_path)) && (
-                  <Image
-                    source={{ uri: formData.receipt?.uri || buildFileUrl(formData.receipt_path) || '' }}
-                    style={styles.receiptImage}
-                    resizeMode="cover"
-                  />
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={openReceiptView}
+                    accessibilityRole="imagebutton"
+                    accessibilityLabel="View receipt"
+                  >
+                    <Image
+                      source={{ uri: formData.receipt?.uri || buildFileUrl(formData.receipt_path) || '' }}
+                      style={styles.receiptImage}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
                 )}
 
                 {/* PDFs render as a privacy-safe placeholder — never send the
                 receipt URL to a third-party viewer (e.g. Google Docs). The
-                "Open in Browser" button above opens the file directly. */}
+                "Open PDF" button above opens the file directly. */}
                 {formData.receipt_type === 'pdf' && formData.receipt_path && (
                   <View style={styles.pdfContainer}>
                     <View style={styles.receiptFileInfo}>
@@ -1482,7 +1595,7 @@ export default function TransactionFormContent({
                         {formData.receipt_name || 'Receipt PDF'}
                       </Text>
                       <Text style={{ color: colors.onSurfaceVariant, marginTop: 4, textAlign: 'center' }}>
-                        PDF preview is disabled for privacy. Use Open in Browser above.
+                        PDF preview is disabled for privacy. Use Open PDF above.
                       </Text>
                     </View>
                   </View>
@@ -1544,14 +1657,18 @@ export default function TransactionFormContent({
                 </Text>
               )}
               {!!getSelectedAccount(formData.account_id) && (
-                <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginTop: 4 }}>
-                  Available: {currencySymbol}
-                  {Number(
-                    getSelectedAccount(formData.account_id)?.current_balance ??
-                      getSelectedAccount(formData.account_id)?.balance ??
-                      0,
-                  ).toFixed(2)}
-                </Text>
+                // "Available: ৳128,838.74" — grouped, and a negative balance
+                // reads "−৳…" (QA AE-39, AE-111).
+                <Sensitive>
+                  <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant, marginTop: 4 }}>
+                    Available:{' '}
+                    {formatAmount(
+                      getSelectedAccount(formData.account_id)?.current_balance ??
+                        getSelectedAccount(formData.account_id)?.balance ??
+                        0,
+                    )}
+                  </Text>
+                </Sensitive>
               )}
 
               {/* Transfer fee — only the create endpoint accepts it, so it is
@@ -1645,7 +1762,7 @@ export default function TransactionFormContent({
                       >
                         Line total{' '}
                         <Text style={{ color: colors.onSurface, fontWeight: 'bold' }}>
-                          {currencySymbol}{item.total}
+                          {formatAmount(item.total)}
                         </Text>
                       </Text>
                     )}
@@ -1709,9 +1826,11 @@ export default function TransactionFormContent({
                 <Text variant="titleMedium" style={{ color: colors.onSurface }}>
                   Total:
                 </Text>
-                <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
-                  {currencySymbol}{formData.amount || '0.00'}
-                </Text>
+                <Sensitive>
+                  <Text variant="titleMedium" style={{ color: colors.primary, fontWeight: 'bold' }}>
+                    {formatAmount(formData.amount || 0)}
+                  </Text>
+                </Sensitive>
               </View>
             </Surface>
             {errors.items && (
@@ -1792,6 +1911,7 @@ export default function TransactionFormContent({
                   <Surface
                     style={[
                       styles.merchantSuggestions,
+                      keyboardVisible && styles.merchantSuggestionsAbove,
                       { backgroundColor: colors.surface, borderColor: colors.outline },
                     ]}
                     elevation={3}
@@ -1803,20 +1923,26 @@ export default function TransactionFormContent({
                         </Text>
                       </View>
                     ) : merchantSuggestions.length > 0 ? (
-                      merchantSuggestions.map((name) => (
-                        <TouchableOpacity
-                          key={name}
-                          style={styles.merchantSuggestion}
-                          onPress={() => {
-                            updateField('merchant_name', name);
-                            setShowMerchantSuggestions(false);
-                          }}
-                        >
-                          <Text style={{ color: colors.onSurface, fontSize: 14 }}>
-                            {name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))
+                      <ScrollView
+                        style={styles.merchantSuggestionList}
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled
+                      >
+                        {merchantSuggestions.map((name) => (
+                          <TouchableOpacity
+                            key={name}
+                            style={styles.merchantSuggestion}
+                            onPress={() => {
+                              updateField('merchant_name', name);
+                              setShowMerchantSuggestions(false);
+                            }}
+                          >
+                            <Text style={{ color: colors.onSurface, fontSize: 14 }}>
+                              {name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
                     ) : (
                       <View style={styles.merchantSuggestion}>
                         <Text style={{ color: colors.onSurfaceVariant, fontSize: 13 }}>
@@ -2086,6 +2212,12 @@ export default function TransactionFormContent({
         </View>
       </RNModal>
 
+      <ReceiptViewer
+        visible={!!receiptViewerUri}
+        uri={receiptViewerUri}
+        onClose={() => setReceiptViewerUri(null)}
+      />
+
       {/* Category Picker Modal */}
       <Portal>
         <DialogModal
@@ -2213,8 +2345,10 @@ export default function TransactionFormContent({
                             { backgroundColor: `${category.color || colors.primary}20` },
                           ]}
                         >
+                          {/* Admin-panel categories store Lucide names; map
+                              them so no row shows a "?" (QA AE-33). */}
                           <MaterialCommunityIcons
-                            name={(category.icon as any) || 'tag'}
+                            name={categoryIconName(category.icon, 'tag') as any}
                             size={20}
                             color={category.color || colors.primary}
                           />
@@ -2454,6 +2588,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     maxHeight: 220,
     zIndex: 10,
+  },
+  // Keyboard up: grow upward from the field's TOP edge (bottom: '100%'),
+  // over the Date section, never over the text being typed.
+  merchantSuggestionsAbove: {
+    top: undefined,
+    bottom: '100%',
+    marginTop: 0,
+    marginBottom: 4,
+  },
+  merchantSuggestionList: {
+    maxHeight: 200,
   },
   merchantSuggestion: {
     paddingVertical: 10,

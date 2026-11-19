@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Linking, View } from 'react-native';
+import { AppState, Linking, Platform, View } from 'react-native';
 import {
   Stack,
   router,
@@ -13,7 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
-import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
 import * as SplashScreen from 'expo-splash-screen';
 
@@ -154,6 +154,16 @@ onlineManager.setEventListener((setOnline) =>
     setOnline(!!state.isConnected);
   })
 );
+
+// Bring the app back to the front → stale queries refetch (TanStack's
+// "window focus" for React Native), so screens don't keep showing amounts
+// from before the app was left in the background (QA AE-07, AE-98).
+focusManager.setEventListener((handleFocus) => {
+  const subscription = AppState.addEventListener('change', (status) => {
+    if (Platform.OS !== 'web') handleFocus(status === 'active');
+  });
+  return () => subscription.remove();
+});
 
 function RootLayoutNav() {
   const { theme, paperTheme, isDark } = useTheme();

@@ -23,8 +23,17 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import onboardingService from "../src/services/onboardingService";
 import analyticsService from "../src/services/analyticsService";
 import metaEvents from "../src/services/metaEvents";
-import { detectTimeZone } from "../src/utils/timezone";
+import { detectTimeZone, normalizeTimeZone } from "../src/utils/timezone";
 import { detectCurrency } from "../src/utils/detectCurrency";
+import {
+  detectCountry,
+  merchantExamples,
+  phonePlaceholder,
+} from "../src/utils/localExamples";
+import {
+  TimeZonePicker,
+  timeZoneLabel,
+} from "../src/components/common/TimeZonePicker";
 import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 import { BrandText } from "../src/components";
 import { NativeTextInput as TextInput } from "../src/components/ui/SafeTextInput";
@@ -101,14 +110,18 @@ export default function OnboardingScreen() {
       (codes.includes(DEFAULT_CURRENCY) ? DEFAULT_CURRENCY : codes[0])
     );
   }, [availableCurrencies, currencyChoice, detectedTz, currency]);
-  const [timezone, setTimezone] = useState(user?.timezone || detectedTz);
+  const [timezone, setTimezone] = useState(
+    normalizeTimeZone(user?.timezone || detectedTz),
+  );
+  // The detected zone can be changed from the same searchable list as
+  // Profile (QA AE-66).
+  const [timeZonePickerOpen, setTimeZonePickerOpen] = useState(false);
   const savedMonthDay = user?.financial_month_start_day || 1;
   const [monthMode, setMonthMode] = useState<"first" | "custom">(savedMonthDay > 1 ? "custom" : "first");
   const [customDay, setCustomDay] = useState(String(savedMonthDay));
   const [accountType, setAccountType] = useState("Bank Account");
   const [accountName, setAccountName] = useState("");
   const [openingBalance, setOpeningBalance] = useState("");
-  const [loadSampleData, setLoadSampleData] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [currencyModalOpen, setCurrencyModalOpen] = useState(false);
@@ -178,7 +191,6 @@ export default function OnboardingScreen() {
     if (key === "accountType") setAccountType(value);
     if (key === "accountName") setAccountName(value);
     if (key === "openingBalance") setOpeningBalance(value);
-    if (key === "loadSampleData") setLoadSampleData(value);
   };
 
   const validateStep = (which: number): boolean => {
@@ -254,7 +266,6 @@ export default function OnboardingScreen() {
     const balance = openingBalance.trim().startsWith("-") ? -magnitude : magnitude;
     return {
       ...profilePayload(),
-      load_sample_data: loadSampleData,
       account: accountName.trim()
         ? {
             account_name: accountName.trim(),
@@ -308,6 +319,11 @@ export default function OnboardingScreen() {
   const surfaceBg = isDark ? "rgba(17, 24, 39, 0.65)" : "#ffffff";
   const cardBorder = isDark ? "rgba(75, 85, 99, 0.55)" : "#e2e8f0";
   const subtle = isDark ? "#94a3b8" : "#64748b";
+
+  // Examples that fit where they live (QA AE-87): the phone's country for the
+  // number, the picked currency for the bank name.
+  const mobilePlaceholder = phonePlaceholder(detectCountry(detectedTz));
+  const bankExample = merchantExamples(selectedCurrency).bank;
 
   // Named even when the list lacks it (turned off, or not loaded yet).
   const selectedCurrencyMeta = selectedCurrency ? getCurrencyMeta(selectedCurrency) : null;
@@ -385,7 +401,7 @@ export default function OnboardingScreen() {
                 <TextInput
                   value={mobile}
                   onChangeText={(v) => setField("mobile", v)}
-                  placeholder="+880 1XXX XXXXXX"
+                  placeholder={mobilePlaceholder}
                   placeholderTextColor={subtle}
                   keyboardType="phone-pad"
                   autoComplete="tel"
@@ -420,17 +436,22 @@ export default function OnboardingScreen() {
               </View>
 
               <View style={styles.field}>
-                <Text style={[styles.label, { color: subtle }]}>Timezone</Text>
-                <View
+                <Text style={[styles.label, { color: subtle }]}>Time zone</Text>
+                <TouchableOpacity
+                  onPress={() => setTimeZonePickerOpen(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Time zone, ${timezone}. Change`}
                   style={[
-                    styles.input,
-                    { borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc", justifyContent: "center" },
+                    styles.select,
+                    { borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" },
                   ]}
                 >
-                  <Text style={{ color: colors.onSurface, fontSize: 14 }}>
-                    Auto-detected · {timezone}
+                  <Text style={{ color: colors.onSurface, fontSize: 14, flex: 1 }} numberOfLines={1}>
+                    {timezone === normalizeTimeZone(detectedTz) ? "Auto-detected · " : ""}
+                    {timeZoneLabel(timezone)}
                   </Text>
-                </View>
+                  <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>Change</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.field}>
@@ -528,7 +549,7 @@ export default function OnboardingScreen() {
                   <TextInput
                     value={accountName}
                     onChangeText={(v) => setField("accountName", v)}
-                    placeholder="e.g. City Bank"
+                    placeholder={`e.g. ${bankExample}`}
                     placeholderTextColor={subtle}
                     style={[
                       styles.input,
@@ -625,28 +646,6 @@ export default function OnboardingScreen() {
                   <Text style={[styles.finishDesc, { color: subtle }]}>Get spend alerts that matter.</Text>
                 </Pressable>
               </View>
-
-              <Pressable
-                onPress={() => setLoadSampleData((v) => !v)}
-                style={[styles.toggleRow, { borderColor: cardBorder, backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#f8fafc" }]}
-              >
-                <View
-                  style={[
-                    styles.toggleTrack,
-                    { backgroundColor: loadSampleData ? colors.primary : isDark ? "#475569" : "#cbd5e1" },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.toggleThumb,
-                      loadSampleData && { transform: [{ translateX: 16 }] },
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.toggleText, { color: subtle }]}>
-                  Load sample data so I can explore — clearable anytime from Settings.
-                </Text>
-              </Pressable>
             </View>
           )}
 
@@ -810,6 +809,16 @@ export default function OnboardingScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      <TimeZonePicker
+        visible={timeZonePickerOpen}
+        value={timezone}
+        onClose={() => setTimeZonePickerOpen(false)}
+        onSelect={(zone) => {
+          setTimeZonePickerOpen(false);
+          setField("timezone", zone);
+        }}
+      />
+
       {submitting && (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color={colors.primary} />
@@ -952,27 +961,6 @@ const styles = StyleSheet.create({
   },
   finishTitle: { fontSize: 12.5, fontWeight: "600", textAlign: "center" },
   finishDesc: { fontSize: 11, textAlign: "center", lineHeight: 14 },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  toggleTrack: {
-    width: 36,
-    height: 20,
-    borderRadius: 999,
-    padding: 2,
-  },
-  toggleThumb: {
-    width: 16,
-    height: 16,
-    borderRadius: 999,
-    backgroundColor: "#fff",
-  },
-  toggleText: { flex: 1, fontSize: 12.5, lineHeight: 17 },
   footer: {
     flexDirection: "row",
     alignItems: "center",

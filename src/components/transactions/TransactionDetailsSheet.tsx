@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
-import * as WebBrowser from "expo-web-browser";
 import {
   Copy,
   FileText,
@@ -22,17 +21,22 @@ import {
   X,
 } from "lucide-react-native";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { useTheme } from "../../contexts/ThemeContext";
 import { useCurrency } from "../../contexts/CurrencyContext";
 import { useToast } from "../../contexts/NotificationContext";
 import { Badge } from "../ui";
+import { Sensitive } from "../common/Sensitive";
 import { spacing } from "../../constants/theme";
 import transactionService, {
   InboundEmailBody,
 } from "../../services/transactionService";
+import { buildFileUrl } from "../../config/api";
 import { formatDate } from "../../utils/date";
 import { getAmountSign } from "../../utils/transactions";
 import { Transaction, TransactionType } from "../../types";
+import { ReceiptViewer, isPdfReceipt, openReceiptInBrowser } from "./ReceiptViewer";
 
 type Colors = ReturnType<typeof useTheme>["colors"];
 
@@ -76,6 +80,26 @@ const getTone = (type: TransactionType) => {
   }
 };
 
+type AccountRef = { id?: number; account_name?: string; name?: string } | number | string | null | undefined;
+
+/**
+ * The account's name from what the API sends: `payment_method` / `transfer_to`
+ * are the eager-loaded account objects (relations paymentMethod / transferTo),
+ * or a bare id on older payloads — then the cached account list names it.
+ */
+const accountNameOf = (ref: AccountRef, accounts: any[] | undefined): string | null => {
+  if (ref && typeof ref === "object") {
+    const name = ref.account_name || ref.name;
+    if (name) return String(name);
+    if (ref.id != null) ref = ref.id;
+  }
+  if (ref === null || ref === undefined || ref === "") return null;
+  const id = Number(ref);
+  if (!Number.isFinite(id)) return null;
+  const found = (accounts || []).find((account: any) => Number(account?.id) === id);
+  return found?.account_name ? String(found.account_name) : null;
+};
+
 /** One label/value line in the details sheet. */
 function DetailRow({
   label,
@@ -115,9 +139,11 @@ export default function TransactionDetailsSheet({
   const { formatAmount } = useCurrency();
   const toast = useToast();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
 
   const [fullTransaction, setFullTransaction] = useState<Transaction | null>(null);
   const [loading, setLoading] = useState(false);
+  const [receiptUri, setReceiptUri] = useState<string | null>(null);
   // Fetched on demand rather than with the list: bodies are large and most
   // drafts are never opened.
   const [emailBody, setEmailBody] = useState<EmailBodyState>(null);
@@ -138,6 +164,7 @@ export default function TransactionDetailsSheet({
 
   useEffect(() => {
     if (visible) pendingAction.current = null;
+    else setReceiptUri(null);
   }, [visible]);
 
   // The list payload is trimmed, so pull the full record (items, receipt,
@@ -199,7 +226,30 @@ export default function TransactionDetailsSheet({
     }
   };
 
-  const detail = fullTransaction ?? transaction;
+  // A deep link (`?id=`) hands over only an id: wait for the full record
+  // rather than drawing an empty sheet.
+  const detail = fullTransaction ?? (transaction?.type ? transaction : null);
+
+  const cachedAccounts = queryClient.getQueryData<any[]>(["accounts"]);
+  const accounts = Array.isArray(cachedAccounts) ? cachedAccounts : undefined;
+  const raw = detail as any;
+  const paymentAccount = accountNameOf(raw?.payment_method ?? raw?.account_id, accounts);
+  const pairedAccount = accountNameOf(raw?.transfer_to ?? raw?.to_account_id, accounts);
+  // A transfer's credit leg sits on the receiving account and points back at
+  // the sending one; the debit leg the other way round.
+  const isCreditLeg = raw?.type === "transfer" && raw?.balance_direction === "credit";
+  const fromAccount = isCreditLeg ? pairedAccount : paymentAccount;
+  const toAccount = isCreditLeg ? paymentAccount : pairedAccount;
+
+  const receiptUrl = detail?.receipt_file ? buildFileUrl(String(detail.receipt_file)) : null;
+  const openReceipt = () => {
+    if (!receiptUrl) return;
+    if (isPdfReceipt(receiptUrl)) {
+      void openReceiptInBrowser(receiptUrl);
+      return;
+    }
+    setReceiptUri(receiptUrl);
+  };
 
   return (
     <Modal
@@ -239,6 +289,14 @@ export default function TransactionDetailsSheet({
             </Pressable>
           </View>
 
+          {!detail && loading && (
+            <ActivityIndicator
+              size="small"
+              color={colors.primary}
+              style={{ marginVertical: spacing.xl }}
+            />
+          )}
+
           {detail && (
             <>
               <ScrollView
@@ -247,10 +305,12 @@ export default function TransactionDetailsSheet({
               >
                 {/* Headline amount */}
                 <View style={styles.detailAmountBlock}>
-                  <Text style={[styles.detailAmount, { color: getAmountColor(detail.type) }]}>
-                    {getAmountSign(detail)}
-                    {formatAmount(parseFloat(String(detail.amount)) || 0)}
-                  </Text>
+                  <Sensitive>
+                    <Text style={[styles.detailAmount, { color: getAmountColor(detail.type) }]}>
+                      {getAmountSign(detail)}
+                      {formatAmount(parseFloat(String(detail.amount)) || 0)}
+                    </Text>
+                  </Sensitive>
                   <Text style={[styles.detailMerchant, { color: colors.onSurface }]}>
                     {detail.merchant_name || detail.description || "Transaction"}
                   </Text>
@@ -285,15 +345,22 @@ export default function TransactionDetailsSheet({
                   value={formatDate(String(detail.date).slice(0, 10))}
                   colors={colors}
                 />
-                <DetailRow
-                  label={detail.type === "transfer" ? "Transfer" : "Account"}
-                  value={
-                    (detail as any).payment_method_account?.account_name ||
-                    (detail as any).account?.account_name ||
-                    "-"
-                  }
-                  colors={colors}
-                />
+                {detail.type === "transfer" ? (
+                  <>
+                    <DetailRow label="From" value={fromAccount || "-"} colors={colors} />
+                    <DetailRow label="To" value={toAccount || "-"} colors={colors} />
+                  </>
+                ) : (
+                  <DetailRow
+                    label="Account"
+                    value={
+                      paymentAccount ||
+                      (detail as any).account?.account_name ||
+                      "-"
+                    }
+                    colors={colors}
+                  />
+                )}
                 {!!detail.transaction_categories?.length && (
                   <DetailRow
                     label="Categories"
@@ -371,7 +438,7 @@ export default function TransactionDetailsSheet({
                             styles.detailFileButton,
                             { borderColor: colors.outlineVariant },
                           ]}
-                          onPress={() => WebBrowser.openBrowserAsync(String(detail.receipt_file))}
+                          onPress={openReceipt}
                         >
                           <FileText size={18} color={colors.primary} />
                           <Text style={[styles.detailFileLabel, { color: colors.primary }]}>
@@ -493,6 +560,12 @@ export default function TransactionDetailsSheet({
           )}
         </Pressable>
       </Pressable>
+      {/* Inside the sheet's modal so iOS presents it on top of the sheet. */}
+      <ReceiptViewer
+        visible={!!receiptUri}
+        uri={receiptUri}
+        onClose={() => setReceiptUri(null)}
+      />
     </Modal>
   );
 }

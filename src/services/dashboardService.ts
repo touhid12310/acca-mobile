@@ -49,6 +49,12 @@ export interface DashboardData {
   monthlyIncome: number;
   monthlyExpenses: number;
   netWorth: number;
+  /**
+   * Net worth at the end of last month, from the net-worth timeline (the
+   * figure Home compares today's net worth with). Null when the timeline
+   * couldn't be loaded.
+   */
+  netWorthLastMonth: number | null;
   accounts: any[];
   recentTransactions: any[];
   budgetSummary: {
@@ -69,13 +75,24 @@ export const dashboardService = {
       const { start, end } = getMonthRange(0);
       const today = toDateInputValue(new Date());
 
-      // Fetch all data in parallel
-      const [accountsRes, monthlyTransactionsRes, recentTransactionsRes, netWorthRes, budgetsSummaryRes] = await Promise.allSettled([
+      // Fetch all data in parallel. Recent activity is the newest by
+      // transaction date, then by when it was added (the API breaks a date tie
+      // by id) — not simply the last ids, which hid newer-dated rows (AE-20).
+      const [
+        accountsRes,
+        monthlyTransactionsRes,
+        recentTransactionsRes,
+        netWorthRes,
+        budgetsSummaryRes,
+        netWorthTimelineRes,
+      ] = await Promise.allSettled([
         accountService.getAll(),
         transactionService.getAll({ start_date: start, end_date: end, per_page: 1 }),
-        transactionService.getAll({ per_page: 10 }),
+        transactionService.getAll({ per_page: 10, sort_by: 'date', sort_order: 'desc' }),
         reportService.getNetWorth({ as_of_date: today }),
         budgetService.getSummary(),
+        // [end of last month, today]
+        reportService.getNetWorthTimeline(2),
       ]);
 
       // Process accounts
@@ -123,6 +140,28 @@ export const dashboardService = {
             }
           : null;
 
+      // Net worth timeline: { labels, netWorth: [lastMonthEnd, today] }.
+      const timelinePayload: any =
+        netWorthTimelineRes.status === 'fulfilled' && netWorthTimelineRes.value?.success
+          ? netWorthTimelineRes.value.data
+          : null;
+      const timelineBlock = timelinePayload?.data ?? timelinePayload;
+      const timelineSeries: unknown[] = Array.isArray(timelineBlock?.netWorth)
+        ? timelineBlock.netWorth
+        : Array.isArray(timelineBlock?.net_worth)
+          ? timelineBlock.net_worth
+          : [];
+      const netWorthLastMonth =
+        timelineSeries.length >= 2 ? toNumber(timelineSeries[timelineSeries.length - 2]) : null;
+
+      // Same calendar day → keep the server's order (date, then id).
+      const recentSorted = [...recentTransactionsData].sort((a: any, b: any) => {
+        const dateA = String(a?.date ?? '').slice(0, 10);
+        const dateB = String(b?.date ?? '').slice(0, 10);
+        if (dateA !== dateB) return dateA < dateB ? 1 : -1;
+        return toNumber(b?.id) - toNumber(a?.id);
+      });
+
       const dashboardData: DashboardData = {
         totalBalance,
         monthlyIncome,
@@ -131,8 +170,9 @@ export const dashboardService = {
           serverNetWorth !== undefined && serverNetWorth !== null
             ? toNumber(serverNetWorth)
             : totalBalance,
+        netWorthLastMonth,
         accounts: accountsData.slice(0, 5),
-        recentTransactions: recentTransactionsData.slice(0, 6).map((t: any) => ({
+        recentTransactions: recentSorted.slice(0, 6).map((t: any) => ({
           id: t.id,
           merchant_name: t.merchant_name || t.notes || t.description || 'Transaction',
           amount: toNumber(t.amount),
@@ -141,6 +181,10 @@ export const dashboardService = {
           transfer_pair_id: t.transfer_pair_id ?? null,
           notes: t.notes || null,
           date: t.date,
+          // When it was added — "… ago" is measured from this, not from the
+          // calendar date (which the API sends as UTC midnight).
+          created_at: t.created_at ?? null,
+          status: t.status ?? null,
           category: t.category?.name || t.transaction_categories?.[0]?.category?.name || null,
         })),
         budgetSummary,

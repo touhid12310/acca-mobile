@@ -32,12 +32,12 @@ import { useCurrency } from "../src/contexts/CurrencyContext";
 import { useToast } from "../src/contexts/NotificationContext";
 import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
-import goalService from "../src/services/goalService";
+import goalService, { GoalRecord } from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
-import { Goal } from "../src/types";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import { apiErrorMessage } from "../src/utils/apiError";
 import {
   formatDate,
   parseCalendarDate,
@@ -52,27 +52,9 @@ import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 const formatCalendarDate = (value: string) =>
   formatDate(toDateInputValue(parseCalendarDate(value)));
 
-// Helper function to extract detailed validation errors from API response
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
-
-  return errorMsg;
-};
+// Plain words only: the field messages, never "Validation failed / field: …"
+// (QA AE-108).
+const formatApiError = (result: any): string => apiErrorMessage(result);
 
 export default function GoalsScreen() {
   const { colors } = useTheme();
@@ -83,10 +65,10 @@ export default function GoalsScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [addAmountModalVisible, setAddAmountModalVisible] = useState(false);
-  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<GoalRecord | null>(null);
   // The goal being edited, or null when the goal modal is creating one.
-  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-  const [goalToDelete, setGoalToDelete] = useState<Goal | null>(null);
+  const [editingGoal, setEditingGoal] = useState<GoalRecord | null>(null);
+  const [goalToDelete, setGoalToDelete] = useState<GoalRecord | null>(null);
   const [amountToAdd, setAmountToAdd] = useState("");
   const [formData, setFormData] = useState({
     name: "",
@@ -131,32 +113,102 @@ export default function GoalsScreen() {
     },
   });
 
-  // Fetch categories for selection
+  // The category is picked from the user's own categories, the same list as
+  // the web (QA AE-108 / AE-51) — savings (asset) first, since a goal is
+  // money being put aside. A goal stores the category's name.
+  const goalCategoriesKey = ["categories", "goal-picker"];
   const { data: categories } = useQuery({
-    queryKey: ["categories", "grouped"],
+    queryKey: goalCategoriesKey,
     queryFn: async () => {
       const result = await categoryService.getGrouped();
       if (result.success && result.data) {
         const data = result.data as any;
         const payload = data?.data || data;
         return {
-          income: Array.isArray(payload?.income) ? payload.income : [],
+          asset: Array.isArray(payload?.asset) ? payload.asset : [],
           expense: Array.isArray(payload?.expense) ? payload.expense : [],
+          income: Array.isArray(payload?.income) ? payload.income : [],
         };
       }
-      return { income: [], expense: [] };
+      return { asset: [], expense: [], income: [] };
     },
+  });
+
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [categorySearch, setCategorySearch] = useState("");
+
+  const categoryGroups: { title: string; items: any[] }[] = [
+    { title: "Savings & assets", items: categories?.asset ?? [] },
+    { title: "Expenses", items: categories?.expense ?? [] },
+    { title: "Income", items: categories?.income ?? [] },
+  ];
+  const allCategoryNames = new Set(
+    categoryGroups.flatMap((group) =>
+      group.items.map((cat: any) => String(cat?.name || "").trim().toLowerCase()),
+    ),
+  );
+  const searchTerm = categorySearch.trim().toLowerCase();
+  const filteredCategoryGroups = categoryGroups
+    .map((group) => ({
+      ...group,
+      items: searchTerm
+        ? group.items.filter((cat: any) =>
+            String(cat?.name || "").toLowerCase().includes(searchTerm),
+          )
+        : group.items,
+    }))
+    .filter((group) => group.items.length > 0);
+  const exactCategoryMatch = searchTerm ? allCategoryNames.has(searchTerm) : true;
+
+  const closeCategoryPicker = () => {
+    setShowCategoryPicker(false);
+    setCategorySearch("");
+  };
+
+  const pickCategory = (name: string) => {
+    setFormData((prev) => ({ ...prev, category: name }));
+    closeCategoryPicker();
+  };
+
+  // "+ Create '<name>'" — a savings (asset) category, picked straight away.
+  const createInlineCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = String(name || "").trim();
+      if (!trimmed) throw new Error("Type a category name first");
+      const result = await categoryService.create({
+        name: trimmed,
+        type: "asset",
+        is_active: 1,
+      } as any);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: (result) => {
+      const created: any = (result as any)?.data?.data || (result as any)?.data || {};
+      if (created?.name) {
+        queryClient.setQueryData<any>(goalCategoriesKey, (prev: any) =>
+          prev
+            ? { ...prev, asset: [...(prev.asset ?? []), created] }
+            : { asset: [created], expense: [], income: [] },
+        );
+        pickCategory(created.name);
+      }
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success(`Category "${created?.name || "new"}" created`);
+    },
+    onError: (err: Error) => toast.error(err?.message || "Could not create category"),
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
+      // Category and target date are optional (QA AE-108): left out, not "".
       const result = await goalService.create({
-        name: data.name,
+        name: data.name.trim(),
         target_amount: parseDecimalInput(data.target_amount),
         current_amount: parseDecimalInput(data.current_amount),
         target_date: data.target_date || undefined,
-        category: data.category || undefined,
-        description: data.description || undefined,
+        category: data.category.trim() || undefined,
+        description: data.description.trim() || undefined,
       });
       if (!result.success) throw new Error(formatApiError(result));
       return result;
@@ -172,12 +224,13 @@ export default function GoalsScreen() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: typeof formData }) => {
+      // null clears an optional field the user emptied.
       const result = await goalService.update(id, {
-        name: data.name,
+        name: data.name.trim(),
         target_amount: parseDecimalInput(data.target_amount),
-        target_date: data.target_date || undefined,
-        category: data.category || undefined,
-        description: data.description,
+        target_date: data.target_date || null,
+        category: data.category.trim() || null,
+        description: data.description.trim() || null,
       });
       if (!result.success) throw new Error(formatApiError(result));
       return result;
@@ -247,6 +300,7 @@ export default function GoalsScreen() {
 
   const openModal = () => {
     setEditingGoal(null);
+    closeCategoryPicker();
     setFormData({
       name: "",
       target_amount: "",
@@ -258,8 +312,9 @@ export default function GoalsScreen() {
     setModalVisible(true);
   };
 
-  const openEditModal = (goal: Goal) => {
+  const openEditModal = (goal: GoalRecord) => {
     setEditingGoal(goal);
+    closeCategoryPicker();
     setFormData({
       name: goal.name || "",
       target_amount: String(goal.target_amount ?? ""),
@@ -275,9 +330,10 @@ export default function GoalsScreen() {
   const closeModal = () => {
     setModalVisible(false);
     setEditingGoal(null);
+    closeCategoryPicker();
   };
 
-  const openAddAmountModal = (goal: Goal) => {
+  const openAddAmountModal = (goal: GoalRecord) => {
     setSelectedGoal(goal);
     setAmountToAdd("");
     setAddAmountModalVisible(true);
@@ -315,20 +371,38 @@ export default function GoalsScreen() {
     addAmountMutation.mutate({ id: selectedGoal.id, amount });
   };
 
-  const handleDelete = (goal: Goal) => {
+  const handleDelete = (goal: GoalRecord) => {
     setGoalToDelete(goal);
   };
 
-  const getDaysRemaining = (targetDate?: string | null) => {
+  /**
+   * Whole days to the target date, and whether it has passed. The API's
+   * figures (contract C3: counted in the user's timezone) win; older API
+   * builds get the same count from the device's calendar.
+   */
+  const getDueInfo = (goal: GoalRecord) => {
+    const targetDate = goal.target_date || goal.deadline;
     if (!targetDate) return null;
+    if (typeof goal.is_overdue === "boolean") {
+      return {
+        overdue: goal.is_overdue,
+        days: goal.is_overdue
+          ? Math.max(0, Math.round(Number(goal.days_overdue) || 0))
+          : Math.max(0, Math.round(Number(goal.days_remaining) || 0)),
+      };
+    }
     // Whole calendar days between local midnights (round absorbs DST hours).
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const target = parseCalendarDate(targetDate);
-    const diffTime = target.getTime() - today.getTime();
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
+    const diffDays = Math.round(
+      (parseCalendarDate(targetDate).getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    return diffDays < 0
+      ? { overdue: true, days: Math.abs(diffDays) }
+      : { overdue: false, days: diffDays };
   };
+
+  const dayCount = (days: number) => `${days} ${days === 1 ? "day" : "days"}`;
 
   // Only a pull shows the spinner; refetches after a save stay silent (on iOS
   // a programmatic refresh would also push the list down).
@@ -351,25 +425,25 @@ export default function GoalsScreen() {
   // Calculate stats
   const viewGoals = goals || [];
   const totalTargetAmount = viewGoals.reduce(
-    (sum: number, goal: Goal) =>
+    (sum: number, goal: GoalRecord) =>
       sum + (parseFloat(String(goal.target_amount)) || 0),
     0,
   );
   const totalCurrentAmount = viewGoals.reduce(
-    (sum: number, goal: Goal) =>
+    (sum: number, goal: GoalRecord) =>
       sum + (parseFloat(String(goal.current_amount)) || 0),
     0,
   );
   // Saving past the target (or lowering the target below what's saved)
   // leaves nothing to save — show 0, never a negative amount.
-  const remainingFor = (goal: Goal) =>
+  const remainingFor = (goal: GoalRecord) =>
     Math.max(
       0,
       (parseFloat(String(goal.target_amount)) || 0) -
         (parseFloat(String(goal.current_amount)) || 0),
     );
   const totalRemaining = viewGoals.reduce(
-    (sum: number, goal: Goal) => sum + remainingFor(goal),
+    (sum: number, goal: GoalRecord) => sum + remainingFor(goal),
     0,
   );
   const goalsCount = viewGoals.length;
@@ -534,12 +608,13 @@ export default function GoalsScreen() {
         </View>
 
         {viewGoals.length > 0 ? (
-          viewGoals.map((goal: Goal) => {
+          viewGoals.map((goal: GoalRecord) => {
             const percentage = goal.progress_percentage || 0;
-            const isCompleted = goal.is_completed || percentage >= 100;
-            const daysRemaining = getDaysRemaining(
-              goal.target_date || goal.deadline,
-            );
+            const isCompleted =
+              goal.is_completed || goal.status === "completed" || percentage >= 100;
+            // A reached goal is never "overdue".
+            const due = isCompleted ? null : getDueInfo(goal);
+            const isOverdue = !!due?.overdue;
             const progressColor = getProgressColor(percentage, goal.status);
 
             return (
@@ -590,6 +665,21 @@ export default function GoalsScreen() {
                           style={{ color: colors.tertiary }}
                         >
                           Complete
+                        </Text>
+                      </View>
+                    )}
+                    {isOverdue && (
+                      <View
+                        style={[
+                          styles.completedBadge,
+                          { backgroundColor: colors.errorContainer },
+                        ]}
+                      >
+                        <Text
+                          variant="labelSmall"
+                          style={{ color: colors.error }}
+                        >
+                          Overdue
                         </Text>
                       </View>
                     )}
@@ -672,18 +762,17 @@ export default function GoalsScreen() {
                         {formatCalendarDate(
                           goal.target_date || goal.deadline || "",
                         )}
-                        {daysRemaining !== null && (
+                        {due && (
                           <Text
                             style={{
-                              color:
-                                daysRemaining < 0
-                                  ? colors.error
-                                  : colors.primary,
+                              color: due.overdue ? colors.error : colors.primary,
                             }}
                           >
-                            {daysRemaining < 0
-                              ? ` (Overdue by ${Math.abs(daysRemaining)} days.)`
-                              : ` (${daysRemaining} days remaining)`}
+                            {due.overdue
+                              ? ` · Overdue by ${dayCount(due.days)}`
+                              : due.days === 0
+                                ? " · Due today"
+                                : ` · ${dayCount(due.days)} left`}
                           </Text>
                         )}
                       </Text>
@@ -813,7 +902,7 @@ export default function GoalsScreen() {
               onPress={() => openModal()}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
-              <Text style={styles.createFirstButtonText}>Create Goal</Text>
+              <Text style={styles.createFirstButtonText}>Create goal</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -863,16 +952,197 @@ export default function GoalsScreen() {
               style={styles.input}
             />
 
-            <TextInput
-              label="Category"
-              value={formData.category}
-              onChangeText={(text) =>
-                setFormData({ ...formData, category: text })
+            {/* Picked from the user's categories, like the web (QA AE-108 /
+                AE-51). Optional: "No category" clears it. */}
+            <Text
+              variant="bodyMedium"
+              style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+            >
+              Category (optional)
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.pickerButton,
+                {
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceVariant,
+                },
+              ]}
+              onPress={() =>
+                showCategoryPicker ? closeCategoryPicker() : setShowCategoryPicker(true)
               }
-              mode="outlined"
-              placeholder="e.g., Emergency Fund, Vacation"
-              style={styles.input}
-            />
+              accessibilityRole="button"
+              accessibilityLabel="Choose a category"
+            >
+              <Text
+                style={{
+                  color: formData.category
+                    ? colors.onSurface
+                    : colors.onSurfaceVariant,
+                  flex: 1,
+                }}
+                numberOfLines={1}
+              >
+                {formData.category || "No category"}
+              </Text>
+              <MaterialCommunityIcons
+                name={showCategoryPicker ? "chevron-up" : "chevron-down"}
+                size={20}
+                color={colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
+            {/* A goal saved before categories came from a list can carry a
+                name that isn't one of the user's categories (AE-51). */}
+            {!!formData.category.trim() &&
+              !!categories &&
+              !allCategoryNames.has(formData.category.trim().toLowerCase()) && (
+                <View style={styles.categoryNotice}>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant, flex: 1 }}
+                  >
+                    "{formData.category.trim()}" isn't one of your categories.
+                  </Text>
+                  <Button
+                    mode="text"
+                    compact
+                    onPress={() =>
+                      createInlineCategoryMutation.mutate(formData.category)
+                    }
+                    loading={createInlineCategoryMutation.isPending}
+                    disabled={createInlineCategoryMutation.isPending}
+                  >
+                    Add it
+                  </Button>
+                </View>
+              )}
+            {showCategoryPicker && (
+              <Surface
+                style={[
+                  styles.dropdownList,
+                  { backgroundColor: colors.surface },
+                ]}
+                elevation={2}
+              >
+                <View
+                  style={[
+                    styles.categorySearchWrap,
+                    { borderBottomColor: colors.outline },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="magnify"
+                    size={18}
+                    color={colors.onSurfaceVariant}
+                  />
+                  <TextInput
+                    value={categorySearch}
+                    onChangeText={setCategorySearch}
+                    placeholder="Search or type a new category"
+                    placeholderTextColor={colors.onSurfaceVariant}
+                    style={[
+                      styles.categorySearchInput,
+                      { color: colors.onSurface },
+                    ]}
+                    autoCorrect={false}
+                    mode="flat"
+                    underlineColor="transparent"
+                    activeUnderlineColor="transparent"
+                    dense
+                  />
+                </View>
+                <ScrollView
+                  style={{ maxHeight: 240 }}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {!searchTerm && (
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownItem,
+                        !formData.category && {
+                          backgroundColor: `${colors.primary}15`,
+                        },
+                      ]}
+                      onPress={() => pickCategory("")}
+                    >
+                      <Text style={{ color: colors.onSurfaceVariant }}>
+                        No category
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {!exactCategoryMatch && (
+                    <TouchableOpacity
+                      style={styles.dropdownItem}
+                      disabled={createInlineCategoryMutation.isPending}
+                      onPress={() =>
+                        createInlineCategoryMutation.mutate(categorySearch)
+                      }
+                    >
+                      <Text style={{ color: colors.primary, fontWeight: "600" }}>
+                        {createInlineCategoryMutation.isPending
+                          ? "Creating…"
+                          : `+ Create "${categorySearch.trim()}"`}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {filteredCategoryGroups.length === 0 && !searchTerm && (
+                    <Text
+                      style={{
+                        padding: 12,
+                        color: colors.onSurfaceVariant,
+                        textAlign: "center",
+                        fontSize: 13,
+                      }}
+                    >
+                      No categories yet — type a name above to create one.
+                    </Text>
+                  )}
+                  {filteredCategoryGroups.map((group) => (
+                    <View key={group.title}>
+                      <Text
+                        variant="labelSmall"
+                        style={[
+                          styles.categoryGroupTitle,
+                          { color: colors.onSurfaceVariant },
+                        ]}
+                      >
+                        {group.title.toUpperCase()}
+                      </Text>
+                      {group.items.map((cat: any) => {
+                        const selected =
+                          formData.category.trim().toLowerCase() ===
+                          String(cat.name || "").trim().toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={`${group.title}-${cat.id}`}
+                            style={[
+                              styles.dropdownItem,
+                              selected && {
+                                backgroundColor: `${colors.primary}15`,
+                              },
+                            ]}
+                            onPress={() => pickCategory(String(cat.name || ""))}
+                          >
+                            <Text style={{ color: colors.onSurface, flex: 1 }}>
+                              {cat.name}
+                            </Text>
+                            {selected && (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={18}
+                                color={colors.primary}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </ScrollView>
+              </Surface>
+            )}
+            <View style={{ height: 12 }} />
 
             <TextInput
               label="Target Amount *"
@@ -886,14 +1156,26 @@ export default function GoalsScreen() {
               style={styles.input}
             />
 
+            {/* Optional (QA AE-108); "Clear" removes a date already set. */}
             <DateField
-              label="Target Date"
+              label="Target Date (optional)"
               value={formData.target_date}
               onChange={(date) =>
                 setFormData({ ...formData, target_date: date })
               }
-              style={styles.input}
+              style={formData.target_date ? styles.inputWithAction : styles.input}
             />
+            {!!formData.target_date && (
+              <Button
+                mode="text"
+                compact
+                icon="close"
+                onPress={() => setFormData({ ...formData, target_date: "" })}
+                style={styles.clearDateButton}
+              >
+                No target date
+              </Button>
+            )}
 
             {editingGoal && (
               <Text
@@ -936,7 +1218,7 @@ export default function GoalsScreen() {
                 loading={createMutation.isPending || updateMutation.isPending}
                 disabled={createMutation.isPending || updateMutation.isPending}
               >
-                {editingGoal ? "Save Changes" : "Create Goal"}
+                {editingGoal ? "Save changes" : "Create goal"}
               </Button>
             </View>
           </ScrollView>
@@ -1243,6 +1525,59 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  inputWithAction: {
+    marginBottom: 2,
+  },
+  clearDateButton: {
+    alignSelf: "flex-end",
+    marginBottom: 6,
+  },
+  // Picker styles follow schedules.tsx (the shared inline-create picker).
+  pickerButton: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  categoryNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  dropdownList: {
+    borderRadius: 8,
+    marginTop: 4,
+    padding: 4,
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  categoryGroupTitle: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    letterSpacing: 0.4,
+  },
+  categorySearchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  categorySearchInput: {
+    flex: 1,
+    backgroundColor: "transparent",
+    fontSize: 14,
+    height: 38,
+    paddingHorizontal: 0,
   },
   modalButtons: {
     flexDirection: "row",

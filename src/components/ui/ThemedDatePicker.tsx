@@ -103,7 +103,14 @@ export function ThemedDatePicker({
       const d = new Date(viewYear, viewMonth + 1, list.length - daysInMonth - startWeekday + 1);
       list.push({ date: d, inMonth: false });
     }
-    return list;
+    // Explicit week rows of exactly 7 cells. A single wrapping grid of
+    // 100/7 % cells could round to 6 per row on some screen widths, which
+    // put every date under the wrong weekday (QA AE-101).
+    const weeks: { date: Date; inMonth: boolean }[][] = [];
+    for (let i = 0; i < list.length; i += 7) {
+      weeks.push(list.slice(i, i + 7));
+    }
+    return weeks;
   }, [viewYear, viewMonth]);
 
   const goPrev = () => {
@@ -214,56 +221,63 @@ export function ThemedDatePicker({
             ))}
           </View>
 
-          {/* Day grid */}
+          {/* Day grid — one row per week, seven equal cells each */}
           <View style={styles.grid}>
-            {cells.map(({ date, inMonth }, idx) => {
-              const isSelected = sameDay(date, draft);
-              const isToday = sameDay(date, today);
-              const disabled = isDisabled(date);
-              const dayColor = isSelected
-                ? colors.onPrimary
-                : !inMonth
-                  ? colors.onSurfaceVariant + "70"
-                  : disabled
-                    ? colors.onSurfaceVariant + "70"
-                    : colors.onSurface;
-              return (
-                <Pressable
-                  key={idx}
-                  disabled={disabled}
-                  onPress={() => setDraft(startOfDay(date))}
-                  style={styles.cell}
-                  hitSlop={2}
-                >
-                  <View
-                    style={[
-                      styles.dayWrap,
-                      isSelected && {
-                        backgroundColor: colors.primary,
-                        borderColor: colors.primary,
-                      },
-                      !isSelected &&
-                        isToday && {
-                          borderColor: colors.primary,
-                        },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.dayText,
-                        {
-                          color: dayColor,
-                          fontWeight: isSelected || isToday ? "800" : "600",
-                        },
-                      ]}
-                      allowFontScaling={false}
+            {cells.map((week, weekIdx) => (
+              <View key={weekIdx} style={styles.weekRow}>
+                {week.map(({ date, inMonth }, dayIdx) => {
+                  const isSelected = sameDay(date, draft);
+                  const isToday = sameDay(date, today);
+                  const disabled = isDisabled(date);
+                  const dayColor = isSelected
+                    ? colors.onPrimary
+                    : !inMonth
+                      ? colors.onSurfaceVariant + "70"
+                      : disabled
+                        ? colors.onSurfaceVariant + "70"
+                        : colors.onSurface;
+                  return (
+                    // A plain (not function) style: the whole cell is the target.
+                    <Pressable
+                      key={dayIdx}
+                      disabled={disabled}
+                      onPress={() => setDraft(startOfDay(date))}
+                      style={styles.cell}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected, disabled }}
+                      accessibilityLabel={date.toDateString()}
                     >
-                      {date.getDate()}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+                      <View
+                        style={[
+                          styles.dayWrap,
+                          isSelected && {
+                            backgroundColor: colors.primary,
+                            borderColor: colors.primary,
+                          },
+                          !isSelected &&
+                            isToday && {
+                              borderColor: colors.primary,
+                            },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.dayText,
+                            {
+                              color: dayColor,
+                              fontWeight: isSelected || isToday ? "800" : "600",
+                            },
+                          ]}
+                          allowFontScaling={false}
+                        >
+                          {date.getDate()}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
           </View>
 
           {/* Footer buttons */}
@@ -365,13 +379,16 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
   },
+  weekRow: {
+    flexDirection: "row",
+  },
+  // flex: 1 in a row of exactly seven — same split as the weekday header.
   cell: {
-    width: `${100 / 7}%`,
+    flex: 1,
+    minWidth: 0,
     aspectRatio: 1,
     alignItems: "center",
     justifyContent: "center",

@@ -41,6 +41,7 @@ import type { PeriodRange } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import exportService, { DataExportItem, ExportFormat } from '../src/services/exportService';
 import { toDateInputValue } from '../src/utils/date';
+import { formatDay } from '../src/utils/calendarDates';
 import { radius, spacing } from '../src/constants/theme';
 
 const FORMATS: { key: ExportFormat; label: string; hint: string; icon: LucideIcon }[] = [
@@ -65,8 +66,10 @@ const PDF_DATASETS = ['transactions', 'accounts'];
 
 const formatLabel = (key: string) => FORMATS.find((f) => f.key === key)?.label ?? key.toUpperCase();
 
-const fmtDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+// "Nov 12, 2026" — the app's one date format (calendar day, no timezone shift).
+const fmtDate = (iso: string) => formatDay(iso);
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 const periodText = (item: DataExportItem) => {
   if (!item.date_from && !item.date_to) return 'All time';
@@ -79,16 +82,20 @@ const timeAgo = (iso: string | null) => {
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
+  if (hours < 24) return `${plural(hours, 'hour', 'hours')} ago`;
+  return `${plural(Math.round(hours / 24), 'day', 'days')} ago`;
 };
 
 const expiresText = (iso: string | null) => {
   if (!iso) return '';
   const ms = new Date(iso).getTime() - Date.now();
   if (ms <= 0) return 'Link expired';
+  // Whole words, never "24 more h" (QA AE-114).
   const minutes = Math.round(ms / 60000);
-  return minutes < 60 ? `Link works for ${Math.max(1, minutes)} more min` : `Link works for ${Math.round(minutes / 60)} more h`;
+  if (minutes < 60) return `Link expires in ${plural(Math.max(1, minutes), 'minute', 'minutes')}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 6) return `Link expires in ${plural(hours, 'hour', 'hours')}`;
+  return `Link works for ${plural(hours, 'more hour', 'more hours')}`;
 };
 
 export default function ExportDataScreen() {
@@ -151,7 +158,16 @@ export default function ExportDataScreen() {
       return body;
     },
     onSuccess: (body) => {
-      toast.success(body?.message || "We're preparing your export.", { duration: 6000 });
+      // The new export counts as queued from here, so "ready" is announced even
+      // when it finishes before the list ever shows it as preparing (guide #15).
+      const created = body?.data?.export as DataExportItem | undefined;
+      if (created?.id && created.status === 'ready') {
+        statuses.current[created.id] = 'ready';
+        toast.success('Your export is ready — we also emailed you the link.');
+      } else {
+        if (created?.id) statuses.current[created.id] = 'queued';
+        toast.success(body?.message || "We're preparing your export.", { duration: 6000 });
+      }
       queryClient.invalidateQueries({ queryKey: ['exports'] });
     },
     onError: (error: Error & { status?: number }) => {
@@ -320,11 +336,18 @@ export default function ExportDataScreen() {
                     </Text>
                     <Text style={[styles.historyMeta, { color: colors.onSurfaceVariant }]}>
                       Requested {timeAgo(item.created_at)}
-                      {item.status === 'ready' && item.row_count ? ` · ${item.row_count} transactions` : ''}
+                      {item.status === 'ready' && item.row_count
+                        ? ` · ${plural(item.row_count, 'transaction', 'transactions')}`
+                        : ''}
                     </Text>
+                    {/* Plain text, not a one-line pill, so the expiry is never cut off. */}
+                    {item.status === 'ready' && (
+                      <Text style={[styles.historyMeta, styles.expiryText, { color: colors.tertiary }]}>
+                        {expiresText(item.expires_at)}
+                      </Text>
+                    )}
                     <View style={{ flexDirection: 'row' }}>
                       {building && <Badge label="Preparing…" tone="info" />}
-                      {item.status === 'ready' && <Badge label={expiresText(item.expires_at)} tone="success" />}
                       {item.status === 'expired' && <Badge label="Link expired" tone="neutral" />}
                       {item.status === 'failed' && <Badge label="Failed" tone="danger" />}
                     </View>
@@ -456,6 +479,9 @@ const styles = StyleSheet.create({
   },
   historyMeta: {
     fontSize: 12,
+  },
+  expiryText: {
+    fontWeight: '600',
   },
   downloadButton: {
     flexDirection: 'row',

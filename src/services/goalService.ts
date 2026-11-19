@@ -1,6 +1,30 @@
 import API_CONFIG, { apiRequest, getAuthToken } from '../config/api';
 import { Goal, ApiResponse } from '../types';
 
+/**
+ * A goal as the API sends it (QA contract C3). `category` and `target_date`
+ * are optional; `days_remaining` is whole days from the start of today in the
+ * user's timezone (null without a target date), and an overdue goal says so
+ * with `is_overdue` / `days_overdue`. Older API builds leave those out.
+ */
+export type GoalRecord = Omit<Goal, 'category' | 'target_date'> & {
+  category?: string | null;
+  target_date?: string | null;
+  days_remaining?: number | null;
+  is_overdue?: boolean;
+  days_overdue?: number;
+};
+
+/** Create / edit body. `null` clears an optional field on edit. */
+export type GoalInput = {
+  name: string;
+  target_amount: number;
+  current_amount?: number;
+  category?: string | null;
+  target_date?: string | null;
+  description?: string | null;
+};
+
 export const goalService = {
   getAll: async (): Promise<ApiResponse<Goal[]>> => {
     const token = await getAuthToken();
@@ -18,7 +42,7 @@ export const goalService = {
     });
   },
 
-  create: async (data: Partial<Goal>): Promise<ApiResponse<Goal>> => {
+  create: async (data: GoalInput | Partial<Goal>): Promise<ApiResponse<Goal>> => {
     const token = await getAuthToken();
     return apiRequest<Goal>(API_CONFIG.ENDPOINTS.GOALS, {
       method: 'POST',
@@ -27,7 +51,7 @@ export const goalService = {
     });
   },
 
-  update: async (id: number, data: Partial<Goal>): Promise<ApiResponse<Goal>> => {
+  update: async (id: number, data: GoalInput | Partial<Goal>): Promise<ApiResponse<Goal>> => {
     const token = await getAuthToken();
     return apiRequest<Goal>(`${API_CONFIG.ENDPOINTS.GOALS}/${id}`, {
       method: 'PUT',

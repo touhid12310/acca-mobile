@@ -15,6 +15,10 @@ export type LoanStatementEntry = {
   balance_after: number;
   /** Only on loans that changed sides: which way this balance points. */
   balance_side?: 'Borrowed' | 'Lent';
+  /** The repayment that went past zero and moved the loan to the other side. */
+  crossed_over?: boolean;
+  /** Server wording for that row, e.g. "৳900.00 more than you owed — now owed to you". */
+  detail?: string | null;
   balance_label?: string;
   notes?: string | null;
   /** Owner's statement only: the account the entry posted to. */
@@ -26,6 +30,37 @@ export type LoanEntryUpdate = {
   interest_paid: number;
   payment_date: string;
   account_id: number;
+  notes: string | null;
+};
+
+/**
+ * A loan as GET /loans returns it, with the fields the shared `Loan` type
+ * leaves out. `opening_amount` is the first advance without later top-ups
+ * (QA C5); older API builds send it only for loans that changed sides, so
+ * callers fall back to `original_amount`.
+ */
+export type LoanRecord = Loan & {
+  opening_amount?: number | string | null;
+  /** Set once the loan has changed sides: the side it started on. */
+  opening_type?: 'Borrowed' | 'Lent' | null;
+  category_id?: number | null;
+};
+
+/** PUT /loans/{id}. `opening_amount` wins over `original_amount` on new API builds. */
+export type LoanUpdate = {
+  loan_name: string;
+  opening_amount: number;
+  /** opening + top-ups, for API builds that only read the total. */
+  original_amount: number;
+  interest_rate: number;
+  next_payment: number;
+  term: number | null;
+  term_period: string;
+  start_date: string;
+  next_payment_date: string | null;
+  loan_type: string;
+  account_id: number;
+  category_id: number | null;
   notes: string | null;
 };
 
@@ -50,6 +85,12 @@ export type LoanStatement = {
     progress_percent: number;
     entry_count: number;
     last_entry_at: string | null;
+    /** True once an overpayment moved the balance to the other side. */
+    changed_sides?: boolean;
+    /** Changed-sides loans: which way the opening balance pointed ("you owe" / "owed to you"). */
+    opening_label?: string;
+    /** Newer API builds: the side the loan started on. */
+    opening_type?: 'Borrowed' | 'Lent';
     labels: { given: string; settled: string; outstanding: string; in: string; out: string };
   };
   entries: LoanStatementEntry[];
@@ -82,7 +123,11 @@ export const loanService = {
     });
   },
 
-  update: async (id: number, data: Partial<Loan>): Promise<ApiResponse<Loan>> => {
+  /**
+   * Edit the loan's terms. New API builds keep top-ups and repayments, rewrite
+   * the opening transaction in place and replay the ledger (QA C5).
+   */
+  update: async (id: number, data: Partial<Loan> | LoanUpdate): Promise<ApiResponse<Loan>> => {
     const token = await getAuthToken();
     return apiRequest<Loan>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}`, {
       method: 'PUT',
@@ -91,6 +136,10 @@ export const loanService = {
     });
   },
 
+  /**
+   * Deletes the loan. Every transaction on it (opening, entries, top-ups,
+   * fees) moves to Archived and can't be restored on its own (QA AE-122).
+   */
   delete: async (id: number): Promise<ApiResponse<void>> => {
     const token = await getAuthToken();
     return apiRequest<void>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}`, {
@@ -185,6 +234,7 @@ export const loanService = {
     });
   },
 
+  /** Turns the public link off for good; sharing again mints a new link. */
   revokeShareLink: async (id: number): Promise<ApiResponse<LoanShare>> => {
     const token = await getAuthToken();
     return apiRequest<LoanShare>(`${API_CONFIG.ENDPOINTS.LOANS}/${id}/share`, {

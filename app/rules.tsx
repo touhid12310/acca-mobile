@@ -35,6 +35,8 @@ import {
 
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useToast } from '../src/contexts/NotificationContext';
+import { useCurrency } from '../src/contexts/CurrencyContext';
+import { merchantExamples } from '../src/utils/localExamples';
 import { Button, Card, ConfirmDialog, EmptyState, ScreenHeader } from '../src/components/ui';
 import { BrandStrip } from '../src/components';
 import { NativeTextInput as TextInput } from '../src/components/ui/SafeTextInput';
@@ -91,8 +93,8 @@ const APPLY_OPTIONS: { value: ApplyScope; title: string; hint: string }[] = [
 
 // Merchants are compared lower-cased with punctuation stripped
 // (CategorizationRule::normalize), so capitals never matter.
-const matchHint = (matchType: RuleMatchType, pattern: string): string => {
-  const sample = pattern.trim() || 'Foodpanda';
+const matchHint = (matchType: RuleMatchType, pattern: string, example: string): string => {
+  const sample = pattern.trim() || example;
   if (matchType === 'starts_with') return `Merchants whose name starts with “${sample}”`;
   if (matchType === 'exact') return `Only merchants named exactly “${sample}”`;
   return `Any merchant with “${sample}” in its name`;
@@ -129,6 +131,9 @@ export default function RulesScreen() {
   const { colors } = useTheme();
   const toast = useToast();
   const queryClient = useQueryClient();
+  const { currency } = useCurrency();
+  // A delivery app people know where they live, not "Foodpanda" for everyone (QA AE-87).
+  const merchantExample = merchantExamples(currency).delivery;
   const [form, setForm] = useState<FormState>(emptyForm);
   const [modalOpen, setModalOpen] = useState(false);
   const [preview, setPreview] = useState<RulePreview | null>(null);
@@ -376,7 +381,7 @@ export default function RulesScreen() {
           <EmptyState
             icon={Wand2}
             title="No rules yet"
-            message="Create one rule — like “Foodpanda → Food › Delivery” — and stop picking the same category again. When you change a transaction's category, we'll offer to turn it into a rule."
+            message={`Create one rule — like “${merchantExample} → Food › Delivery” — and stop picking the same category again. When you change a transaction's category, we'll offer to turn it into a rule.`}
             action={{ label: 'Create your first rule', onPress: openCreate }}
           />
         ) : (
@@ -492,7 +497,7 @@ export default function RulesScreen() {
                   onChangeText={(text) => setForm((prev) => ({ ...prev, pattern: text }))}
                   onFocus={() => setPatternFocused(true)}
                   onBlur={() => setPatternFocused(false)}
-                  placeholder="Merchant name, e.g. Foodpanda"
+                  placeholder={`Merchant name, e.g. ${merchantExample}`}
                   placeholderTextColor={colors.onSurfaceVariant}
                   autoFocus={!form.id}
                   autoCorrect={false}
@@ -510,7 +515,7 @@ export default function RulesScreen() {
                 )}
               </View>
               <Text style={[styles.hint, { color: colors.onSurfaceVariant }]}>
-                {matchHint(form.match_type, form.pattern)} · capitals don't matter
+                {matchHint(form.match_type, form.pattern, merchantExample)} · capitals don't matter
               </Text>
 
               <StepLabel step={2} title="File it under" />

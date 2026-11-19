@@ -32,6 +32,28 @@ const shorten = (text: string, max = 60) => {
 
 const countOf = (data: unknown): number => (Array.isArray(data) ? data.length : 0);
 
+// A believable lunch price per currency for the stock "Lunch, …, cash"
+// example, so a US account doesn't see "$450" (QA AE-87).
+const LUNCH_PRICE: Record<string, string> = {
+  USD: '12', CAD: '15', AUD: '18', NZD: '18', EUR: '12', GBP: '10', CHF: '20',
+  SEK: '120', NOK: '140', DKK: '90', ISK: '2,500', PLN: '35', CZK: '200', HUF: '3,500',
+  RON: '40', BGN: '20', TRY: '300', ILS: '50', AED: '35', SAR: '35', QAR: '35',
+  KWD: '3', BHD: '3', OMR: '3', JOD: '6', EGP: '200', MAD: '70', NGN: '3,000',
+  KES: '500', GHS: '60', ZAR: '120', UGX: '15,000', TZS: '10,000', ETB: '300',
+  BDT: '250', INR: '250', PKR: '800', LKR: '1,200', NPR: '400', MYR: '15', SGD: '10',
+  THB: '120', IDR: '35,000', PHP: '200', VND: '60,000', CNY: '35', HKD: '60',
+  TWD: '150', JPY: '1,000', KRW: '10,000', BRL: '35', MXN: '150', ARS: '8,000',
+  CLP: '7,000', COP: '25,000', PEN: '25',
+};
+// Currencies where a lunch costs thousands.
+const LARGE_UNITS = new Set(['PYG', 'IRR', 'LAK', 'UZS', 'MMK', 'KHR', 'MNT', 'RWF', 'XOF', 'XAF']);
+
+const lunchExample = (currencySymbol: string, currencyCode?: string | null) => {
+  const code = String(currencyCode || '').toUpperCase();
+  const amount = LUNCH_PRICE[code] ?? (LARGE_UNITS.has(code) ? '50,000' : '12');
+  return `Lunch, ${currencySymbol}${amount}, cash`;
+};
+
 const unwrapList = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) return payload;
   const data = (payload as { data?: unknown } | undefined)?.data;
@@ -50,7 +72,11 @@ const isOpen = (item: unknown) => {
  * the other three follow the user: their own last log line and last question
  * (kept on the phone), and whichever tracker they actually use most.
  */
-export function useAssistantSuggestions(userId: number | string | null | undefined, currencySymbol: string) {
+export function useAssistantSuggestions(
+  userId: number | string | null | undefined,
+  currencySymbol: string,
+  currencyCode?: string | null,
+) {
   const [recent, setRecent] = useState<string[]>([]);
 
   useEffect(() => {
@@ -107,7 +133,7 @@ export function useAssistantSuggestions(userId: number | string | null | undefin
   const suggestions = useMemo((): AssistantSuggestion[] => {
     const lastLog = recent.find((item) => !isQuestion(item));
     const lastQuestion = recent.find((item) => isQuestion(item));
-    const example = `Lunch, ${currencySymbol}450, cash`;
+    const example = lunchExample(currencySymbol, currencyCode);
 
     const tracker: AssistantSuggestion = (() => {
       const counts = usage.data;
@@ -156,7 +182,7 @@ export function useAssistantSuggestions(userId: number | string | null | undefin
       },
       tracker,
     ];
-  }, [currencySymbol, recent, usage.data]);
+  }, [currencyCode, currencySymbol, recent, usage.data]);
 
   return { suggestions, remember };
 }

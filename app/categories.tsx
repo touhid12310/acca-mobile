@@ -30,6 +30,11 @@ import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import categoryService from "../src/services/categoryService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import {
+  CATEGORY_ICON_CHOICES,
+  categoryIconName,
+} from "../src/utils/categoryIcons";
+import { apiErrorMessage } from "../src/utils/apiError";
 
 type CategoryType = "income" | "expense" | "asset" | "liability";
 
@@ -51,29 +56,39 @@ interface Subcategory {
   color?: string;
   icon?: string;
   is_active?: boolean;
+  is_default?: boolean;
+  user_id?: number | null;
 }
 
-// Helper function to extract detailed validation errors from API response
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
+type EditTarget =
+  | { kind: "category"; item: Category }
+  | { kind: "subcategory"; item: Subcategory; parent: Category };
 
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
+// Swatches offered when editing a category (stored as #RRGGBB, like the web).
+const COLOR_CHOICES = [
+  "#10B981",
+  "#0D9488",
+  "#0891B2",
+  "#3B82F6",
+  "#6366F1",
+  "#8B5CF6",
+  "#C026D3",
+  "#EC4899",
+  "#EF4444",
+  "#F97316",
+  "#F59E0B",
+  "#EAB308",
+  "#84CC16",
+  "#6B7280",
+];
 
-  return errorMsg;
-};
+const pluralize = (count: number, one: string, many: string) =>
+  `${count} ${count === 1 ? one : many}`;
+
+// A subcategory the user made (defaults and other users' rows can't be edited;
+// the server refuses them too).
+const isOwnSubcategory = (sub: Subcategory) =>
+  !sub.is_default && sub.user_id !== null;
 
 const typeConfig: Record<
   CategoryType,
@@ -83,35 +98,6 @@ const typeConfig: Record<
   expense: { label: "Expense", icon: "trending-down", color: "#EF4444" },
   asset: { label: "Asset", icon: "domain", color: "#3B82F6" },
   liability: { label: "Liability", icon: "credit-card", color: "#F59E0B" },
-};
-
-// Map invalid icon names to valid MaterialCommunityIcons
-const iconMapping: Record<string, string> = {
-  building: "office-building",
-  award: "trophy-award",
-  test: "test-tube",
-  home: "home",
-  car: "car",
-  food: "food",
-  shopping: "shopping",
-  health: "hospital-box",
-  education: "school",
-  entertainment: "movie",
-  travel: "airplane",
-  utilities: "flash",
-  salary: "cash",
-  investment: "chart-line",
-  gift: "gift",
-  other: "dots-horizontal",
-};
-
-const getValidIcon = (icon?: string): string => {
-  if (!icon) return "folder";
-  // Check if it needs mapping
-  if (iconMapping[icon.toLowerCase()]) {
-    return iconMapping[icon.toLowerCase()];
-  }
-  return icon;
 };
 
 export default function CategoriesScreen() {
@@ -162,6 +148,15 @@ export default function CategoriesScreen() {
     color: "#10B981",
     is_active: true,
   });
+  // Tapping a category / subcategory row opens this sheet (QA AE-107): edit
+  // the user's own rows, read-only details for defaults.
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    icon: "",
+    color: "",
+    is_active: true,
+  });
 
   const {
     data: categories,
@@ -188,7 +183,7 @@ export default function CategoriesScreen() {
         color: data.color,
         is_active: data.is_active ? 1 : 0,
       });
-      if (!result.success) throw new Error(formatApiError(result));
+      if (!result.success) throw new Error(apiErrorMessage(result));
       return result;
     },
     onSuccess: () => {
@@ -213,7 +208,7 @@ export default function CategoriesScreen() {
         color: data.color,
         is_active: data.is_active ? 1 : 0,
       });
-      if (!result.success) throw new Error(formatApiError(result));
+      if (!result.success) throw new Error(apiErrorMessage(result));
       return result;
     },
     onSuccess: () => {
@@ -235,7 +230,7 @@ export default function CategoriesScreen() {
       const result = isSubcategory
         ? await categoryService.deleteSubcategory(id)
         : await categoryService.delete(id);
-      if (!result.success) throw new Error(formatApiError(result));
+      if (!result.success) throw new Error(apiErrorMessage(result));
       return result;
     },
     onSuccess: (_result, variables) => {
@@ -248,6 +243,87 @@ export default function CategoriesScreen() {
       toast.error(error.message || "Could not delete category");
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      target,
+      data,
+    }: {
+      target: EditTarget;
+      data: typeof editForm;
+    }) => {
+      const name = data.name.trim();
+      const result =
+        target.kind === "category"
+          ? await categoryService.update(target.item.id, {
+              name,
+              icon: data.icon || undefined,
+              color: data.color || undefined,
+              is_active: data.is_active,
+            })
+          : await categoryService.updateSubcategory(target.item.id, {
+              name,
+              is_active: data.is_active,
+            });
+      if (!result.success) throw new Error(apiErrorMessage(result));
+      return result;
+    },
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      setEditTarget(null);
+      toast.success(
+        variables.target.kind === "category"
+          ? "Category saved"
+          : "Subcategory saved",
+      );
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not save changes"),
+  });
+
+  const openEdit = (target: EditTarget) => {
+    const color =
+      target.kind === "category"
+        ? target.item.color || typeConfig[target.item.type].color
+        : target.item.color ||
+          target.parent.color ||
+          typeConfig[target.parent.type].color;
+    setEditForm({
+      name: target.item.name,
+      icon: target.kind === "category" ? target.item.icon || "" : "",
+      color,
+      is_active: target.item.is_active !== false,
+    });
+    setEditTarget(target);
+  };
+
+  const closeEdit = () => setEditTarget(null);
+
+  const editIsOwn = editTarget
+    ? editTarget.kind === "category"
+      ? !editTarget.item.is_default
+      : isOwnSubcategory(editTarget.item)
+    : false;
+
+  const handleSaveEdit = () => {
+    if (!editTarget || updateMutation.isPending) return;
+    if (!editForm.name.trim()) {
+      toast.error(
+        editTarget.kind === "category"
+          ? "Please enter a category name"
+          : "Please enter a subcategory name",
+      );
+      return;
+    }
+    updateMutation.mutate({ target: editTarget, data: editForm });
+  };
+
+  const handleDeleteFromEdit = () => {
+    if (!editTarget) return;
+    const target = editTarget;
+    setEditTarget(null);
+    handleDelete(target.item, target.kind === "subcategory");
+  };
 
   const openModal = (type?: CategoryType) => {
     setFormData({
@@ -523,7 +599,7 @@ export default function CategoriesScreen() {
               variant="bodySmall"
               style={{ color: colors.onSurfaceVariant }}
             >
-              {filteredCategories.length} categories
+              {pluralize(filteredCategories.length, "category", "categories")}
             </Text>
           </View>
           <TouchableOpacity
@@ -547,10 +623,18 @@ export default function CategoriesScreen() {
               style={[styles.categoryCard, { backgroundColor: colors.surface }]}
               elevation={1}
             >
+              {/* The row layout sits on an inner View: Android drops a
+                  Pressable's flex-row layout when its style is a function. */}
               <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => openEdit({ kind: "category", item: category })}
                 onLongPress={() =>
-                  !category.is_default && handleDelete(category, false)
+                  openEdit({ kind: "category", item: category })
                 }
+                accessibilityRole="button"
+                accessibilityLabel={`${category.name}, ${
+                  category.is_default ? "default category" : "edit category"
+                }`}
               >
                 <View style={styles.categoryHeader}>
                   <View
@@ -571,43 +655,43 @@ export default function CategoriesScreen() {
                     ]}
                   >
                     <MaterialCommunityIcons
-                      name={getValidIcon(category.icon) as any}
+                      name={categoryIconName(category.icon) as any}
                       size={20}
                       color={category.color || getTypeColor(category.type)}
                     />
                   </View>
                   <View style={styles.categoryInfo}>
+                    {/* Up to two lines, wrapped between words, so a long name
+                        is never split in the middle of a word. */}
                     <Text
                       variant="titleMedium"
                       style={{ color: colors.onSurface }}
+                      numberOfLines={2}
+                      textBreakStrategy="simple"
                     >
                       {category.name}
                     </Text>
                     <Text
                       variant="bodySmall"
                       style={{ color: colors.onSurfaceVariant }}
+                      numberOfLines={1}
                     >
-                      {category.subcategories &&
-                      category.subcategories.length > 0
-                        ? `${category.subcategories.length} subcategories`
-                        : "No subcategories"}
+                      {[
+                        category.is_default ? "Default" : null,
+                        category.subcategories &&
+                        category.subcategories.length > 0
+                          ? pluralize(
+                              category.subcategories.length,
+                              "subcategory",
+                              "subcategories",
+                            )
+                          : "No subcategories",
+                        category.is_active === false ? "Inactive" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
                   </View>
-                  {category.is_default && (
-                    <View
-                      style={[
-                        styles.defaultBadge,
-                        { backgroundColor: colors.surfaceVariant },
-                      ]}
-                    >
-                      <Text
-                        variant="labelSmall"
-                        style={{ color: colors.onSurfaceVariant }}
-                      >
-                        Default
-                      </Text>
-                    </View>
-                  )}
                   <View style={styles.categoryActions}>
                     <TouchableOpacity
                       style={[
@@ -615,6 +699,8 @@ export default function CategoriesScreen() {
                         { backgroundColor: `${colors.primary}15` },
                       ]}
                       onPress={() => openSubcategoryModal(category)}
+                      accessibilityLabel={`Add a subcategory to ${category.name}`}
+                      hitSlop={6}
                     >
                       <MaterialCommunityIcons
                         name="plus"
@@ -622,32 +708,48 @@ export default function CategoriesScreen() {
                         color={colors.primary}
                       />
                     </TouchableOpacity>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        {
-                          backgroundColor:
-                            category.is_active !== false
-                              ? colors.tertiary
-                              : colors.error,
-                        },
-                      ]}
+                    <MaterialCommunityIcons
+                      name={
+                        category.is_default ? "lock-outline" : "chevron-right"
+                      }
+                      size={18}
+                      color={colors.onSurfaceVariant}
                     />
                   </View>
                 </View>
+              </TouchableOpacity>
 
-                {/* Subcategories */}
-                {category.subcategories &&
-                  category.subcategories.length > 0 && (
-                    <View
-                      style={[
-                        styles.subcategoriesContainer,
-                        { borderTopColor: colors.surfaceVariant },
-                      ]}
-                    >
-                      {category.subcategories.map((sub, index) => (
-                        <TouchableOpacity
-                          key={sub.id}
+              {/* Subcategories */}
+              {category.subcategories &&
+                category.subcategories.length > 0 && (
+                  <View
+                    style={[
+                      styles.subcategoriesContainer,
+                      { borderTopColor: colors.surfaceVariant },
+                    ]}
+                  >
+                    {category.subcategories.map((sub, index) => (
+                      <TouchableOpacity
+                        key={sub.id}
+                        activeOpacity={0.7}
+                        onPress={() =>
+                          openEdit({
+                            kind: "subcategory",
+                            item: sub,
+                            parent: category,
+                          })
+                        }
+                        onLongPress={() =>
+                          openEdit({
+                            kind: "subcategory",
+                            item: sub,
+                            parent: category,
+                          })
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel={sub.name}
+                      >
+                        <View
                           style={[
                             styles.subcategoryItem,
                             { borderBottomColor: colors.surfaceVariant },
@@ -655,7 +757,6 @@ export default function CategoriesScreen() {
                               borderBottomWidth: 0,
                             },
                           ]}
-                          onLongPress={() => handleDelete(sub, true)}
                         >
                           <View
                             style={[
@@ -671,25 +772,33 @@ export default function CategoriesScreen() {
                           <Text
                             variant="bodyMedium"
                             style={{ color: colors.onSurface, flex: 1 }}
+                            numberOfLines={2}
+                            textBreakStrategy="simple"
                           >
                             {sub.name}
+                            {sub.is_active === false ? (
+                              <Text
+                                variant="bodySmall"
+                                style={{ color: colors.onSurfaceVariant }}
+                              >
+                                {"  · Inactive"}
+                              </Text>
+                            ) : null}
                           </Text>
-                          <View
-                            style={[
-                              styles.statusDot,
-                              {
-                                backgroundColor:
-                                  sub.is_active !== false
-                                    ? colors.tertiary
-                                    : colors.error,
-                              },
-                            ]}
+                          <MaterialCommunityIcons
+                            name={
+                              isOwnSubcategory(sub)
+                                ? "chevron-right"
+                                : "lock-outline"
+                            }
+                            size={16}
+                            color={colors.onSurfaceVariant}
                           />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-              </TouchableOpacity>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
             </Surface>
           ))
         ) : (
@@ -923,6 +1032,276 @@ export default function CategoriesScreen() {
         </DialogModal>
       </Portal>
 
+      {/* Edit / details sheet (tap a category or subcategory row) */}
+      <Portal>
+        <DialogModal
+          visible={!!editTarget}
+          onDismiss={dismissKeyboardOr(closeEdit)}
+          style={dialogStyle}
+          contentContainerStyle={[
+            styles.modal,
+            { backgroundColor: colors.surface },
+          ]}
+        >
+          {editTarget && (
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.editHeader}>
+                <View
+                  style={[
+                    styles.categoryIcon,
+                    { backgroundColor: `${editForm.color}15` },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name={
+                      categoryIconName(
+                        editTarget.kind === "category"
+                          ? editForm.icon
+                          : editTarget.parent.icon,
+                      ) as any
+                    }
+                    size={20}
+                    color={editForm.color}
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    variant="titleLarge"
+                    style={{ color: colors.onSurface }}
+                    numberOfLines={2}
+                    textBreakStrategy="simple"
+                  >
+                    {editIsOwn
+                      ? editTarget.kind === "category"
+                        ? "Edit category"
+                        : "Edit subcategory"
+                      : editTarget.item.name}
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: colors.onSurfaceVariant }}
+                    numberOfLines={2}
+                  >
+                    {editTarget.kind === "category"
+                      ? `${typeConfig[editTarget.item.type].label} category`
+                      : `Subcategory of ${editTarget.parent.name}`}
+                  </Text>
+                </View>
+              </View>
+
+              {editIsOwn ? (
+                <>
+                  <TextInput
+                    label={
+                      editTarget.kind === "category"
+                        ? "Category name *"
+                        : "Subcategory name *"
+                    }
+                    value={editForm.name}
+                    onChangeText={(text) =>
+                      setEditForm((prev) => ({ ...prev, name: text }))
+                    }
+                    mode="outlined"
+                    style={styles.input}
+                    returnKeyType="done"
+                    onSubmitEditing={handleSaveEdit}
+                  />
+
+                  {editTarget.kind === "category" && (
+                    <>
+                      <Text
+                        variant="bodyMedium"
+                        style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+                      >
+                        Icon
+                      </Text>
+                      <View style={styles.iconGrid}>
+                        {CATEGORY_ICON_CHOICES.map((choice) => {
+                          const glyph = categoryIconName(choice);
+                          const selected =
+                            categoryIconName(editForm.icon) === glyph;
+                          return (
+                            <TouchableOpacity
+                              key={choice}
+                              onPress={() =>
+                                setEditForm((prev) => ({
+                                  ...prev,
+                                  icon: choice,
+                                }))
+                              }
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              accessibilityLabel={`Icon ${choice.replace(/-/g, " ")}`}
+                            >
+                              <View
+                                style={[
+                                  styles.iconChoice,
+                                  {
+                                    backgroundColor: selected
+                                      ? `${editForm.color}22`
+                                      : colors.surfaceVariant,
+                                    borderColor: selected
+                                      ? editForm.color
+                                      : "transparent",
+                                  },
+                                ]}
+                              >
+                                <MaterialCommunityIcons
+                                  name={glyph as any}
+                                  size={20}
+                                  color={
+                                    selected
+                                      ? editForm.color
+                                      : colors.onSurfaceVariant
+                                  }
+                                />
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+
+                      <Text
+                        variant="bodyMedium"
+                        style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
+                      >
+                        Colour
+                      </Text>
+                      <View style={styles.colorGrid}>
+                        {COLOR_CHOICES.map((choice) => {
+                          const selected =
+                            editForm.color.toLowerCase() ===
+                            choice.toLowerCase();
+                          return (
+                            <TouchableOpacity
+                              key={choice}
+                              onPress={() =>
+                                setEditForm((prev) => ({
+                                  ...prev,
+                                  color: choice,
+                                }))
+                              }
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              accessibilityLabel={`Colour ${choice}`}
+                            >
+                              <View
+                                style={[
+                                  styles.colorChoice,
+                                  {
+                                    backgroundColor: choice,
+                                    borderColor: selected
+                                      ? colors.onSurface
+                                      : "transparent",
+                                  },
+                                ]}
+                              >
+                                {selected && (
+                                  <MaterialCommunityIcons
+                                    name="check"
+                                    size={16}
+                                    color="#fff"
+                                  />
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </>
+                  )}
+
+                  <View style={styles.switchRow}>
+                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      Active
+                    </Text>
+                    <Switch
+                      value={editForm.is_active}
+                      onValueChange={(value) =>
+                        setEditForm((prev) => ({ ...prev, is_active: value }))
+                      }
+                    />
+                  </View>
+
+                  <View style={styles.editFooter}>
+                    <Button
+                      mode="text"
+                      icon="delete-outline"
+                      textColor={colors.error}
+                      onPress={handleDeleteFromEdit}
+                      disabled={updateMutation.isPending}
+                    >
+                      Delete
+                    </Button>
+                    <View style={styles.editFooterRight}>
+                      <Button mode="text" onPress={closeEdit}>
+                        Cancel
+                      </Button>
+                      <Button
+                        mode="contained"
+                        onPress={handleSaveEdit}
+                        loading={updateMutation.isPending}
+                        disabled={updateMutation.isPending}
+                        buttonColor={
+                          editTarget.kind === "category"
+                            ? typeConfig[editTarget.item.type].color
+                            : typeConfig[editTarget.parent.type].color
+                        }
+                      >
+                        Save changes
+                      </Button>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View
+                    style={[
+                      styles.noteBox,
+                      { backgroundColor: colors.surfaceVariant },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name="lock-outline"
+                      size={18}
+                      color={colors.onSurfaceVariant}
+                    />
+                    <Text
+                      variant="bodyMedium"
+                      style={{ color: colors.onSurfaceVariant, flex: 1 }}
+                    >
+                      {editTarget.kind === "category"
+                        ? "This is a default category shared by everyone, so it can't be renamed or deleted. You can still add your own subcategories to it."
+                        : "This is a default subcategory, so it can't be renamed or deleted."}
+                    </Text>
+                  </View>
+                  <View style={styles.modalButtons}>
+                    {editTarget.kind === "category" && (
+                      <Button
+                        mode="text"
+                        onPress={() => {
+                          const parent = editTarget.item;
+                          setEditTarget(null);
+                          openSubcategoryModal(parent);
+                        }}
+                      >
+                        Add subcategory
+                      </Button>
+                    )}
+                    <Button mode="contained" onPress={closeEdit}>
+                      Close
+                    </Button>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          )}
+        </DialogModal>
+      </Portal>
+
       <ConfirmDialog
         visible={!!deleteTarget}
         title={`Delete ${deleteItemType}?`}
@@ -1056,12 +1435,6 @@ const styles = StyleSheet.create({
   categoryInfo: {
     flex: 1,
   },
-  defaultBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 8,
-  },
   categoryActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -1073,11 +1446,6 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: "center",
     alignItems: "center",
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   subcategoriesContainer: {
     marginLeft: 56,
@@ -1146,7 +1514,62 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 4,
+  },
+  editHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  iconGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
+  },
+  iconChoice: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 12,
+  },
+  colorChoice: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noteBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  editFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 4,
+  },
+  editFooterRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
 });

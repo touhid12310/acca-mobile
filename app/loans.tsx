@@ -30,7 +30,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import * as WebBrowser from "expo-web-browser";
-import { TriangleAlert } from "lucide-react-native";
+import { Link2Off, TriangleAlert } from "lucide-react-native";
 
 import { useTheme } from "../src/contexts/ThemeContext";
 import { useCurrency } from "../src/contexts/CurrencyContext";
@@ -39,10 +39,13 @@ import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import loanService, {
   LoanDirection,
+  LoanRecord,
   LoanShare,
   LoanStatement,
   LoanStatementEntry,
 } from "../src/services/loanService";
+import { invalidateMoneyQueries } from "../src/services/moneyQueries";
+import { apiErrorMessage } from "../src/utils/apiError";
 import accountService from "../src/services/accountService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
@@ -57,11 +60,6 @@ import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
 
-// Helper function to extract detailed validation errors from API response
-/**
- * The API wraps payloads as { success, data: { ... } }; apiRequest hands back
- * the whole body, so one more hop is needed to reach the payload.
- */
 /** Inline edit of one statement entry; strings while the user types. */
 type EntryDraft = {
   id: number;
@@ -73,8 +71,48 @@ type EntryDraft = {
   notes: string;
 };
 
+/**
+ * The API wraps payloads as { success, data: { ... } }; apiRequest hands back
+ * the whole body, so one more hop is needed to reach the payload.
+ */
 const unwrapData = <T,>(value: any): T | undefined =>
   (value && typeof value === "object" && "data" in value ? value.data : value) as T | undefined;
+
+/** "1 loan", "2 loans" (QA AE-40). */
+const loanCount = (count: number) => `${count} ${count === 1 ? "loan" : "loans"}`;
+
+/** A stored number for an edit box: empty for null / 0 (a term of 0 means "no term"). */
+const numberInputValue = (value: unknown): string => {
+  const num = parseFloat(String(value ?? ""));
+  return Number.isFinite(num) && num !== 0 ? String(num) : "";
+};
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+/**
+ * The first advance, without later top-ups. Newer API builds send it as
+ * `opening_amount` (QA C5); older ones only for loans that changed sides, so
+ * the total stands in.
+ */
+const openingAmountOf = (loan: LoanRecord): number => {
+  const opening = parseFloat(String(loan.opening_amount ?? ""));
+  if (Number.isFinite(opening) && opening > 0) return opening;
+  return parseFloat(String(loan.original_amount ?? loan.principal ?? 0)) || 0;
+};
+
+/** Which side a changed-sides loan started on, from whatever the API sent. */
+const openingSideOf = (
+  loan: LoanRecord | null,
+  summary?: LoanStatement["summary"],
+): "Borrowed" | "Lent" | null => {
+  if (summary?.opening_type) return summary.opening_type;
+  if (loan?.opening_type === "Borrowed" || loan?.opening_type === "Lent") {
+    return loan.opening_type;
+  }
+  if (summary?.opening_label === "you owe") return "Borrowed";
+  if (summary?.opening_label === "owed to you") return "Lent";
+  return null;
+};
 
 /**
  * Start and next-payment dates arrive as UTC midnight; show that calendar
@@ -83,26 +121,8 @@ const unwrapData = <T,>(value: any): T | undefined =>
 const formatCalendarDate = (value: string) =>
   formatDate(toDateInputValue(parseCalendarDate(value)));
 
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
-
-  return errorMsg;
-};
+// Plain words only: the field messages, never "Validation failed / field: …".
+const formatApiError = (result: any): string => apiErrorMessage(result);
 
 // Must stay in sync with the backend's `in:weeks,months,years` rule and the web
 // modal's term_period <select> — "weeks" was missing here.
@@ -141,6 +161,9 @@ export default function LoansScreen() {
   const [showPaymentAccountPicker, setShowPaymentAccountPicker] =
     useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // The loan the form is editing, or null while it creates one (QA AE-19).
+  const [editingLoan, setEditingLoan] = useState<LoanRecord | null>(null);
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false);
 
   const [formData, setFormData] = useState({
     loan_name: "",
@@ -240,9 +263,50 @@ export default function LoansScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      // The opening transaction moves an account and shows on Activity,
+      // Home and Reports too (QA AE-07).
+      void invalidateMoneyQueries(queryClient);
       closeModal();
+    },
+    onError: (error: Error) => notifyToast.error(error.message),
+  });
+
+  // Edit Loan (QA AE-19, contract C5): sends the opening amount; the server
+  // keeps top-ups and repayments and rewrites the opening row in place.
+  const updateMutation = useMutation({
+    mutationFn: async ({ loan, data }: { loan: LoanRecord; data: typeof formData }) => {
+      const opening = roundMoney(parseDecimalInput(data.original_amount));
+      const total = parseFloat(String(loan.original_amount ?? 0)) || 0;
+      const openingBefore = openingAmountOf(loan);
+      // Top-ups stay on the loan, so older API builds (which read only the
+      // total) get the opening plus whatever was added later. An untouched
+      // opening sends the total back unchanged — a loan that changed sides
+      // refuses any other total on those builds.
+      const topUps = Math.max(0, roundMoney(total - openingBefore));
+      const openingChanged = Math.abs(opening - openingBefore) > 0.009;
+      const term = parseInt(data.term, 10);
+      const result = await loanService.update(loan.id, {
+        loan_name: data.loan_name.trim(),
+        opening_amount: opening,
+        original_amount: openingChanged ? roundMoney(opening + topUps) : total,
+        interest_rate: parseDecimalInput(data.interest_rate),
+        next_payment: parseDecimalInput(data.next_payment),
+        term: term > 0 ? term : null,
+        term_period: data.term_period,
+        start_date: data.start_date || todayDateInputValue(),
+        next_payment_date: data.next_payment_date || null,
+        loan_type: loan.loan_type || data.loan_type,
+        account_id: parseInt(data.account_id, 10),
+        category_id: parseInt(data.category_id, 10) || null,
+        notes: data.notes.trim() || null,
+      });
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: () => {
+      void invalidateMoneyQueries(queryClient);
+      closeModal();
+      notifyToast.success("Loan updated");
     },
     onError: (error: Error) => notifyToast.error(error.message),
   });
@@ -282,8 +346,9 @@ export default function LoansScreen() {
       return result;
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      // Activity "All" / Liabilities, Home and the accounts all show the new
+      // entry straight away (QA AE-07).
+      void invalidateMoneyQueries(queryClient);
       closePaymentModal();
       // Settling a loan in full is one of the app's real "done" moments.
       type Outcome = { loan?: { status?: string }; changed_sides?: boolean };
@@ -305,7 +370,10 @@ export default function LoansScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
+      // Every transaction on the loan was archived, so balances, Activity and
+      // Home change too (QA AE-122, AE-07).
+      void invalidateMoneyQueries(queryClient);
+      notifyToast.success("Loan deleted. Its transactions are in Archived.");
     },
     onError: (error: Error) => notifyToast.error(error.message),
   });
@@ -313,6 +381,7 @@ export default function LoansScreen() {
   const openModal = () => {
     const defaultAccountId = accounts?.[0]?.id ? String(accounts[0].id) : "";
 
+    setEditingLoan(null);
     setFormData({
       loan_name: "",
       original_amount: "",
@@ -332,8 +401,37 @@ export default function LoansScreen() {
     setModalVisible(true);
   };
 
+  // The calendar day of a stored date ("2026-11-19T00:00:00Z" → "2026-11-19").
+  const toDateField = (value?: string | null) =>
+    value ? toDateInputValue(parseCalendarDate(value)) : "";
+
+  const openEditModal = (loan: LoanRecord) => {
+    setEditingLoan(loan);
+    setFormData({
+      loan_name: loan.loan_name || loan.name || "",
+      // The box edits the opening amount; top-ups stay as recorded.
+      original_amount: String(openingAmountOf(loan) || ""),
+      interest_rate: numberInputValue(loan.interest_rate),
+      next_payment: numberInputValue(loan.next_payment),
+      term: numberInputValue(loan.term),
+      term_period: (["weeks", "months", "years"].includes(String(loan.term_period))
+        ? loan.term_period
+        : "years") as TermPeriod,
+      start_date: toDateField(loan.start_date) || todayDateInputValue(),
+      next_payment_date: toDateField(loan.next_payment_date),
+      loan_type: loan.loan_type === "Lent" ? "Lent" : "Borrowed",
+      account_id: loan.account_id ? String(loan.account_id) : "",
+      category_id: loan.category_id ? String(loan.category_id) : "",
+      notes: loan.notes || "",
+    });
+    setShowCategoryPicker(false);
+    setShowAccountPicker(false);
+    setModalVisible(true);
+  };
+
   const closeModal = () => {
     setModalVisible(false);
+    setEditingLoan(null);
     setShowCategoryPicker(false);
     setShowAccountPicker(false);
   };
@@ -419,6 +517,26 @@ export default function LoansScreen() {
       notifyToast.error("Please select an account");
       return;
     }
+    if (editingLoan) {
+      // Same rule as the web form: the loan can't end up smaller than what
+      // has already been repaid. A loan that changed sides is checked by the
+      // server, which replays its whole ledger.
+      if (!editingLoan.opening_type) {
+        const total = parseFloat(String(editingLoan.original_amount ?? 0)) || 0;
+        const remaining = parseFloat(String(editingLoan.remaining_balance ?? 0)) || 0;
+        const repaid = Math.max(0, roundMoney(total - remaining));
+        const topUps = Math.max(0, roundMoney(total - openingAmountOf(editingLoan)));
+        const opening = parseDecimalInput(formData.original_amount);
+        if (opening + topUps < repaid - 0.009) {
+          notifyToast.error(
+            `The opening amount can't be less than ${formatAmount(Math.max(0, repaid - topUps))} — that much has already been repaid.`,
+          );
+          return;
+        }
+      }
+      updateMutation.mutate({ loan: editingLoan, data: formData });
+      return;
+    }
     createMutation.mutate(formData);
   };
 
@@ -466,6 +584,16 @@ export default function LoansScreen() {
   // Archived loans are read-only; the server refuses changes too.
   const entriesEditable = selectedLoan?.status !== "Archived";
 
+  // Overpaying a loan moves the balance to the other side. The statement then
+  // has to say where it started, or it reads as money given (QA AE-126).
+  const statementChangedSides =
+    !!statement &&
+    (statement.summary.changed_sides === true ||
+      !!(selectedLoan as LoanRecord | null)?.opening_type);
+  const statementOpeningSide = statementChangedSides
+    ? openingSideOf(selectedLoan as LoanRecord | null, statement?.summary)
+    : null;
+
   // An entry change rewrites its transaction and the loan balance, so the
   // statement, loan cards, accounts and transactions all refetch.
   const afterEntryChange = async (result: any) => {
@@ -480,10 +608,7 @@ export default function LoansScreen() {
         // The toast below still confirms the change; a reopen will refresh.
       }
     }
-    queryClient.invalidateQueries({ queryKey: ["loans"] });
-    queryClient.invalidateQueries({ queryKey: ["accounts"] });
-    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    void invalidateMoneyQueries(queryClient);
   };
 
   const startEditEntry = (entry: LoanStatementEntry) =>
@@ -584,6 +709,16 @@ export default function LoansScreen() {
     });
   };
 
+  // Revoking can't be undone (sharing again makes a new link), so it asks
+  // first (QA AE-67); creating a link needs no confirmation.
+  const handleShareButton = () => {
+    if (statement?.share?.is_shared) {
+      setShowRevokeConfirm(true);
+      return;
+    }
+    void toggleShareLink(true);
+  };
+
   const toggleShareLink = async (enable: boolean) => {
     if (!selectedLoan || shareBusy) return;
     setShareBusy(true);
@@ -598,6 +733,7 @@ export default function LoansScreen() {
       setStatement((prev) => (prev ? { ...prev, share } : prev));
 
       if (!enable) {
+        setShowRevokeConfirm(false);
         notifyToast.success("Public link revoked.");
         return;
       }
@@ -611,6 +747,7 @@ export default function LoansScreen() {
         notifyToast.success("Public link created.");
       }
     } catch (error) {
+      setShowRevokeConfirm(false);
       notifyToast.error(error instanceof Error ? error.message : "Could not update the link.");
     } finally {
       setShareBusy(false);
@@ -659,6 +796,14 @@ export default function LoansScreen() {
   const handleDeletePress = () => {
     setShowActionSheet(false);
     setTimeout(() => setShowDeleteConfirm(true), 200);
+  };
+
+  const handleEditPress = () => {
+    const loan = selectedLoan;
+    setShowActionSheet(false);
+    setSelectedLoan(null);
+    // Let the sheet close first (same pause as Delete) so the form opens on top.
+    if (loan) setTimeout(() => openEditModal(loan), 200);
   };
 
   const handleConfirmDelete = () => {
@@ -844,7 +989,7 @@ export default function LoansScreen() {
                 style={{ color: colors.error }}
                 numberOfLines={1}
               >
-                {borrowedLoans.length} loans
+                {loanCount(borrowedLoans.length)}
               </Text>
             </View>
           </Surface>
@@ -881,7 +1026,7 @@ export default function LoansScreen() {
                 style={{ color: colors.tertiary }}
                 numberOfLines={1}
               >
-                {lentLoans.length} loans
+                {loanCount(lentLoans.length)}
               </Text>
             </View>
           </Surface>
@@ -953,7 +1098,7 @@ export default function LoansScreen() {
                 style={{ color: colors.onSurfaceVariant }}
                 numberOfLines={1}
               >
-                total loans
+                {activeLoans.length === 1 ? "loan" : "loans"}
               </Text>
             </View>
           </Surface>
@@ -1184,7 +1329,9 @@ export default function LoansScreen() {
                                 daysUntil <= 7 ? colors.error : colors.primary,
                             }}
                           >
-                            {` (${daysUntil} days)`}
+                            {daysUntil === 0
+                              ? " (today)"
+                              : ` (${daysUntil} ${daysUntil === 1 ? "day" : "days"})`}
                           </Text>
                         )}
                       </Text>
@@ -1308,7 +1455,7 @@ export default function LoansScreen() {
               style={{ color: colors.onSurfaceVariant, textAlign: "center" }}
             >
               {viewLoans.length > 0
-                ? `${viewLoans.length} loan(s) archived/paid off`
+                ? `${loanCount(viewLoans.length)} archived or paid off`
                 : "Track your loans and payments here"}
             </Text>
             <TouchableOpacity
@@ -1358,7 +1505,7 @@ export default function LoansScreen() {
               variant="titleLarge"
               style={{ color: colors.onSurface, marginBottom: 16 }}
             >
-              Add New Loan
+              {editingLoan ? "Edit Loan" : "Add New Loan"}
             </Text>
 
             {/* Field order mirrors the web modal (Loans.jsx): name → amounts →
@@ -1374,7 +1521,7 @@ export default function LoansScreen() {
             />
 
             <TextInput
-              label="Original Amount *"
+              label={editingLoan ? "Opening Amount *" : "Original Amount *"}
               value={formData.original_amount}
               onChangeText={(text) =>
                 setFormData({ ...formData, original_amount: toDecimalInput(text) })
@@ -1382,8 +1529,27 @@ export default function LoansScreen() {
               mode="outlined"
               keyboardType="decimal-pad"
               returnKeyType="done"
-              style={styles.input}
+              style={editingLoan ? styles.inputWithHint : styles.input}
             />
+            {editingLoan && (
+              <Text
+                variant="bodySmall"
+                style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}
+              >
+                {(() => {
+                  const topUps = Math.max(
+                    0,
+                    roundMoney(
+                      (parseFloat(String(editingLoan.original_amount ?? 0)) || 0) -
+                        openingAmountOf(editingLoan),
+                    ),
+                  );
+                  return topUps > 0
+                    ? `The first amount ${editingLoan.loan_type === "Lent" ? "lent" : "borrowed"}. ${formatAmount(topUps)} added later and every repayment stay as recorded.`
+                    : `The first amount ${editingLoan.loan_type === "Lent" ? "lent" : "borrowed"}. Repayments stay as recorded.`;
+                })()}
+              </Text>
+            )}
 
             <TextInput
               label="Interest Rate (%)"
@@ -1462,31 +1628,42 @@ export default function LoansScreen() {
               variant="bodyMedium"
               style={{ color: colors.onSurfaceVariant, marginBottom: 8 }}
             >
-              Loan Type *
+              Loan Type{editingLoan ? "" : " *"}
             </Text>
-            <SegmentedButtons
-              value={formData.loan_type}
-              onValueChange={(value) =>
-                setFormData({
-                  ...formData,
-                  loan_type: value as "Borrowed" | "Lent",
-                  category_id: "",
-                })
-              }
-              buttons={[
-                {
-                  value: "Borrowed",
-                  label: "Borrowed",
-                  icon: "hand-coin",
-                },
-                {
-                  value: "Lent",
-                  label: "Lent",
-                  icon: "cash-plus",
-                },
-              ]}
-              style={{ marginBottom: 4 }}
-            />
+            {/* The side is fixed once the loan exists: its entries were
+                recorded against it. Only a new loan picks one. */}
+            {editingLoan ? (
+              <Text
+                variant="bodyLarge"
+                style={{ color: colors.onSurface, marginBottom: 4 }}
+              >
+                {formData.loan_type}
+              </Text>
+            ) : (
+              <SegmentedButtons
+                value={formData.loan_type}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    loan_type: value as "Borrowed" | "Lent",
+                    category_id: "",
+                  })
+                }
+                buttons={[
+                  {
+                    value: "Borrowed",
+                    label: "Borrowed",
+                    icon: "hand-coin",
+                  },
+                  {
+                    value: "Lent",
+                    label: "Lent",
+                    icon: "cash-plus",
+                  },
+                ]}
+                style={{ marginBottom: 4 }}
+              />
+            )}
             <Text
               variant="bodySmall"
               style={{ color: colors.onSurfaceVariant, marginBottom: 12 }}
@@ -1722,9 +1899,10 @@ export default function LoansScreen() {
               <Button
                 mode="contained"
                 onPress={handleSave}
-                loading={createMutation.isPending}
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
               >
-                Create Loan
+                {editingLoan ? "Save changes" : "Create loan"}
               </Button>
             </View>
           </ScrollView>
@@ -1754,7 +1932,13 @@ export default function LoansScreen() {
               variant="bodySmall"
               style={{ color: colors.onSurfaceVariant, marginBottom: 16 }}
             >
-              {selectedLoan?.loan_type === "Borrowed" ? "Money borrowed" : "Money lent"}
+              {/* A loan that changed sides started the other way round: say
+                  both, or "Money lent" reads as if money was given (AE-126). */}
+              {statementOpeningSide && statementOpeningSide !== selectedLoan?.loan_type
+                ? `Started as money ${statementOpeningSide === "Borrowed" ? "borrowed" : "lent"} · now ${selectedLoan?.loan_type === "Borrowed" ? "you owe" : "owed to you"}`
+                : selectedLoan?.loan_type === "Borrowed"
+                  ? "Money borrowed"
+                  : "Money lent"}
               {selectedLoan?.start_date ? ` · opened ${formatCalendarDate(selectedLoan.start_date)}` : ""}
             </Text>
 
@@ -1836,11 +2020,20 @@ export default function LoansScreen() {
                   variant="bodySmall"
                   style={{ color: colors.onSurfaceVariant, marginTop: 6, marginBottom: 16 }}
                 >
-                  {statement.summary.progress_percent}% settled · opened at{" "}
-                  {formatAmount(statement.summary.opening_amount)}
-                  {statement.summary.additional_amount > 0
-                    ? ` · ${formatAmount(statement.summary.additional_amount)} added later`
-                    : ""}
+                  {statementChangedSides && statementOpeningSide
+                    ? // "added later" would count the overpayment as fresh
+                      // money; spell out what happened instead (AE-126).
+                      `${statementOpeningSide === "Borrowed" ? "You borrowed" : "You lent"} ${formatAmount(statement.summary.opening_amount)}. ` +
+                      `More was paid back than was owed, so the loan changed sides` +
+                      (statement.summary.outstanding > 0
+                        ? selectedLoan?.loan_type === "Borrowed"
+                          ? `: you now owe ${formatAmount(statement.summary.outstanding)}.`
+                          : `: they now owe you ${formatAmount(statement.summary.outstanding)}.`
+                        : ".")
+                    : `${statement.summary.progress_percent}% settled · opened at ${formatAmount(statement.summary.opening_amount)}` +
+                      (statement.summary.additional_amount > 0
+                        ? ` · ${formatAmount(statement.summary.additional_amount)} added later`
+                        : "")}
                 </Text>
 
                 {!!selectedLoan?.notes && (
@@ -1876,7 +2069,7 @@ export default function LoansScreen() {
                     icon={statement.share?.is_shared ? "link-off" : "link-variant"}
                     loading={shareBusy}
                     disabled={shareBusy}
-                    onPress={() => toggleShareLink(!statement.share?.is_shared)}
+                    onPress={handleShareButton}
                     style={{ flex: 1 }}
                     compact
                   >
@@ -1932,9 +2125,44 @@ export default function LoansScreen() {
                   Statement
                 </Text>
 
-                {/* Newest first. The API returns entries oldest-first with a
-                    running balance_after, so reversing keeps each row's balance. */}
-                {[...statement.entries].reverse().map((entry) =>
+                {/* Oldest first with the Opening on top, the same order as the
+                    PDF and the share page (QA AE-85). The API sends entries
+                    oldest-first with a running balance_after. Change the
+                    opening with the loan's Edit. */}
+                <View
+                  style={[
+                    styles.statementRow,
+                    { borderBottomColor: colors.outlineVariant ?? colors.outline },
+                  ]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={[styles.entryPill, { backgroundColor: `${colors.error}1f` }]}
+                    >
+                      <Text variant="labelSmall" style={{ color: colors.error }}>
+                        {statementOpeningSide
+                          ? `Opening · ${statementOpeningSide === "Borrowed" ? "borrowed" : "lent"}`
+                          : "Opening"}
+                      </Text>
+                    </View>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      {selectedLoan?.start_date ? formatCalendarDate(selectedLoan.start_date) : "-"}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
+                      {formatAmount(statement.summary.opening_amount)}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      bal {formatAmount(statement.summary.opening_amount)}
+                      {statementOpeningSide
+                        ? ` · ${statement.summary.opening_label || (statementOpeningSide === "Borrowed" ? "you owe" : "owed to you")}`
+                        : ""}
+                    </Text>
+                  </View>
+                </View>
+
+                {statement.entries.map((entry, entryIndex) =>
                   editingEntry?.id === entry.id ? (
                   <View
                     key={entry.id}
@@ -2060,15 +2288,21 @@ export default function LoansScreen() {
                         style={[
                           styles.entryPill,
                           {
-                            backgroundColor: entry.is_repayment
-                              ? `${colors.tertiary}1f`
-                              : `${colors.error}1f`,
+                            backgroundColor:
+                              entry.is_repayment || entry.crossed_over
+                                ? `${colors.tertiary}1f`
+                                : `${colors.error}1f`,
                           },
                         ]}
                       >
                         <Text
                           variant="labelSmall"
-                          style={{ color: entry.is_repayment ? colors.tertiary : colors.error }}
+                          style={{
+                            color:
+                              entry.is_repayment || entry.crossed_over
+                                ? colors.tertiary
+                                : colors.error,
+                          }}
                         >
                           {entry.label}
                         </Text>
@@ -2077,6 +2311,33 @@ export default function LoansScreen() {
                         {entry.date ? formatDate(entry.date) : "-"}
                         {entry.interest > 0 ? ` · int ${formatAmount(entry.interest)}` : ""}
                       </Text>
+                      {/* The row where an overpayment moved the balance across:
+                          the server's own wording when it sends one. */}
+                      {entry.detail ? (
+                        <Text
+                          variant="bodySmall"
+                          style={[styles.sideChangeNote, { color: colors.primary }]}
+                        >
+                          {entry.detail}
+                        </Text>
+                      ) : (
+                        (() => {
+                          const before =
+                            entryIndex === 0
+                              ? statementOpeningSide
+                              : statement.entries[entryIndex - 1]?.balance_side;
+                          return !!before && !!entry.balance_side && entry.balance_side !== before;
+                        })() && (
+                          <Text
+                            variant="bodySmall"
+                            style={[styles.sideChangeNote, { color: colors.primary }]}
+                          >
+                            {entry.balance_side === "Lent"
+                              ? "Paid back more than was owed: the rest is now owed to you"
+                              : "Paid back more than was owed: you now owe the rest"}
+                          </Text>
+                        )
+                      )}
                       {!!entry.notes && (
                         <>
                           <Text
@@ -2102,7 +2363,7 @@ export default function LoansScreen() {
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
                       <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                        {entry.is_repayment ? "-" : "+"}
+                        {entry.is_repayment || entry.crossed_over ? "-" : "+"}
                         {formatAmount(entry.amount)}
                       </Text>
                       <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
@@ -2143,36 +2404,6 @@ export default function LoansScreen() {
                   </View>
                   )
                 )}
-
-                {/* Opening sits last: the list runs newest first. Change it with the loan's Edit. */}
-                <View
-                  style={[
-                    styles.statementRow,
-                    { borderBottomColor: colors.outlineVariant ?? colors.outline },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <View
-                      style={[styles.entryPill, { backgroundColor: `${colors.error}1f` }]}
-                    >
-                      <Text variant="labelSmall" style={{ color: colors.error }}>
-                        Opening
-                      </Text>
-                    </View>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      {selectedLoan?.start_date ? formatCalendarDate(selectedLoan.start_date) : "-"}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text variant="bodyMedium" style={{ color: colors.onSurface }}>
-                      {formatAmount(statement.summary.opening_amount)}
-                    </Text>
-                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
-                      bal {formatAmount(statement.summary.opening_amount)}
-                    </Text>
-                  </View>
-                </View>
-
 
                 {statement.entries.length === 0 && (
                   <Text
@@ -2611,6 +2842,34 @@ export default function LoansScreen() {
                 </TouchableOpacity>
               )}
 
+              {/* Archived loans are read-only (the server refuses edits). */}
+              {selectedLoan.status !== "Archived" && (
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={handleEditPress}
+                >
+                  <MaterialCommunityIcons
+                    name="pencil"
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <Text
+                    variant="bodyLarge"
+                    style={[
+                      styles.actionSheetButtonText,
+                      { color: colors.onSurface },
+                    ]}
+                  >
+                    Edit Loan
+                  </Text>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={24}
+                    color={colors.onSurfaceVariant}
+                  />
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
                 style={styles.actionSheetButton}
                 onPress={handleDeletePress}
@@ -2648,15 +2907,32 @@ export default function LoansScreen() {
         </DialogModal>
       </Portal>
 
+      {/* Says what really happens (QA AE-122): nothing is wiped, every
+          transaction on the loan moves to Archived and the balances go back. */}
       <ConfirmDialog
         visible={showDeleteConfirm}
         title="Delete loan?"
-        message="This action cannot be undone. The loan and all payment history will be permanently removed."
+        message={
+          "The loan is removed and all of its transactions — the opening amount and every payment or top-up recorded on it — move to Archived. " +
+          "Your account balances go back to how they were without this loan. " +
+          "The loan can't be brought back, and its archived transactions can't be restored on their own."
+        }
         icon={TriangleAlert}
-        confirmLabel="Delete"
+        confirmLabel="Delete loan"
         loading={deleteMutation.isPending}
         onCancel={() => setShowDeleteConfirm(false)}
         onConfirm={handleConfirmDelete}
+      />
+
+      <ConfirmDialog
+        visible={showRevokeConfirm}
+        title="Revoke the public link?"
+        message="Anyone who opens the current link will see that it was revoked. If you share the statement again, you'll get a new link — this one won't work again."
+        icon={Link2Off}
+        confirmLabel="Revoke link"
+        loading={shareBusy}
+        onCancel={() => setShowRevokeConfirm(false)}
+        onConfirm={() => void toggleShareLink(false)}
       />
 
       <ConfirmDialog
@@ -2914,6 +3190,14 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  // A field with a hint line under it; the hint carries the gap.
+  inputWithHint: {
+    marginBottom: 4,
+  },
+  sideChangeNote: {
+    marginTop: 4,
+    fontStyle: "italic",
   },
   entryActions: {
     flexDirection: "row",

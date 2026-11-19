@@ -51,6 +51,19 @@ const DEFAULT_PREFS: Required<NotificationPreferences> = {
   weekly_summary: true,
 };
 
+// The toast names the one setting that changed (QA AE-81): "Midday reminder
+// off", not "Notifications disabled".
+const PREF_NAMES: Record<PrefKey, string> = {
+  budget_alerts: "Budget alerts",
+  payment_reminders: "Payment reminders",
+  goal_reached: "Goal reached alerts",
+  daily_midday: "Midday reminder",
+  daily_evening: "Evening spend check",
+  daily_wrapup: "Nightly wrap-up",
+  email_notifications: "Email notifications",
+  weekly_summary: "Weekly summary",
+};
+
 export default function NotificationSettingsScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -157,10 +170,10 @@ export default function NotificationSettingsScreen() {
     setSavingKey(key);
     try {
       await updateMutation.mutateAsync({ [key]: nextValue });
-      toast.success(nextValue ? "Notifications enabled" : "Notifications disabled");
-    } catch (error) {
+      toast.success(`${PREF_NAMES[key] ?? "Notification"} ${nextValue ? "on" : "off"}`);
+    } catch {
       setPrefs((prev) => ({ ...prev, [key]: previous }));
-      toast.error("Could not save preference");
+      toast.error(`Could not change ${(PREF_NAMES[key] ?? "this setting").toLowerCase()}. Please try again.`);
     } finally {
       setSavingKey(null);
     }

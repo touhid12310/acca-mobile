@@ -322,12 +322,17 @@ export const CurrencyProvider: React.FC<CurrencyProviderProps> = ({
       const safeAmount =
         typeof numeric === 'number' && Number.isFinite(numeric) ? numeric : 0;
 
-      const formatted = safeAmount.toLocaleString(undefined, {
+      // The sign goes before the symbol ("−৳980.00", never "৳-980.00"), as a
+      // real minus sign. A value that rounds to zero shows no sign at all.
+      const formatted = Math.abs(safeAmount).toLocaleString(undefined, {
         minimumFractionDigits,
         maximumFractionDigits,
       });
+      const negative =
+        safeAmount < 0 && Number(Math.abs(safeAmount).toFixed(maximumFractionDigits)) !== 0;
+      const sign = negative ? '−' : '';
 
-      return showSymbol ? `${currencySymbol}${formatted}` : formatted;
+      return showSymbol ? `${sign}${currencySymbol}${formatted}` : `${sign}${formatted}`;
     },
     [currencySymbol]
   );

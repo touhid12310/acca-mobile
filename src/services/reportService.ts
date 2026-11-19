@@ -23,7 +23,7 @@ export const reportService = {
   getCategoryBreakdown: async (params: {
     start_date?: string;
     end_date?: string;
-    type?: 'income' | 'expense';
+    type?: 'income' | 'expense' | 'asset' | 'liability';
   } = {}): Promise<ApiResponse<CategoryBreakdown[]>> => {
     const token = await getAuthToken();
     const queryParams = new URLSearchParams();
@@ -70,14 +70,21 @@ export const reportService = {
     );
   },
 
+  /**
+   * `total_assets` / `total_liabilities` are the net change in the period by
+   * balance direction (money into an asset +, out −; new debt +, repayment −),
+   * not balances — label them "Assets (net change)" / "Debts (net change)".
+   */
   getSummaryStats: async (months: number = 6): Promise<
     ApiResponse<{
       total_income: number;
       total_expenses: number;
+      total_assets?: number;
+      total_liabilities?: number;
       net_savings: number;
       savings_rate: number;
-      average_monthly_income: number;
-      average_monthly_expense: number;
+      average_monthly_income?: number;
+      average_monthly_expense?: number;
     }>
   > => {
     const token = await getAuthToken();
@@ -112,6 +119,13 @@ export const reportService = {
     });
   },
 
+  /**
+   * Debt accounts (credit cards, credit lines) arrive in
+   * `liabilities.accounts` ({ name, type, amount }: amount owed, positive when
+   * the account is overdrawn) with `liabilities.total_accounts`. Older APIs
+   * list them under `assets.cash_and_bank` with a negative amount; the
+   * Reports screen moves them itself in that case.
+   */
   getBalanceSheet: async (params: {
     as_of_date?: string;
   } = {}): Promise<ApiResponse<BalanceSheet>> => {

@@ -46,6 +46,12 @@ import reportService from "../../src/services/reportService";
 import { MonthlySummary, CategoryBreakdown } from "../../src/types";
 import { radius, shadow, spacing } from "../../src/constants/theme";
 import { toDateInputValue } from "../../src/utils/date";
+import { Sensitive } from "../../src/components/common/Sensitive";
+import {
+  formatDay,
+  formatDayRange,
+  todayInAccountZone,
+} from "../../src/utils/calendarDates";
 
 type ReportType = "summary" | "category" | "networth" | "income" | "balance";
 type CategoryTypeFilter = "all" | "income" | "expense" | "asset" | "liability";
@@ -78,9 +84,37 @@ const CATEGORY_PALETTE = [
   "#6366F1",
 ];
 
+type BreakdownType = Exclude<CategoryTypeFilter, "all">;
+
+const BREAKDOWN_TYPES: { type: BreakdownType; label: string }[] = [
+  { type: "income", label: "Income" },
+  { type: "expense", label: "Expenses" },
+  { type: "asset", label: "Assets" },
+  { type: "liability", label: "Liabilities" },
+];
+
+// The API labels "All" rows "Groceries (Expense)"; read the type back from it.
+const TYPE_SUFFIX = /\s\((Income|Expense|Asset|Liability)\)$/;
+const splitTypedLabel = (
+  label: string,
+): { name: string; type: BreakdownType | null } => {
+  const match = TYPE_SUFFIX.exec(label || "");
+  if (!match) return { name: label, type: null };
+  return {
+    name: label.slice(0, match.index),
+    type: match[1].toLowerCase() as BreakdownType,
+  };
+};
+
+// Old APIs listed credit-card accounts under Cash & Bank with a negative
+// balance; the current one sends them in liabilities.accounts (QA AE-02).
+const DEBT_ACCOUNT_TYPE = /credit/i;
+
 export default function ReportsScreen() {
   const { colors } = useTheme();
   const { formatAmount } = useCurrency();
+  const formatSignedAmount = (value: number) =>
+    value > 0 ? `+${formatAmount(value)}` : formatAmount(value);
 
   const [reportType, setReportType] = useState<ReportType>("summary");
   const [months] = useState(6);
@@ -90,16 +124,19 @@ export default function ReportsScreen() {
 
   const [incomeStatementPeriod, setIncomeStatementPeriod] =
     useState<PeriodFilter>("monthly");
+  // Calendar days in the account's timezone (QA AE-47).
   const [incomeStartDate, setIncomeStartDate] = useState(() => {
-    const date = new Date();
+    const date = todayInAccountZone();
     date.setDate(1);
     return date;
   });
-  const [incomeEndDate, setIncomeEndDate] = useState(new Date());
+  const [incomeEndDate, setIncomeEndDate] = useState(() => todayInAccountZone());
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
-  const [balanceSheetDate, setBalanceSheetDate] = useState(new Date());
+  const [balanceSheetDate, setBalanceSheetDate] = useState(() =>
+    todayInAccountZone(),
+  );
   const [showBalanceDatePicker, setShowBalanceDatePicker] = useState(false);
 
   const categoryTypeOptions: { value: CategoryTypeFilter; label: string }[] = [
@@ -119,7 +156,7 @@ export default function ReportsScreen() {
 
   const handlePeriodChange = (period: PeriodFilter) => {
     setIncomeStatementPeriod(period);
-    const today = new Date();
+    const today = todayInAccountZone();
     if (period === "monthly") {
       setIncomeStartDate(new Date(today.getFullYear(), today.getMonth(), 1));
       setIncomeEndDate(today);
@@ -175,32 +212,53 @@ export default function ReportsScreen() {
     enabled: reportType === "summary",
   });
 
+  // This month in the account's timezone (the API's default window follows
+  // the server clock instead). The query key holds the date strings.
+  const categoryToday = todayInAccountZone();
+  const categoryRange = {
+    start: new Date(categoryToday.getFullYear(), categoryToday.getMonth(), 1),
+    end: new Date(categoryToday.getFullYear(), categoryToday.getMonth() + 1, 0),
+  };
+
   const {
     data: categoryData,
     isLoading: isLoadingCategory,
     refetch: refetchCategory,
   } = useQuery({
-    queryKey: ["reports", "category-breakdown", categoryTypeFilter],
+    queryKey: [
+      "reports",
+      "category-breakdown",
+      categoryTypeFilter,
+      toDateInputValue(categoryRange.start),
+      toDateInputValue(categoryRange.end),
+    ],
     queryFn: async () => {
-      const params =
-        categoryTypeFilter !== "all"
-          ? { type: categoryTypeFilter as "income" | "expense" }
-          : {};
-      const result = await reportService.getCategoryBreakdown(params);
+      const result = await reportService.getCategoryBreakdown({
+        start_date: toDateInputValue(categoryRange.start),
+        end_date: toDateInputValue(categoryRange.end),
+        ...(categoryTypeFilter !== "all" ? { type: categoryTypeFilter } : {}),
+      });
       if (result.success && result.data) {
         const responseData = result.data as any;
         const data = responseData?.data || responseData;
         if (data && data.labels && Array.isArray(data.labels)) {
-          const tableData: CategoryBreakdown[] = data.labels.map(
-            (label: string, index: number) => ({
+          const tableData: (CategoryBreakdown & {
+            breakdown_type?: BreakdownType | null;
+          })[] = data.labels.map((label: string, index: number) => {
+            const typed = splitTypedLabel(label);
+            return {
               category_id: index,
-              category_name: label,
+              // A single-type list keeps the server's label; "All" is
+              // grouped by type below, so the suffix is dropped there.
+              category_name: categoryTypeFilter === "all" ? typed.name : label,
+              breakdown_type:
+                categoryTypeFilter === "all" ? typed.type : categoryTypeFilter,
               amount: data.values?.[index] || 0,
               color:
                 data.colors?.[index] ||
                 CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
-            }),
-          );
+            };
+          });
           return tableData;
         }
         return Array.isArray(data) ? data : [];
@@ -411,7 +469,7 @@ export default function ReportsScreen() {
     >
       <Calendar size={14} color={colors.onSurfaceVariant} strokeWidth={2.2} />
       <Text style={[styles.dateChipText, { color: colors.onSurface }]}>
-        {date.toLocaleDateString()}
+        {formatDay(date)}
       </Text>
     </Pressable>
   );
@@ -636,14 +694,17 @@ export default function ReportsScreen() {
                 `${summaryStatsData.savings_rate || 0}%`,
                 colors.primary,
               )}
+              {/* Period flows, not balances: what went into assets and how
+                  much debt grew or shrank (QA AE-58). Balances live on the
+                  Balance tab. */}
               {renderMiniStat(
-                "Total Assets",
-                formatAmount(summaryStatsData.total_assets || 0),
+                "Assets (net change)",
+                formatSignedAmount(summaryStatsData.total_assets || 0),
                 colors.tertiary,
               )}
               {renderMiniStat(
-                "Total Liabilities",
-                formatAmount(summaryStatsData.total_liabilities || 0),
+                "Debts (net change)",
+                formatSignedAmount(summaryStatsData.total_liabilities || 0),
                 colors.error,
               )}
             </View>
@@ -675,23 +736,144 @@ export default function ReportsScreen() {
     </Card>
   );
 
+  const renderBreakdownRows = (
+    rows: (CategoryBreakdown & { breakdown_type?: BreakdownType | null })[],
+    total: number,
+  ) =>
+    rows.map((cat, index) => {
+      const pct = total > 0 ? ((cat.amount || 0) / total) * 100 : 0;
+      const dotColor =
+        cat.color || CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
+      return (
+        <View
+          key={`${cat.category_id ?? index}-${cat.category_name}`}
+          style={[
+            styles.categoryItem,
+            index < rows.length - 1 && {
+              borderBottomColor: colors.outlineVariant,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+            },
+          ]}
+        >
+          <View style={styles.categoryHeader}>
+            <View style={[styles.categoryDot, { backgroundColor: dotColor }]} />
+            <Text
+              style={[styles.categoryName, { color: colors.onSurface }]}
+              numberOfLines={1}
+            >
+              {cat.category_name || "Uncategorized"}
+            </Text>
+            <Text style={[styles.categoryAmount, { color: colors.onSurface }]}>
+              {formatAmount(cat.amount || 0)}
+            </Text>
+          </View>
+          <View style={styles.categoryBarRow}>
+            <View
+              style={[
+                styles.barTrack,
+                { backgroundColor: colors.surfaceVariant, flex: 1 },
+              ]}
+            >
+              <View
+                style={[
+                  styles.barFill,
+                  {
+                    backgroundColor: dotColor,
+                    width: `${Math.max(pct, 2)}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text
+              style={[styles.categoryPct, { color: colors.onSurfaceVariant }]}
+            >
+              {total > 0 ? `${pct.toFixed(1)}%` : "—"}
+            </Text>
+          </View>
+        </View>
+      );
+    });
+
   const renderCategoryBreakdown = () => {
     const filterRow = renderFilterPills(
       categoryTypeFilter,
       categoryTypeOptions,
       setCategoryTypeFilter,
     );
+    const rangeCaption = (
+      <Text style={[styles.rangeCaption, { color: colors.onSurfaceVariant }]}>
+        This month · {formatDayRange(categoryRange.start, categoryRange.end)}
+      </Text>
+    );
 
     if (!categoryData || categoryData.length === 0) {
       return (
         <>
           {filterRow}
+          {rangeCaption}
           <EmptyState
             icon={ChartPie}
             title="Nothing to chart"
             message="No data available for this category type."
             compact
           />
+        </>
+      );
+    }
+
+    // "All" mixes income, spending, assets and debts: adding them up gives a
+    // number that means nothing (QA AE-110). Show one total per type instead,
+    // each with its own list and percentages.
+    if (categoryTypeFilter === "all") {
+      const groups = BREAKDOWN_TYPES.map(({ type, label }) => {
+        const rows = categoryData.filter((cat) => cat.breakdown_type === type);
+        const total = rows.reduce((sum, cat) => sum + (cat.amount || 0), 0);
+        return { type, label, rows, total };
+      });
+      const untyped = categoryData.filter((cat) => !cat.breakdown_type);
+      const tone: Record<BreakdownType, string> = {
+        income: colors.tertiary,
+        expense: colors.error,
+        asset: colors.primary,
+        liability: "#F59E0B",
+      };
+
+      return (
+        <>
+          {filterRow}
+          {rangeCaption}
+          <View style={styles.statsGrid}>
+            {groups.map((group) =>
+              renderMiniStat(
+                group.label,
+                formatAmount(group.total),
+                tone[group.type],
+              ),
+            )}
+          </View>
+
+          {groups
+            .filter((group) => group.rows.length > 0)
+            .map((group) => (
+              <View key={group.type} style={{ gap: spacing.sm }}>
+                {renderSectionTitle(group.label)}
+                <Card variant="elevated" padding="lg" radiusSize="xl">
+                  {renderBreakdownRows(group.rows, group.total)}
+                </Card>
+              </View>
+            ))}
+
+          {untyped.length > 0 && (
+            <View style={{ gap: spacing.sm }}>
+              {renderSectionTitle("Other")}
+              <Card variant="elevated" padding="lg" radiusSize="xl">
+                {renderBreakdownRows(
+                  untyped,
+                  untyped.reduce((sum, cat) => sum + (cat.amount || 0), 0),
+                )}
+              </Card>
+            </View>
+          )}
         </>
       );
     }
@@ -712,75 +894,12 @@ export default function ReportsScreen() {
     return (
       <>
         {filterRow}
-        {renderHero(
-          `Total ${
-            categoryTypeFilter === "all" ? "Amount" : capitalize(categoryTypeFilter)
-          }`,
-          total,
-          heroIcon,
-        )}
+        {rangeCaption}
+        {renderHero(`Total ${capitalize(categoryTypeFilter)}`, total, heroIcon)}
 
         {renderSectionTitle("Breakdown")}
         <Card variant="elevated" padding="lg" radiusSize="xl">
-          {categoryData.map((cat, index) => {
-            const pct = total > 0 ? ((cat.amount || 0) / total) * 100 : 0;
-            const dotColor = cat.color || CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
-            return (
-              <View
-                key={cat.category_id ?? index}
-                style={[
-                  styles.categoryItem,
-                  index < categoryData.length - 1 && {
-                    borderBottomColor: colors.outlineVariant,
-                    borderBottomWidth: StyleSheet.hairlineWidth,
-                  },
-                ]}
-              >
-                <View style={styles.categoryHeader}>
-                  <View
-                    style={[styles.categoryDot, { backgroundColor: dotColor }]}
-                  />
-                  <Text
-                    style={[styles.categoryName, { color: colors.onSurface }]}
-                    numberOfLines={1}
-                  >
-                    {cat.category_name || "Unknown"}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.categoryAmount,
-                      { color: colors.onSurface },
-                    ]}
-                  >
-                    {formatAmount(cat.amount || 0)}
-                  </Text>
-                </View>
-                <View style={styles.categoryBarRow}>
-                  <View
-                    style={[
-                      styles.barTrack,
-                      { backgroundColor: colors.surfaceVariant, flex: 1 },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.barFill,
-                        {
-                          backgroundColor: dotColor,
-                          width: `${Math.max(pct, 2)}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text
-                    style={[styles.categoryPct, { color: colors.onSurfaceVariant }]}
-                  >
-                    {pct.toFixed(1)}%
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+          {renderBreakdownRows(categoryData, total)}
         </Card>
       </>
     );
@@ -803,11 +922,18 @@ export default function ReportsScreen() {
       );
     }
 
-    const current = data.netWorth?.[data.netWorth.length - 1] || 0;
-    const previous = data.netWorth?.[0] || 0;
+    // The headline compares with last month's closing net worth (the row
+    // before the current one), not with the first month in the timeline. A
+    // percentage of 0 means nothing, so it shows "—" then (QA AE-104).
+    const series = data.netWorth || [];
+    const current = series[series.length - 1] || 0;
+    const hasPrevious = series.length > 1;
+    const previous = hasPrevious ? series[series.length - 2] || 0 : 0;
     const change = current - previous;
     const changePct =
-      previous !== 0 ? (change / Math.abs(previous)) * 100 : 0;
+      hasPrevious && previous !== 0
+        ? `${change >= 0 ? "+" : ""}${((change / Math.abs(previous)) * 100).toFixed(1)}%`
+        : "—";
 
     const maxAbs = Math.max(
       1,
@@ -820,7 +946,9 @@ export default function ReportsScreen() {
           "Current Net Worth",
           current,
           Wallet,
-          `${change >= 0 ? "+" : ""}${formatAmount(change)} (${changePct.toFixed(1)}%)`,
+          hasPrevious
+            ? `${change >= 0 ? "+" : ""}${formatAmount(change)} (${changePct}) vs last month`
+            : undefined,
           change >= 0,
         )}
 
@@ -899,12 +1027,19 @@ export default function ReportsScreen() {
       <>
         {filterRow}
 
-        {incomeStatementPeriod === "custom" && (
+        {incomeStatementPeriod === "custom" ? (
           <View style={styles.customRangeRow}>
             {renderDateButton(incomeStartDate, () => setShowStartPicker(true))}
             <Text style={{ color: colors.onSurfaceVariant }}>to</Text>
             {renderDateButton(incomeEndDate, () => setShowEndPicker(true))}
           </View>
+        ) : (
+          <Text style={[styles.rangeCaption, { color: colors.onSurfaceVariant }]}>
+            {formatDayRange(
+              data?.period?.start_date || incomeStartDate,
+              data?.period?.end_date || incomeEndDate,
+            )}
+          </Text>
         )}
 
         {!data ? (
@@ -1012,12 +1147,43 @@ export default function ReportsScreen() {
       };
       liabilities?: {
         total?: number;
+        accounts?: { name: string; type?: string; amount: number }[];
+        total_accounts?: number;
         other_liabilities?: { items: { category: string; amount: number }[]; total: number };
         loans_payable?: { items: { name: string; amount: number }[]; total: number };
       };
       net_worth?: number;
       as_of_date?: string;
     } | null;
+
+    // Debt accounts (credit cards) belong under Liabilities as the amount
+    // owed (QA AE-02). The API sends them in liabilities.accounts; an older
+    // API still lists them in Cash & Bank with a negative balance, so they
+    // are moved here — net worth stays the same either way.
+    const cashItems = data?.assets?.cash_and_bank?.items || [];
+    const serverDebtAccounts = data?.liabilities?.accounts;
+    const legacyDebtItems = serverDebtAccounts
+      ? []
+      : cashItems.filter((item) => DEBT_ACCOUNT_TYPE.test(item.type || ""));
+    const debtAccounts = serverDebtAccounts
+      ? serverDebtAccounts
+      : legacyDebtItems.map((item) => ({
+          name: item.name,
+          type: item.type,
+          amount: -(item.amount || 0),
+        }));
+    const debtAccountsTotal = serverDebtAccounts
+      ? (data?.liabilities?.total_accounts ??
+        serverDebtAccounts.reduce((sum, item) => sum + (item.amount || 0), 0))
+      : debtAccounts.reduce((sum, item) => sum + item.amount, 0);
+    const cashAndBankItems = serverDebtAccounts
+      ? cashItems
+      : cashItems.filter((item) => !legacyDebtItems.includes(item));
+    const legacyShift = serverDebtAccounts ? 0 : debtAccountsTotal;
+    const cashAndBankTotal =
+      (data?.assets?.cash_and_bank?.total || 0) + legacyShift;
+    const totalAssets = (data?.assets?.total || 0) + legacyShift;
+    const totalLiabilities = (data?.liabilities?.total || 0) + legacyShift;
 
     return (
       <>
@@ -1041,11 +1207,11 @@ export default function ReportsScreen() {
 
             {renderStatPair(
               "Total Assets",
-              data.assets?.total || 0,
+              totalAssets,
               Landmark,
               colors.tertiary,
               "Total Liabilities",
-              data.liabilities?.total || 0,
+              totalLiabilities,
               CreditCard,
               colors.error,
             )}
@@ -1053,12 +1219,12 @@ export default function ReportsScreen() {
             {renderSectionTitle("Assets")}
             {renderBalanceSubsection(
               "Cash & Bank",
-              data.assets?.cash_and_bank?.items.map((i) => ({
+              cashAndBankItems.map((i) => ({
                 name: i.name,
                 meta: i.type,
                 amount: i.amount,
-              })) || [],
-              data.assets?.cash_and_bank?.total || 0,
+              })),
+              cashAndBankTotal,
               colors.tertiary,
             )}
             {renderBalanceSubsection(
@@ -1081,6 +1247,16 @@ export default function ReportsScreen() {
             )}
 
             {renderSectionTitle("Liabilities")}
+            {renderBalanceSubsection(
+              "Credit cards",
+              debtAccounts.map((i) => ({
+                name: i.name,
+                meta: i.type,
+                amount: i.amount,
+              })),
+              debtAccountsTotal,
+              colors.error,
+            )}
             {renderBalanceSubsection(
               "Other Liabilities",
               data.liabilities?.other_liabilities?.items.map((i) => ({
@@ -1254,7 +1430,9 @@ export default function ReportsScreen() {
         </ScrollView>
       </View>
 
-      {renderContent()}
+      {/* Every report is balances and amounts: hidden from session
+          recordings. The wrapper keeps the list's spacing. */}
+      <Sensitive style={styles.contentStack}>{renderContent()}</Sensitive>
       </ScrollView>
 
       <ThemedDatePicker
@@ -1308,6 +1486,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 64,
+  },
+  contentStack: {
+    gap: spacing.md,
+  },
+  rangeCaption: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: -spacing.xs,
   },
 
   pillShell: {

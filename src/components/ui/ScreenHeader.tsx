@@ -65,10 +65,12 @@ export function ScreenHeader({
           </Pressable>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
+          {/* Two lines: a long uppercase eyebrow ("ORGANIZE INCOME, EXPENSES,
+              ASSETS, AND LIABILITIES") was cut mid-word on narrow phones. */}
           {subtitle && (
             <Text
               style={[styles.subtitle, { color: colors.onSurfaceVariant }]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {subtitle}
             </Text>

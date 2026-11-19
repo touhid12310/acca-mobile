@@ -98,7 +98,9 @@ export function Toast({ item, onClose }: ToastProps) {
       pointerEvents="box-none"
     >
       <Pressable
-        onPress={dismiss}
+        // A toast with an action ("Make it a rule?", "Undo") must not vanish
+        // on a stray tap; it closes with its own X (QA AE-31).
+        onPress={item.action ? undefined : dismiss}
         style={[
           styles.container,
           {
@@ -126,11 +128,21 @@ export function Toast({ item, onClose }: ToastProps) {
           </Text>
         </View>
         {item.action ? (
-          <Pressable onPress={handleAction} hitSlop={8} style={styles.actionBtn}>
-            <Text style={[styles.action, { color: palette.fg }]}>
-              <BrandText>{item.action.label}</BrandText>
-            </Text>
-          </Pressable>
+          <>
+            <Pressable onPress={handleAction} hitSlop={8} style={styles.actionBtn}>
+              <Text style={[styles.action, { color: palette.fg }]}>
+                <BrandText>{item.action.label}</BrandText>
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={dismiss}
+              hitSlop={10}
+              style={styles.close}
+              accessibilityLabel="Close"
+            >
+              <X size={18} color={palette.fg} strokeWidth={2.2} />
+            </Pressable>
+          </>
         ) : (
           <Pressable onPress={dismiss} hitSlop={10} style={styles.close}>
             <X size={18} color={palette.fg} strokeWidth={2.2} />

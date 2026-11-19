@@ -27,6 +27,7 @@ import { startAppleAuth } from "../../src/services/appleAuth";
 import socialAuthService from "../../src/services/socialAuthService";
 import analyticsService from "../../src/services/analyticsService";
 import metaEvents from "../../src/services/metaEvents";
+import { detectCountry, phonePlaceholder } from "../../src/utils/localExamples";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -48,6 +49,9 @@ export default function RegisterScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
+  // An example number for the phone's country, not a Bangladeshi one for
+  // everyone (QA AE-87).
+  const [mobilePlaceholder] = useState(() => phonePlaceholder(detectCountry()));
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -303,7 +307,7 @@ export default function RegisterScreen() {
             <AuthField
               ref={mobileRef}
               label="Mobile number"
-              placeholder="+8801XXXXXXXXX"
+              placeholder={mobilePlaceholder}
               value={mobile}
               onChangeText={(t) => {
                 setMobile(t);

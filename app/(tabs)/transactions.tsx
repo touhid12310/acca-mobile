@@ -24,7 +24,7 @@ import {
   useMutation,
   useInfiniteQuery,
 } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -72,8 +72,10 @@ import { BrandStrip } from "../../src/components";
 import transactionService from "../../src/services/transactionService";
 import TransactionDetailsSheet from "../../src/components/transactions/TransactionDetailsSheet";
 import accountService from "../../src/services/accountService";
+import categoryService from "../../src/services/categoryService";
 import settingsService from "../../src/services/settingsService";
-import { formatDate } from "../../src/utils/date";
+import { invalidateMoneyQueries } from "../../src/services/moneyQueries";
+import { formatDate, parseCalendarDate } from "../../src/utils/date";
 import { getAmountSign } from "../../src/utils/transactions";
 import {
   Transaction,
@@ -96,6 +98,41 @@ const FILTERS: { key: FilterType; label: string }[] = [
   { key: "liability", label: "Liabilities" },
 ];
 
+/** A row's calendar day ("2026-11-19") — never parsed as a UTC instant. */
+const calendarDay = (t: { date?: string | null }) => String(t.date ?? "").slice(0, 10);
+
+/** The row's own (header) category name, from what the list API sends. */
+const categoryNameOf = (t: Transaction): string | null =>
+  t.category?.name ||
+  (t.transaction_categories?.[0] as any)?.category?.name ||
+  null;
+
+/**
+ * Everything a search can match on this row: merchant, description, notes,
+ * header categories / subcategories, item names and item categories. The
+ * server searches the same fields (C6); this local pass only narrows what an
+ * older API (which ignores `search`) sends back, so it must never be
+ * stricter than the server.
+ */
+const searchHaystack = (t: Transaction, categoryNames: Map<number, string>): string => {
+  const parts: (string | null | undefined)[] = [
+    t.merchant_name,
+    t.description,
+    t.notes,
+    t.category?.name,
+    t.subcategory?.name,
+  ];
+  (t.transaction_categories || []).forEach((tc: any) => {
+    parts.push(tc?.category?.name, tc?.subcategory?.name);
+  });
+  ((t as any).items || []).forEach((item: any) => {
+    parts.push(item?.name);
+    if (item?.category_id) parts.push(categoryNames.get(Number(item.category_id)));
+    if (item?.subcategory_id) parts.push(categoryNames.get(-Number(item.subcategory_id)));
+  });
+  return parts.filter(Boolean).join(" ").toLowerCase();
+};
+
 export default function TransactionsScreen() {
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
@@ -114,17 +151,16 @@ export default function TransactionsScreen() {
     // "New from SMS → Review": ?view=pending&source=sms
     view?: string;
     source?: string;
+    // Home's Recent activity (and any link to one row): open its details.
+    id?: string;
   }>();
 
   // Pick up the deep-link's initial values so the first render is already
   // filtered. Subsequent route param changes are handled in a useEffect below.
-  const initialSearch = (() => {
-    const search = routeParams?.search?.toString().trim();
-    if (search) return search;
-    const category = routeParams?.category?.toString().trim();
-    if (category) return category;
-    return "";
-  })();
+  const initialSearch = routeParams?.search?.toString().trim() || "";
+  // A category from chat's "View Transactions" is a real filter sent to the
+  // API (`category=`), not search text (QA AE-99).
+  const initialCategory = routeParams?.category?.toString().trim() || "";
   const initialFilterType: FilterType = (() => {
     const t = routeParams?.type?.toString().trim();
     if (
@@ -140,6 +176,7 @@ export default function TransactionsScreen() {
   })();
 
   const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [categoryFilter, setCategoryFilter] = useState(initialCategory);
   const [filterType, setFilterType] = useState<FilterType>(initialFilterType);
   const [filterChanging, setFilterChanging] = useState(false);
   const [selectedTransaction, setSelectedTransaction] =
@@ -182,17 +219,19 @@ export default function TransactionsScreen() {
     const from = routeParams?.dateFrom?.toString();
     const to = routeParams?.dateTo?.toString();
     if (from || to) {
-      const start = from ? new Date(from) : new Date(2000, 0, 1);
-      const end = to ? new Date(to + "T23:59:59") : new Date();
+      const start = from ? parseCalendarDate(from) : new Date(2000, 0, 1);
+      const end = to ? parseCalendarDate(to) : new Date();
+      end.setHours(23, 59, 59, 999);
       if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
         return computePeriodRange("custom_range", { start, end });
       }
     }
     return computePeriodRange("this_month");
   });
-  const [periodFilterActive, setPeriodFilterActive] = useState(
-    Boolean(routeParams?.dateFrom || routeParams?.dateTo),
-  );
+  // The period always filters the list — "This month" from the very first
+  // load, not only after it was picked again (QA AE-08). "All time" sends no
+  // dates.
+  const periodFilterActive = period.preset !== "all";
   const [pendingPeriod, setPendingPeriod] = useState<PeriodRange | null>(null);
 
   // Re-apply route params when they change (deep-link arriving while the
@@ -204,8 +243,13 @@ export default function TransactionsScreen() {
     const from = routeParams?.dateFrom?.toString();
     const to = routeParams?.dateTo?.toString();
 
-    if (search || category) {
-      setSearchQuery(search || category || "");
+    if (search) {
+      setSearchQuery(search);
+    }
+    if (category) {
+      setCategoryFilter(category);
+      // A chat link is about the ledger.
+      setStatusView("approved");
     }
     if (
       t === "income" ||
@@ -217,11 +261,11 @@ export default function TransactionsScreen() {
       setFilterType(t);
     }
     if (from || to) {
-      const start = from ? new Date(from) : new Date(2000, 0, 1);
-      const end = to ? new Date(to + "T23:59:59") : new Date();
+      const start = from ? parseCalendarDate(from) : new Date(2000, 0, 1);
+      const end = to ? parseCalendarDate(to) : new Date();
+      end.setHours(23, 59, 59, 999);
       if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
         setPeriod(computePeriodRange("custom_range", { start, end }));
-        setPeriodFilterActive(true);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,7 +286,6 @@ export default function TransactionsScreen() {
     setPeriodModalVisible(false);
     if (pendingPeriod && pendingPeriod !== period) {
       setPeriod(pendingPeriod);
-      setPeriodFilterActive(pendingPeriod.preset !== "all");
     }
     setPendingPeriod(null);
   }, [pendingPeriod, period]);
@@ -270,15 +313,21 @@ export default function TransactionsScreen() {
       }
       return result;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+    onSuccess: async (_result, id) => {
       // Deleting a loan payment / budgeted spend rolls the tracker back on the
-      // server, so their cached progress is stale too. Mirrors the web client.
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
-      queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["goals"] });
+      // server, so Home, reports, accounts, loans, budgets and goals all
+      // refetch (C9).
+      await invalidateMoneyQueries(queryClient).catch(() => undefined);
+      // The row was hidden while the Undo window ran. Once the lists have
+      // refetched it no longer belongs to this view, so stop hiding it —
+      // otherwise it stayed hidden everywhere, Archived included, until the
+      // app restarted (QA AE-97).
+      setPendingDeleteIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
     onError: (error: Error, id) => {
       setPendingDeleteIds((prev) => {
@@ -303,12 +352,8 @@ export default function TransactionsScreen() {
     },
     onSuccess: (result) => {
       toast.success(result.message || "Transaction restored");
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
-      queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["goals"] });
+      // Archived refetches now; Ledger / Pending refetch when opened.
+      void invalidateMoneyQueries(queryClient);
     },
     onError: (error: Error) => {
       toast.error(error.message || "Could not restore this transaction");
@@ -403,7 +448,16 @@ export default function TransactionsScreen() {
     return `${year}-${month}-${day}`;
   };
 
-  const activeSearch = searchQuery.trim();
+  // Typing waits a moment before it goes to the server.
+  const [activeSearch, setActiveSearch] = useState(searchQuery.trim());
+  useEffect(() => {
+    const next = searchQuery.trim();
+    if (next === activeSearch) return undefined;
+    const timer = setTimeout(() => setActiveSearch(next), next ? 350 : 0);
+    return () => clearTimeout(timer);
+  }, [searchQuery, activeSearch]);
+  const activeCategory = categoryFilter.trim();
+
   const periodQueryRange = useMemo(() => {
     if (!periodFilterActive || period.preset === "all") {
       return { startDate: undefined, endDate: undefined };
@@ -429,6 +483,7 @@ export default function TransactionsScreen() {
       "infinite",
       filterType,
       activeSearch,
+      activeCategory,
       periodQueryRange.startDate,
       periodQueryRange.endDate,
       statusView,
@@ -442,8 +497,13 @@ export default function TransactionsScreen() {
         type: filterType !== "all" ? filterType : undefined,
         start_date: periodQueryRange.startDate,
         end_date: periodQueryRange.endDate,
+        // Searched on the server (merchant, notes, categories — C6).
         search: activeSearch || undefined,
-        sort_by: "id",
+        category: activeCategory || undefined,
+        // Newest first across every page: by date, then the order added.
+        // Sorting by id let older-dated rows that were added later sit on
+        // top, and each page was re-sorted on its own (QA AE-08).
+        sort_by: "date",
         sort_order: "desc",
         status: statusView,
       };
@@ -496,6 +556,20 @@ export default function TransactionsScreen() {
     refetch();
   }, [statusView, sourceView]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Coming back to the tab shows what other screens changed meanwhile — a
+  // loan entry, a reconcile, an edit — not the list from the last visit
+  // (QA AE-07). Skipped on the very first focus: the mount just fetched.
+  const focusedOnce = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!focusedOnce.current) {
+        focusedOnce.current = true;
+        return;
+      }
+      void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+    }, [queryClient]),
+  );
+
   // The spinner follows the user's pull only. Tied to isRefetching, the 15s
   // Pending poll and every invalidation would show it, and on iOS a
   // programmatic refresh also shifts the list down by the spinner's height.
@@ -509,24 +583,24 @@ export default function TransactionsScreen() {
     }
   }, [refetch]);
 
+  // One list across every loaded page, newest calendar day first, then the
+  // newest added — the same order the API pages in (sort_by=date).
   const transactions = useMemo(() => {
     const seen = new Set<number>();
-    return (
-      transactionPages?.pages.flatMap((p) =>
-        [...p.data]
-          .sort((a, b) => {
-            const dateDiff =
-              new Date(b.date).getTime() - new Date(a.date).getTime();
-            if (dateDiff !== 0) return dateDiff;
-            return Number(b.id) - Number(a.id);
-          })
-          .filter((transaction) => {
-            if (seen.has(transaction.id)) return false;
-            seen.add(transaction.id);
-            return true;
-          }),
-      ) ?? []
+    const rows: Transaction[] = [];
+    transactionPages?.pages.forEach((p) =>
+      p.data.forEach((transaction) => {
+        if (seen.has(transaction.id)) return;
+        seen.add(transaction.id);
+        rows.push(transaction);
+      }),
     );
+    return rows.sort((a, b) => {
+      const dayA = calendarDay(a);
+      const dayB = calendarDay(b);
+      if (dayA !== dayB) return dayA < dayB ? 1 : -1;
+      return Number(b.id) - Number(a.id);
+    });
   }, [transactionPages]);
 
   const statsRange = useMemo(() => {
@@ -576,10 +650,7 @@ export default function TransactionsScreen() {
         return;
       }
       toast.success("Draft moved to Archived");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["transactions"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
+      await invalidateMoneyQueries(queryClient);
     },
     onError: () => toast.error("Archive failed"),
   });
@@ -611,32 +682,62 @@ export default function TransactionsScreen() {
     },
   });
 
+  // The API already filters by the period; this compares calendar days too,
+  // so a row's UTC-midnight date can't slip into the neighbouring month.
   const periodPool = useMemo(() => {
-    if (!periodFilterActive || period.preset === "all") return transactions;
-    const start = period.start.getTime();
-    const end = period.end.getTime();
+    if (!periodFilterActive) return transactions;
+    const start = apiDate(period.start);
+    const end = apiDate(period.end);
     return transactions.filter((t) => {
-      const d = new Date(t.date).getTime();
-      return d >= start && d <= end;
+      const day = calendarDay(t);
+      return day >= start && day <= end;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions, period, periodFilterActive]);
+
+  // Category names by id (subcategories under negative ids) so a search can
+  // match an item's own category like the server does.
+  const { data: categoryNames } = useQuery({
+    queryKey: ["categories", "names-for-search"],
+    staleTime: 10 * 60 * 1000,
+    queryFn: async () => {
+      const map = new Map<number, string>();
+      const result = await categoryService.getAll(undefined, true);
+      const payload = result.data as any;
+      const list: any[] = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload?.data?.data)
+            ? payload.data.data
+            : [];
+      list.forEach((category) => {
+        if (category?.id && category?.name) map.set(Number(category.id), String(category.name));
+        (category?.subcategories || []).forEach((sub: any) => {
+          if (sub?.id && sub?.name) map.set(-Number(sub.id), String(sub.name));
+        });
+      });
+      return map;
+    },
+  });
 
   const filteredTransactions = useCallback(() => {
     let filtered = periodPool.filter((t) => !pendingDeleteIds.has(t.id));
     if (filterType !== "all") {
       filtered = filtered.filter((t) => t.type === filterType);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (t) =>
-          t.merchant_name?.toLowerCase().includes(q) ||
-          t.description?.toLowerCase().includes(q) ||
-          t.category?.name?.toLowerCase().includes(q),
-      );
+    // Only narrows what an older API (which ignores `search`) returns: every
+    // word must appear somewhere the server would have looked.
+    if (activeSearch) {
+      const words = activeSearch.toLowerCase().split(/\s+/).filter(Boolean);
+      const names = categoryNames ?? new Map<number, string>();
+      filtered = filtered.filter((t) => {
+        const haystack = searchHaystack(t, names);
+        return words.every((word) => haystack.includes(word));
+      });
     }
     return filtered;
-  }, [periodPool, searchQuery, filterType, pendingDeleteIds]);
+  }, [periodPool, activeSearch, filterType, pendingDeleteIds, categoryNames]);
 
   const getIcon = (type: TransactionType): LucideIcon => {
     switch (type) {
@@ -696,6 +797,22 @@ export default function TransactionsScreen() {
     setDetailVisible(false);
     setDetailTransaction(null);
   };
+
+  // `?id=` (a link to one transaction) opens its details right away (QA
+  // AE-32). The sheet loads the full record itself, so an id is enough even
+  // when the row isn't in the current list. The param is cleared after, so
+  // coming back to the tab later doesn't open it again.
+  const linkedId = Number(routeParams?.id);
+  useEffect(() => {
+    if (!Number.isFinite(linkedId) || linkedId <= 0) return;
+    const known = transactions.find((t) => t.id === linkedId);
+    setExpandedRowId(null);
+    setDetailTransaction(known ?? ({ id: linkedId } as Transaction));
+    setDetailVisible(true);
+    router.setParams({ id: undefined } as any);
+    // Only when a new id arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId]);
 
   const handleEditTransaction = (item: Transaction) => {
     let categoryId: number | undefined = item.category_id || item.category?.id;
@@ -900,6 +1017,30 @@ export default function TransactionsScreen() {
               </Pressable>
             )}
           </View>
+          {!!activeCategory && (
+            // A category filter (from chat's "View Transactions"); tap to clear.
+            <Pressable
+              onPress={() => setCategoryFilter("")}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove the ${activeCategory} category filter`}
+            >
+              <View
+                style={[
+                  styles.categoryFilterPill,
+                  { backgroundColor: colors.primaryContainer },
+                ]}
+              >
+                <Text
+                  style={[styles.categoryFilterLabel, { color: colors.primary }]}
+                  numberOfLines={1}
+                >
+                  Category: {activeCategory}
+                </Text>
+                <X size={14} color={colors.primary} strokeWidth={2.4} />
+              </View>
+            </Pressable>
+          )}
         </View>
 
         {/* Status pills — Ledger / Pending review / Archived */}
@@ -1185,18 +1326,28 @@ export default function TransactionsScreen() {
         ) : groupedTransactions.length === 0 ? (
           <View style={styles.emptyStateWrap}>
             <EmptyState
-              icon={Receipt}
+              icon={statusView === "pending_review" ? Check : Receipt}
               title={
-                statusView === "archived"
-                  ? "No archived transactions"
-                  : "No transactions yet"
+                activeSearch || activeCategory
+                  ? "No matching transactions"
+                  : statusView === "archived"
+                    ? "No archived transactions"
+                    : statusView === "pending_review"
+                      ? "Nothing to review"
+                      : periodFilterActive
+                        ? "No transactions in this period"
+                        : "No transactions yet"
               }
               message={
-                searchQuery
-                  ? "Try a different search term"
+                activeSearch || activeCategory
+                  ? "Try a different search, category or period."
                   : statusView === "archived"
                     ? "Transactions you archive will stay here for 30 days."
-                    : "Tap the + button to add your first transaction."
+                    : statusView === "pending_review"
+                      ? "Drafts from forwarded emails, SMS alerts and schedules will show up here for you to check."
+                      : periodFilterActive
+                        ? "Pick another period at the top, or tap + to add one."
+                        : "Tap the + button to add your first transaction."
               }
               compact
             />
@@ -1371,18 +1522,28 @@ export default function TransactionsScreen() {
                       })}
                     </Text>
                   </View>
+                  {/* Layout on an inner View: on Android a Pressable styled
+                      through a function loses its style (see 9ee9dab). */}
                   <Pressable
                     onPress={() => setShowActionSheet(false)}
                     hitSlop={10}
-                    style={({ pressed }) => [
-                      styles.actionSheetClose,
-                      {
-                        backgroundColor: colors.surfaceVariant,
-                        opacity: pressed ? 0.6 : 1,
-                      },
-                    ]}
+                    style={styles.actionSheetCloseHit}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close"
                   >
-                    <X size={18} color={colors.onSurface} strokeWidth={2.4} />
+                    {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.actionSheetClose,
+                          {
+                            backgroundColor: colors.surfaceVariant,
+                            opacity: pressed ? 0.6 : 1,
+                          },
+                        ]}
+                      >
+                        <X size={18} color={colors.onSurface} strokeWidth={2.4} />
+                      </View>
+                    )}
                   </Pressable>
                 </View>
 
@@ -1393,36 +1554,31 @@ export default function TransactionsScreen() {
                   ]}
                 />
 
+                {/* Each row's icon + label layout sits on an inner View: a
+                    Pressable styled through a function lost its row style on
+                    Android, the label got zero height and only icons showed
+                    (QA AE-21, same fix as 9ee9dab). */}
                 {statusView !== "archived" && (
-                  <Pressable
+                  <ActionSheetRow
+                    icon={Edit3}
+                    tone="primary"
+                    label="Edit transaction"
+                    labelColor={colors.onSurface}
+                    pressedColor={colors.surfaceVariant}
                     onPress={() => {
                       handleEditTransaction(selectedTransaction);
                       setShowActionSheet(false);
                     }}
-                    style={({ pressed }) => [
-                      styles.actionSheetButton,
-                      {
-                        backgroundColor: pressed
-                          ? colors.surfaceVariant
-                          : "transparent",
-                      },
-                    ]}
-                  >
-                    <IconBadge icon={Edit3} tone="primary" size="sm" />
-                    <Text
-                      style={[
-                        styles.actionBtnText,
-                        { color: colors.onSurface },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      Edit transaction
-                    </Text>
-                  </Pressable>
+                  />
                 )}
 
                 {statusView === "archived" && (
-                  <Pressable
+                  <ActionSheetRow
+                    icon={RotateCcw}
+                    tone="success"
+                    label="Restore transaction"
+                    labelColor={colors.onSurface}
+                    pressedColor={colors.surfaceVariant}
                     onPress={() => {
                       setShowActionSheet(false);
                       if (selectedTransaction) {
@@ -1431,29 +1587,19 @@ export default function TransactionsScreen() {
                         restoreMutation.mutate(t.id);
                       }
                     }}
-                    style={({ pressed }) => [
-                      styles.actionSheetButton,
-                      {
-                        backgroundColor: pressed
-                          ? colors.surfaceVariant
-                          : "transparent",
-                      },
-                    ]}
-                  >
-                    <IconBadge icon={RotateCcw} tone="success" size="sm" />
-                    <Text
-                      style={[
-                        styles.actionBtnText,
-                        { color: colors.onSurface },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      Restore transaction
-                    </Text>
-                  </Pressable>
+                  />
                 )}
 
-                <Pressable
+                <ActionSheetRow
+                  icon={Trash2}
+                  tone="danger"
+                  label={
+                    statusView === "archived"
+                      ? "Delete permanently"
+                      : "Move to Archived"
+                  }
+                  labelColor={colors.error}
+                  pressedColor={colors.surfaceVariant}
                   onPress={() => {
                     setShowActionSheet(false);
                     if (selectedTransaction) {
@@ -1462,25 +1608,7 @@ export default function TransactionsScreen() {
                       setTimeout(() => handleDeleteWithUndo(t), 150);
                     }
                   }}
-                  style={({ pressed }) => [
-                    styles.actionSheetButton,
-                    {
-                      backgroundColor: pressed
-                        ? colors.surfaceVariant
-                        : "transparent",
-                    },
-                  ]}
-                >
-                  <IconBadge icon={Trash2} tone="danger" size="sm" />
-                  <Text
-                    style={[styles.actionBtnText, { color: colors.error }]}
-                    numberOfLines={1}
-                  >
-                    {statusView === "archived"
-                      ? "Delete permanently"
-                      : "Move to Archived"}
-                  </Text>
-                </Pressable>
+                />
 
                 <Button
                   label="Cancel"
@@ -1686,8 +1814,8 @@ function TransactionRow({
                 >
                   {formatDate(String(t.date).slice(0, 10))}
                 </Text>
-                {t.category && (
-                  <Badge label={t.category.name} tone="neutral" size="sm" />
+                {!!categoryNameOf(t) && (
+                  <Badge label={categoryNameOf(t) as string} tone="neutral" size="sm" />
                 )}
                 {isPending && t.possible_duplicate && (
                   // A saved transaction looks like this draft; opening it
@@ -1716,6 +1844,45 @@ function TransactionRow({
         )}
       </Pressable>
     </Swipeable>
+  );
+}
+
+/**
+ * One row of the long-press sheet. The Pressable only takes the touch; the
+ * row layout lives on the inner View (a function `style` on an Android
+ * Pressable is dropped — the row became a column and hid the label).
+ */
+function ActionSheetRow({
+  icon,
+  tone,
+  label,
+  labelColor,
+  pressedColor,
+  onPress,
+}: {
+  icon: LucideIcon;
+  tone: "primary" | "success" | "danger";
+  label: string;
+  labelColor: string;
+  pressedColor: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      {({ pressed }) => (
+        <View
+          style={[
+            styles.actionSheetButton,
+            { backgroundColor: pressed ? pressedColor : "transparent" },
+          ]}
+        >
+          <IconBadge icon={icon} tone={tone} size="sm" />
+          <Text style={[styles.actionBtnText, { color: labelColor }]} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+      )}
+    </Pressable>
   );
 }
 
@@ -1867,6 +2034,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: "500",
+  },
+  categoryFilterPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    maxWidth: "100%",
+  },
+  categoryFilterLabel: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   statusPillsRow: {
     flexDirection: "row",
@@ -2150,13 +2333,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.md,
   },
+  actionSheetCloseHit: {
+    alignSelf: "flex-start",
+  },
   actionSheetClose: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-start",
   },
   actionTitle: {
     fontSize: 15,

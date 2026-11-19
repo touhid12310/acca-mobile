@@ -52,6 +52,25 @@ export const chatService = {
   },
 
   /**
+   * "Dismiss" on a chat "Record on loan" card (C8): the API notes it in the
+   * message's `metadata.loan_entries_dismissed[]` so the card stays gone on
+   * every device. Recording goes through POST /loans/{id}/payment instead.
+   */
+  dismissLoanEntry: async (
+    messageId: string | number,
+    index: number,
+  ): Promise<ApiResponse<unknown>> => {
+    const token = await getAuthToken();
+    return apiRequest<unknown>(
+      `${API_CONFIG.ENDPOINTS.CHAT_MESSAGES}/${encodeURIComponent(String(messageId))}/loan-entries/${index}/dismiss`,
+      {
+        method: 'POST',
+        token,
+      },
+    );
+  },
+
+  /**
    * The backend passes all of this to Google Gemini, so callers must get
    * ensureAiConsent() first (App Review 5.1.2(i)).
    */

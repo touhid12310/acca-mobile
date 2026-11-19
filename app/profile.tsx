@@ -15,6 +15,7 @@ import {
   Button,
   Portal,
   ActivityIndicator,
+  TextInput as PaperTextInput,
 } from "react-native-paper";
 import DialogModal from "../src/components/common/DialogModal";
 import {
@@ -48,6 +49,11 @@ import {
   setActiveTimeZone,
 } from "../src/utils/timezone";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import {
+  TimeZonePicker,
+  timeZoneLabel,
+  timeZoneList,
+} from "../src/components/common/TimeZonePicker";
 import { uploadPart } from "../src/utils/uploadPart";
 import { showPermissionSettingsAlert } from "../src/utils/permissions";
 
@@ -101,6 +107,8 @@ export default function ProfileScreen() {
     timezone: detectTimeZone(),
   });
   const [isProfileSaving, setIsProfileSaving] = useState(false);
+  // Time zone comes from a searchable list, not a free-text box (QA AE-66).
+  const [timeZonePickerOpen, setTimeZonePickerOpen] = useState(false);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [removePhotoConfirm, setRemovePhotoConfirm] = useState(false);
   const [isRemovingPicture, setIsRemovingPicture] = useState(false);
@@ -279,8 +287,13 @@ export default function ProfileScreen() {
       return;
     }
     const typedTimeZone = profileForm.timezone.trim();
-    if (!isValidTimeZone(typedTimeZone)) {
-      notifyToast.error("Please enter a valid timezone, like Asia/Dhaka");
+    // Picked from the list (the API's own zones); a saved legacy name still
+    // has to be one this phone understands.
+    if (
+      !isValidTimeZone(typedTimeZone) &&
+      !timeZoneList().includes(normalizeTimeZone(typedTimeZone))
+    ) {
+      notifyToast.error("Please pick your time zone from the list");
       return;
     }
 
@@ -669,28 +682,28 @@ export default function ProfileScreen() {
             style={styles.input}
           />
 
-          <TextInput
-            label="Timezone"
-            value={profileForm.timezone}
-            onChangeText={(text) =>
-              setProfileForm({ ...profileForm, timezone: text })
-            }
-            mode="outlined"
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={styles.input}
-          />
-
-          <Button
-            mode="outlined"
-            onPress={() =>
-              setProfileForm({ ...profileForm, timezone: detectTimeZone() })
-            }
+          <TouchableOpacity
+            onPress={() => {
+              Keyboard.dismiss();
+              setTimeZonePickerOpen(true);
+            }}
             disabled={isProfileSaving}
-            style={styles.secondaryButton}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`Time zone, ${profileForm.timezone}. Change`}
           >
-            Use Device Timezone
-          </Button>
+            {/* Display only: the touchable above opens the list. */}
+            <View pointerEvents="none">
+              <TextInput
+                label="Time zone"
+                value={timeZoneLabel(profileForm.timezone)}
+                mode="outlined"
+                editable={false}
+                right={<PaperTextInput.Icon icon="chevron-down" />}
+                style={styles.input}
+              />
+            </View>
+          </TouchableOpacity>
 
           <Button
             mode="contained"
@@ -699,7 +712,7 @@ export default function ProfileScreen() {
             disabled={isProfileSaving}
             style={styles.saveButton}
           >
-            Save Changes
+            Save changes
           </Button>
         </Surface>
 
@@ -1281,6 +1294,16 @@ export default function ProfileScreen() {
         loading={isRemovingPicture}
         onCancel={() => setRemovePhotoConfirm(false)}
         onConfirm={handleConfirmRemovePicture}
+      />
+
+      <TimeZonePicker
+        visible={timeZonePickerOpen}
+        value={profileForm.timezone}
+        onClose={() => setTimeZonePickerOpen(false)}
+        onSelect={(zone) => {
+          setTimeZonePickerOpen(false);
+          setProfileForm((prev) => ({ ...prev, timezone: zone }));
+        }}
       />
     </SafeAreaView>
   );

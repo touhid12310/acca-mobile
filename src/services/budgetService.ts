@@ -1,5 +1,5 @@
 import API_CONFIG, { apiRequest, getAuthToken } from '../config/api';
-import { Budget, ApiResponse } from '../types';
+import { Budget, ApiResponse, Transaction } from '../types';
 
 export const budgetService = {
   getAll: async (filters: {
@@ -55,6 +55,51 @@ export const budgetService = {
       method: 'DELETE',
       token,
     });
+  },
+
+  /**
+   * Approved expenses dated inside one budget period, newest first, every
+   * page (QA AE-115). The API filters categories by name only, so a
+   * one-category budget narrows by name and the caller still matches each
+   * row on category / subcategory ids.
+   */
+  getPeriodTransactions: async (params: {
+    start_date: string;
+    end_date: string;
+    category?: string;
+  }): Promise<ApiResponse<Transaction[]>> => {
+    const token = await getAuthToken();
+    const rows: Transaction[] = [];
+    let page = 1;
+    let lastPage = 1;
+
+    do {
+      const query = new URLSearchParams({
+        type: 'expense',
+        status: 'approved',
+        start_date: params.start_date,
+        end_date: params.end_date,
+        sort_by: 'date',
+        sort_order: 'desc',
+        per_page: '500',
+        page: String(page),
+        ...(params.category ? { category: params.category } : {}),
+      }).toString();
+
+      const response = await apiRequest<any>(`${API_CONFIG.ENDPOINTS.TRANSACTIONS}?${query}`, {
+        method: 'GET',
+        token,
+      });
+      if (!response.success) return response as ApiResponse<Transaction[]>;
+
+      const envelope: any = response.data;
+      const paginator: any = envelope?.data?.data ? envelope.data : envelope;
+      if (Array.isArray(paginator?.data)) rows.push(...paginator.data);
+      lastPage = Math.min(Number(paginator?.last_page || 1), 20);
+      page += 1;
+    } while (page <= lastPage);
+
+    return { success: true, data: rows } as ApiResponse<Transaction[]>;
   },
 
   getSummary: async (): Promise<

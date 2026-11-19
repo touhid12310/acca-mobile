@@ -32,6 +32,42 @@ const money = (amount: string | number, currency: string) => {
 const apiMessage = (response: any, fallback: string) =>
   response?.data?.message || response?.message || response?.error || fallback;
 
+/** The subscription status in words, never the raw API value (QA AE-119). */
+const statusLabel = (
+  subscription?: { status?: string | null; cancelled?: boolean; in_grace_period?: boolean } | null,
+): string => {
+  const status = String(subscription?.status || "free").toLowerCase();
+  if (status === "cancelled" || status === "canceled" || (subscription?.cancelled && status !== "expired")) {
+    return "Cancelled";
+  }
+  switch (status) {
+    case "trialing":
+      return "Free trial";
+    case "active":
+      return "Active";
+    case "past_due":
+      return subscription?.in_grace_period === false ? "Payment overdue" : "Payment overdue — grace period";
+    case "expired":
+      return "Expired";
+    case "pending":
+      return "Waiting for payment";
+    case "free":
+    case "none":
+      return "Free";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
+  }
+};
+
+/** A store price per month from a yearly price, in the store's currency. */
+const storeMoney = (value: number, currency: string) => {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(2)}`;
+  }
+};
+
 const unwrapData = <T,>(value: T | { data: T; message?: string } | undefined): T | undefined => {
   if (!value) return undefined;
   return typeof value === "object" && "data" in value ? value.data : value;
@@ -530,7 +566,7 @@ export default function BillingScreen() {
             <Card variant="tinted" tint={colors.primaryContainer} style={styles.currentCard}>
               <View style={styles.currentTitle}><ShieldCheck size={22} color={colors.primary} /><Text style={[styles.eyebrow, { color: colors.primary }]}>CURRENT PACKAGE</Text></View>
               <Text style={[styles.currentName, { color: colors.onSurface }]}>{overview?.current_plan?.name || "Free Forever"}</Text>
-              <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>Status: {overview?.subscription?.status || "free"}</Text>
+              <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>Status: {statusLabel(overview?.subscription)}</Text>
               {onPaidPlan && periodEnd ? (
                 <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>
                   {trialing
@@ -547,7 +583,7 @@ export default function BillingScreen() {
                 </Text>
               ) : null}
               {overview?.usage?.limit !== null && overview?.usage?.limit !== undefined && (
-                <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{overview.usage.used} of {overview.usage.limit} AI transactions used</Text>
+                <Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>AI actions used: {overview.usage.used} of {overview.usage.limit}</Text>
               )}
               {onPaidPlan && (subscription?.can_cancel || (appStoreManaged && autoRenews && Platform.OS === "ios")) ? (
                 <Button
@@ -810,13 +846,27 @@ export default function BillingScreen() {
               const storeYearlyPrice = canSwitchToYearly ? play.displayPriceFor(plan.slug, "yearly") : null;
               const pricing = pricingFor(plan);
               const canTrial = premium && plan.trial_enabled && overview?.subscription?.can_start_trial && plan.trial_days > 0 && overview?.current_plan?.slug === "free";
+              // Only a paid plan can be the best value, even if admin features
+              // the free one (QA AE-25).
+              const featured = premium && plan.is_featured && (Number(plan.price) > 0 || Number(plan.yearly_price) > 0);
+              // Plan prices are BDT (what card / bKash charges). The store sells
+              // in the phone's own currency, so its price leads once the store
+              // products are loaded; a coupon only applies to card / bKash.
+              const storePrice = premium && Platform.OS !== "web" && !planCoupon ? play.displayPriceFor(plan.slug, planCycle) : null;
+              const storeYearly = storePrice && planCycle === "yearly" ? play.amountFor(plan.slug, "yearly") : null;
+              const storeMonthly = storePrice && planCycle === "yearly" ? play.amountFor(plan.slug, "monthly") : null;
+              const storeSaving =
+                storeYearly && storeMonthly && storeYearly.currency === storeMonthly.currency && storeMonthly.value > 0
+                  ? Math.round((1 - storeYearly.value / (storeMonthly.value * 12)) * 100)
+                  : 0;
+              const bdtPrice = money(pricing?.price ?? plan.price, plan.currency);
               return (
-                <Card key={plan.slug} variant="outlined" style={[styles.planCard, plan.is_featured && { borderColor: colors.primary, borderWidth: 2 }]}>
-                  {plan.is_featured && <View style={[styles.badge, { backgroundColor: colors.primaryContainer }]}><Crown size={15} color={colors.primary} /><Text style={[styles.badgeText, { color: colors.primary }]}>BEST VALUE</Text></View>}
+                <Card key={plan.slug} variant="outlined" style={[styles.planCard, featured && { borderColor: colors.primary, borderWidth: 2 }]}>
+                  {featured && <View style={[styles.badge, { backgroundColor: colors.primaryContainer }]}><Crown size={15} color={colors.primary} /><Text style={[styles.badgeText, { color: colors.primary }]}>BEST VALUE</Text></View>}
                   <View style={styles.planTop}><View style={styles.flex}><Text style={[styles.planName, { color: colors.onSurface }]}>{plan.name}</Text><Text style={[styles.muted, { color: colors.onSurfaceVariant }]}>{plan.tagline}</Text></View><View style={styles.priceBlock}>
                         {/* Struck through: the coupon's "before" price when one is
                             applied, otherwise the plan's undiscounted rate. */}
-                        {planCoupon ? (
+                        {storePrice ? null : planCoupon ? (
                           <Text style={[styles.strikePrice, { color: colors.onSurfaceVariant }]}>
                             {money(pricing?.price ?? plan.price, plan.currency)}
                           </Text>
@@ -826,15 +876,34 @@ export default function BillingScreen() {
                           </Text>
                         ) : null}
                         <Text style={[styles.price, { color: colors.onSurface }]}>
-                          {money(planCoupon ? planCoupon.total : (pricing?.price ?? plan.price), plan.currency)}
+                          {storePrice || money(planCoupon ? planCoupon.total : (pricing?.price ?? plan.price), plan.currency)}
                           <Text style={[styles.period, { color: colors.onSurfaceVariant }]}>
                             /{planCycle === "yearly" ? "yr" : "mo"}
                           </Text>
                         </Text>
                       </View></View>
+                  {premium && (Number(plan.price) > 0 || Number(plan.yearly_price) > 0) ? (
+                    <Text style={[styles.muted, styles.priceNote, { color: colors.onSurfaceVariant }]}>
+                      {storePrice
+                        ? Platform.OS === "android"
+                          ? `Google Play price. By card or bKash: ${bdtPrice}, billed in ${plan.currency}.`
+                          : "App Store price in your currency."
+                        : Platform.OS === "ios"
+                          ? `Shown in ${plan.currency}. The App Store shows your local price before you pay.`
+                          : `Billed in ${plan.currency} by card or bKash.${Platform.OS === "android" ? " Google Play shows its price when you pay." : ""}`}
+                    </Text>
+                  ) : null}
                   {planCoupon && <View style={styles.trial}><Tag size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontWeight: "700" }}>{planCoupon.code} — {planCoupon.label}{planCoupon.covers_full_amount ? " · nothing to pay" : ""}</Text></View>}
                   {/* Monthly can carry a discount too, so this is not gated to yearly. */}
-                  {!planCoupon && (pricing?.savings_percent ?? 0) > 0 && (
+                  {storePrice && storeSaving > 0 && storeYearly && (
+                    <View style={styles.saveRow}>
+                      <BadgePercent size={15} color={colors.primary} />
+                      <Text style={[styles.saveText, { color: colors.primary }]}>
+                        {`Save ${storeSaving}% — ${storeMoney(storeYearly.value / 12, storeYearly.currency)}/mo billed yearly`}
+                      </Text>
+                    </View>
+                  )}
+                  {!storePrice && !planCoupon && (pricing?.savings_percent ?? 0) > 0 && (
                     <View style={styles.saveRow}>
                       <BadgePercent size={15} color={colors.primary} />
                       <Text style={[styles.saveText, { color: colors.primary }]}>
@@ -855,7 +924,7 @@ export default function BillingScreen() {
                     </Text>
                   )}
                   <View style={styles.features}>{Object.entries(plan.features || {}).map(([key, label]) => <View style={styles.feature} key={key}><Check size={17} color={colors.tertiary} /><Text style={[styles.featureText, { color: colors.onSurface }]}>{label}</Text></View>)}</View>
-                  {plan.ai_monthly_limit ? <View style={[styles.quota, { backgroundColor: colors.primaryContainer }]}><Sparkles size={16} color={colors.primary} /><Text style={{ color: colors.onPrimaryContainer, fontWeight: "700" }}>Up to {plan.ai_monthly_limit} AI transactions per period</Text></View> : null}
+                  {plan.ai_monthly_limit ? <View style={[styles.quota, { backgroundColor: colors.primaryContainer }]}><Sparkles size={16} color={colors.primary} /><Text style={{ color: colors.onPrimaryContainer, fontWeight: "700" }}>Up to {plan.ai_monthly_limit} AI actions a month</Text></View> : null}
                   {current ? (
                     <Button label="Current package" icon={ShieldCheck} variant="secondary" fullWidth disabled />
                   ) : canSwitchToYearly && billedElsewhere ? (
@@ -1033,6 +1102,7 @@ const styles = StyleSheet.create({
   planName: { ...typography.h1 },
   priceBlock: { alignItems: "flex-end" },
   price: { fontSize: 23, fontWeight: "800" },
+  priceNote: { fontSize: 12, marginTop: -4 },
   cycleSwitch: {
     flexDirection: "row",
     alignSelf: "center",

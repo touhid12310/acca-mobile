@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Modal,
   Linking,
   RefreshControl,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -110,6 +111,7 @@ export default function SmsImportScreen() {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const pasteInputRef = useRef<{ blur?: () => void } | null>(null);
   // SMS permission was denied with "don't ask again" — only Settings can fix it.
   const [permissionBlocked, setPermissionBlocked] = useState(false);
   const [accountPickerFor, setAccountPickerFor] = useState<SmsSenderSetting | null>(null);
@@ -293,6 +295,9 @@ export default function SmsImportScreen() {
     },
     onSuccess: (body) => {
       const imported = Number(body?.data?.imported ?? 0);
+      // Clearing the box re-seeds the input; it must not be focused then, or
+      // the keyboard pops back up (QA AE-102).
+      pasteInputRef.current?.blur?.();
       if (imported > 0) setPasteText('');
       afterImport(imported, body?.message || "We couldn't find a completed transaction in that message.");
     },
@@ -302,6 +307,10 @@ export default function SmsImportScreen() {
   // Messages the built-in reader can't read go to Gemini while the user has
   // AI allowance left, so ask first. "Not now" keeps the text and sends nothing.
   const submitPaste = async () => {
+    // Close the keyboard as soon as they tap Add, so the result toast and the
+    // cleared box aren't hidden behind it (QA AE-102).
+    pasteInputRef.current?.blur?.();
+    Keyboard.dismiss();
     if (overview?.ai_reading !== false && !(await ensureAiConsent(user?.id))) return;
     pasteMutation.mutate();
   };
@@ -433,6 +442,7 @@ export default function SmsImportScreen() {
           <Text style={[styles.sectionTitle, { color: colors.onSurfaceVariant }]}>Paste a message</Text>
           <Card variant="elevated" padding="lg" radiusSize="xl" style={{ gap: spacing.md }}>
             <TextInput
+              ref={pasteInputRef as any}
               value={pasteText}
               onChangeText={setPasteText}
               multiline

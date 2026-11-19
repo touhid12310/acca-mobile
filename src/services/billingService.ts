@@ -121,6 +121,10 @@ export type BillingOverview = {
     /** Days before the end that card / bKash reminders go out (0 = the last day). */
     reminder_days?: number[];
   };
+  /**
+   * "AI actions used" this period: one per AI reply, draft or extraction that
+   * actually came back (failed scans and fallback replies don't count).
+   */
   usage: {
     used: number;
     limit: number | null;

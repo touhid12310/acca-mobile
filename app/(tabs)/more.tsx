@@ -63,6 +63,7 @@ import {
 } from "../../src/components/ui";
 import { BrandStrip } from "../../src/components";
 import { getInitials } from "../../src/utils/format";
+import { merchantExamples } from "../../src/utils/localExamples";
 import { radius, shadow, spacing } from "../../src/constants/theme";
 import {
   hasStoreListing,
@@ -126,17 +127,23 @@ export default function MoreScreen() {
   const appVersion = Constants.expoConfig?.version ?? "1.8.0";
 
   const showAbout = () => {
-    Alert.alert("AccountE", `Version ${appVersion}`, [
-      {
-        text: "Visit website",
-        onPress: () => {
-          Linking.openURL("https://accounte.com").catch(() =>
-            notifyToast.error("Could not open the website."),
-          );
+    Alert.alert(
+      "AccountE",
+      `Version ${appVersion}`,
+      [
+        {
+          text: "Visit website",
+          onPress: () => {
+            Linking.openURL("https://accounte.com").catch(() =>
+              notifyToast.error("Could not open the website."),
+            );
+          },
         },
-      },
-      { text: "OK", style: "cancel" },
-    ]);
+        { text: "OK", style: "cancel" },
+      ],
+      // Android: the Back button and a tap outside close it too (QA AE-131).
+      { cancelable: true },
+    );
   };
 
   // Their own currency stays listed (and ticked) even when an admin turned it
@@ -222,7 +229,8 @@ export default function MoreScreen() {
         {
           icon: Wand2,
           label: "Auto-categorize",
-          description: "Rules like “Foodpanda → Food › Delivery”",
+          // A merchant people recognise where they live (QA AE-87).
+          description: `Rules like “${merchantExamples(currency).delivery} → Food › Delivery”`,
           // Cast: typed routes regenerate on the next Metro start.
           onPress: () => router.push("/rules" as never),
           tone: "info",
@@ -284,7 +292,7 @@ export default function MoreScreen() {
         },
         {
           icon: Shield,
-          label: "Login Activity",
+          label: "Login activity",
           description: "Manage active sessions",
           onPress: () => router.push("/sessions"),
           tone: "info",
@@ -346,11 +354,12 @@ export default function MoreScreen() {
         },
         {
           icon: FileText,
-          label: "Terms of Use",
+          // Named like the page it opens (QA AE-132).
+          label: "Terms and Conditions",
           description: "The rules for using AccountE",
           onPress: () =>
             Linking.openURL("https://accounte.com/terms").catch(() =>
-              notifyToast.error("Could not open the Terms of Use link."),
+              notifyToast.error("Could not open the Terms and Conditions link."),
             ),
           tone: "neutral",
         },

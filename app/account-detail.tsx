@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -54,20 +54,51 @@ import { ensureAiConsent } from "../src/services/aiConsent";
 import { withFlow } from "../src/services/appExitMonitor";
 import { Account, Transaction } from "../src/types";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import { invalidateMoneyQueries } from "../src/services/moneyQueries";
+import { apiErrorMessage } from "../src/utils/apiError";
 
 interface ReconcileTransaction {
+  /** Stable list key: indexes shift when a card is created or skipped (QA AE-117). */
+  key: string;
   date: string;
   merchant_name: string;
+  /** The statement's Description column (QA AE-125). */
   description?: string;
   amount: number;
   /** The Amount field's text as typed; parsed into a number on save. */
   amountText?: string;
   type: "income" | "expense" | "transfer";
+  /** The AI's (or an auto-rule's) pick from the CSV upload, until changed. */
   category_id?: number;
+  subcategory_id?: number;
   notes?: string;
   isMatched?: boolean;
   matchedData?: Transaction;
+  /** Why the last Create was refused, shown on the card itself (QA AE-120). */
+  rowError?: string;
 }
+
+let reconcileKeySeed = 0;
+const nextReconcileKey = () => `reconcile-${Date.now()}-${(reconcileKeySeed += 1)}`;
+
+/** Newest first; same-day rows by id, newest first (QA AE-117). */
+const byDateDesc = (a: Transaction, b: Transaction) => {
+  const dateA = String(a.date || (a as any).transaction_date || "").slice(0, 10);
+  const dateB = String(b.date || (b as any).transaction_date || "").slice(0, 10);
+  if (dateA !== dateB) return dateA < dateB ? 1 : -1;
+  return (Number(b.id) || 0) - (Number(a.id) || 0);
+};
+
+/** What a card still needs before it can be created, or null when it's ready. */
+const reconcileProblem = (tx: ReconcileTransaction): string | null => {
+  if (!tx.merchant_name?.trim()) return "Add a merchant name.";
+  if (!(getReconcileAmount(tx) > 0)) return "Enter an amount above 0.";
+  if (!tx.date) return "Pick a date.";
+  if (tx.type !== "transfer" && !tx.category_id) {
+    return "Pick a category, then tap Create.";
+  }
+  return null;
+};
 
 /** Width of the Edit + Archive swipe actions (matches the Transactions tab). */
 const TX_ACTION_WIDTH = 132;
@@ -85,27 +116,8 @@ const accountTypeOptions = [
   { value: "Other", label: "Other" },
 ];
 
-// Helper function to extract detailed validation errors from API response
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
-
-  return errorMsg;
-};
+// Plain words only: the field messages, never "Validation failed / field: …".
+const formatApiError = (result: any): string => apiErrorMessage(result);
 
 // parseDecimalInput reads the iOS comma decimal key but drops a '-', and a
 // balance can be negative (credit cards, loans).
@@ -142,9 +154,15 @@ export default function AccountDetailScreen() {
   );
   const [matchedCount, setMatchedCount] = useState(0);
   const [unmatchedCount, setUnmatchedCount] = useState(0);
-  const [savingIndex, setSavingIndex] = useState<number | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savingAll, setSavingAll] = useState(false);
-  const [categories, setCategories] = useState<any[]>([]);
+  // Category lists per transaction type, so an income card and an expense
+  // card each show their own list (QA AE-120).
+  const [categoriesByType, setCategoriesByType] = useState<
+    Record<string, any[]>
+  >({});
+  // A matched card the user wants to create anyway, waiting for confirmation (QA AE-55).
+  const [createAnywayKey, setCreateAnywayKey] = useState<string | null>(null);
   // Confirmation dialogs (same ConfirmDialog as Budgets / Loans / Schedules)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Transaction | null>(null);
@@ -223,8 +241,12 @@ export default function AccountDetailScreen() {
     }
   }, [refetchTransactions]);
 
-  // Ensure transactions is always an array
-  const transactionsList = Array.isArray(transactions) ? transactions : [];
+  // Newest first by date: the API orders an account's rows by id, which put
+  // back-dated and imported rows in the wrong place (QA AE-117).
+  const transactionsList = useMemo(
+    () => (Array.isArray(transactions) ? [...transactions].sort(byDateDesc) : []),
+    [transactions],
+  );
 
   // Calculate totals
   const totalIncome = transactionsList
@@ -261,8 +283,8 @@ export default function AccountDetailScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["account", accountId] });
+      // A new balance changes Home's net worth and the reports too.
+      void invalidateMoneyQueries(queryClient);
       toast.success("Account updated");
     },
     onError: (error: Error) =>
@@ -296,7 +318,7 @@ export default function AccountDetailScreen() {
     },
     onSuccess: () => {
       setShowDeleteConfirm(false);
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      void invalidateMoneyQueries(queryClient);
       toast.success("Account deleted");
       router.back();
     },
@@ -316,14 +338,9 @@ export default function AccountDetailScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["account", accountId] });
-      // Archiving a loan payment / budgeted spend rolls those trackers back.
-      queryClient.invalidateQueries({ queryKey: ["loans"] });
-      queryClient.invalidateQueries({ queryKey: ["budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["goals"] });
+      // Archiving a loan payment / budgeted spend rolls those trackers back,
+      // so every money screen refetches.
+      void invalidateMoneyQueries(queryClient);
       toast.success("Transaction moved to Archived");
     },
     onError: (error: Error) =>
@@ -482,17 +499,38 @@ export default function AccountDetailScreen() {
   };
 
   // Reconcile functions
-  const loadCategories = async (type: string) => {
-    try {
-      const result = await categoryService.getForTransaction({ type });
-      if (result.success && result.data) {
-        const data = (result.data as any)?.data || result.data;
-        setCategories(Array.isArray(data) ? data : []);
+
+  // One list per type, loaded once and kept; an income card and an expense
+  // card never share (or overwrite) each other's list (QA AE-120).
+  const ensureCategories = useCallback(
+    async (type: string) => {
+      if (!type || type === "transfer" || categoriesByType[type]) return;
+      try {
+        const result = await categoryService.getForTransaction({ type });
+        if (result.success && result.data) {
+          const data = (result.data as any)?.data || result.data;
+          setCategoriesByType((prev) => ({
+            ...prev,
+            [type]: Array.isArray(data) ? data : [],
+          }));
+        }
+      } catch {
+        // The card says "No categories yet"; picking a type again retries.
       }
-    } catch (error) {
-      // Failed to load categories
-    }
-  };
+    },
+    [categoriesByType],
+  );
+
+  const updateReconcileRow = (
+    key: string,
+    change: (row: ReconcileTransaction) => ReconcileTransaction,
+  ) =>
+    setReconcileData((prev) =>
+      prev.map((row) => (row.key === key ? change(row) : row)),
+    );
+
+  const removeReconcileRow = (key: string) =>
+    setReconcileData((prev) => prev.filter((row) => row.key !== key));
 
   const handlePickCsv = async () => {
     Keyboard.dismiss();
@@ -520,18 +558,55 @@ export default function AccountDetailScreen() {
       });
 
       if (response.success && response.data) {
-        const csvData = (response.data as any)?.data || response.data;
+        const body = response.data as any;
+        const csvData = body?.data || response.data;
+
+        // The upload answers with every category the AI could pick from;
+        // reuse it so each card's list (and its pre-picked chip) shows
+        // straight away.
+        const uploaded: any[] = Array.isArray(body?.categories)
+          ? body.categories
+          : [];
+        if (uploaded.length > 0) {
+          const grouped: Record<string, any[]> = {};
+          uploaded.forEach((category) => {
+            const type = String(category?.type || "").toLowerCase();
+            if (!type) return;
+            if (!grouped[type]) grouped[type] = [];
+            grouped[type].push(category);
+          });
+          setCategoriesByType((prev) => ({ ...prev, ...grouped }));
+        }
+
+        const positiveId = (value: unknown) => {
+          const id = Number(value);
+          return Number.isFinite(id) && id > 0 ? id : undefined;
+        };
+
         const bankTransactions: ReconcileTransaction[] = (
           Array.isArray(csvData) ? csvData : []
-        ).map((tx: any) => ({
-          date: tx.date || "",
-          merchant_name: tx.merchant_name || tx.description || tx.payee || "",
-          description: tx.description || "",
-          amount: parseFloat(tx.amount) || 0,
-          type: tx.type || "expense",
-          notes: tx.notes || tx.reference || "",
-          isMatched: false,
-        }));
+        ).map((tx: any) => {
+          const description = String(tx.description || "").trim();
+          const merchant = String(
+            tx.merchant_name || tx.payee || description || "",
+          ).trim();
+          return {
+            key: nextReconcileKey(),
+            date: tx.date || "",
+            merchant_name: merchant,
+            // Shown on the card and saved as the description, so a row
+            // named after the payee still says what it was (QA AE-125).
+            description:
+              description && description !== merchant ? description : "",
+            amount: parseFloat(tx.amount) || 0,
+            type: tx.type || "expense",
+            // Keep the AI's / the auto-rule's category pick (QA AE-120).
+            category_id: positiveId(tx.category_id),
+            subcategory_id: positiveId(tx.subcategory_id),
+            notes: tx.notes || tx.reference || "",
+            isMatched: false,
+          };
+        });
 
         // Match with existing account transactions
         const existingTx = transactionsList || [];
@@ -586,8 +661,9 @@ export default function AccountDetailScreen() {
         setMatchedCount(matched);
         setUnmatchedCount(unmatched);
 
-        // Load categories for expense type by default
-        await loadCategories("expense");
+        // Any type the upload didn't cover is fetched now.
+        if (!uploaded.some((c) => c?.type === "expense")) void ensureCategories("expense");
+        if (!uploaded.some((c) => c?.type === "income")) void ensureCategories("income");
 
         toast.success(
           `${bankTransactions.length} processed — ${matched} matched, ${unmatched} unmatched`,
@@ -595,7 +671,7 @@ export default function AccountDetailScreen() {
       } else {
         toast.error(response.error || "Failed to process CSV");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to pick or process CSV file");
     } finally {
       setIsProcessingCsv(false);
@@ -603,125 +679,150 @@ export default function AccountDetailScreen() {
   };
 
   const handleUpdateReconcileItem = (
-    index: number,
-    field: string,
+    key: string,
+    field: keyof ReconcileTransaction,
     value: any,
   ) => {
-    setReconcileData((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-
-      // If type changes, reload categories
-      if (field === "type" && value) {
-        loadCategories(value);
-        updated[index].category_id = undefined;
+    updateReconcileRow(key, (row) => {
+      // Any edit clears the card's last error; it is re-checked on Create.
+      const updated: ReconcileTransaction = { ...row, [field]: value, rowError: undefined };
+      if (field === "type" && value !== row.type) {
+        // A category only fits its own type: an expense pick can't stay on income.
+        updated.category_id = undefined;
+        updated.subcategory_id = undefined;
       }
-
+      if (field === "category_id") {
+        updated.subcategory_id = undefined;
+      }
       return updated;
     });
+    if (field === "type" && value) void ensureCategories(value);
   };
 
-  const handleSaveSingle = async (index: number) => {
-    const tx = reconcileData[index];
-    const amount = getReconcileAmount(tx);
-    if (!tx.merchant_name || !(amount > 0) || !tx.date || !tx.type) {
-      toast.error("Please fill in all required fields");
+  /**
+   * Refuses a card that isn't ready, and says why ON the card: with Android's
+   * "pan" keyboard mode the toast at the top can be off screen (QA AE-120).
+   */
+  const flagProblem = (key: string, problem: string) => {
+    Keyboard.dismiss();
+    updateReconcileRow(key, (row) => ({ ...row, rowError: problem }));
+    toast.error(problem);
+  };
+
+  const toBulkRow = (tx: ReconcileTransaction) => {
+    const merchant = tx.merchant_name.trim();
+    const description = tx.description?.trim();
+    return {
+      merchant_name: merchant,
+      // Becomes the transaction's description and its item line.
+      description: description || merchant,
+      amount: getReconcileAmount(tx),
+      type: tx.type,
+      date: tx.date,
+      category_id: tx.category_id,
+      subcategory_id: tx.subcategory_id,
+      payment_method: accountId,
+      notes: tx.notes,
+    };
+  };
+
+  const handleSaveSingle = async (key: string) => {
+    const tx = reconcileData.find((row) => row.key === key);
+    if (!tx) return;
+    const problem = reconcileProblem(tx);
+    if (problem) {
+      flagProblem(key, problem);
       return;
     }
 
-    if (tx.type !== "transfer" && !tx.category_id) {
-      toast.error("Please select a category");
-      return;
-    }
-
-    setSavingIndex(index);
+    setSavingKey(key);
     try {
-      const result = await transactionService.bulkCreate([
-        {
-          merchant_name: tx.merchant_name,
-          description: tx.description || tx.merchant_name,
-          amount,
-          type: tx.type,
-          date: tx.date,
-          category_id: tx.category_id,
-          payment_method: accountId,
-          notes: tx.notes,
-        },
-      ]);
+      const result = await transactionService.bulkCreate([toBulkRow(tx) as any]);
 
       if (result.success) {
         // Remove saved transaction from list
-        setReconcileData((prev) => prev.filter((_, i) => i !== index));
-        setUnmatchedCount((prev) => prev - 1);
-        queryClient.invalidateQueries({
-          queryKey: ["transactions", "account", accountId],
-        });
+        removeReconcileRow(key);
+        if (tx.isMatched) {
+          setMatchedCount((prev) => Math.max(0, prev - 1));
+        } else {
+          setUnmatchedCount((prev) => Math.max(0, prev - 1));
+        }
+        // The account's Current Balance, Home, Activity and Reports all
+        // change with it (QA AE-98).
+        void invalidateMoneyQueries(queryClient);
         toast.success("Transaction saved");
       } else {
-        toast.error(result.error || "Failed to save transaction");
+        const message = formatApiError(result);
+        updateReconcileRow(key, (row) => ({ ...row, rowError: message }));
+        toast.error(message || "Failed to save transaction");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to save transaction");
     } finally {
-      setSavingIndex(null);
+      setSavingKey(null);
     }
   };
 
-  const handleSkipTransaction = (index: number) => {
-    setReconcileData((prev) => prev.filter((_, i) => i !== index));
-    const tx = reconcileData[index];
+  const handleSkipTransaction = (key: string) => {
+    const tx = reconcileData.find((row) => row.key === key);
+    if (!tx) return;
+    removeReconcileRow(key);
     if (tx.isMatched) {
-      setMatchedCount((prev) => prev - 1);
+      setMatchedCount((prev) => Math.max(0, prev - 1));
     } else {
-      setUnmatchedCount((prev) => prev - 1);
+      setUnmatchedCount((prev) => Math.max(0, prev - 1));
     }
+  };
+
+  const handleConfirmCreateAnyway = () => {
+    const key = createAnywayKey;
+    setCreateAnywayKey(null);
+    if (key) void handleSaveSingle(key);
   };
 
   const handleSaveAll = async () => {
+    // Matched cards are already in the ledger; Save All never re-creates them.
     const unmatchedTx = reconcileData.filter((tx) => !tx.isMatched);
 
-    // Validate all transactions
-    const invalidTx = unmatchedTx.find(
-      (tx) =>
-        !tx.merchant_name ||
-        !(getReconcileAmount(tx) > 0) ||
-        !tx.date ||
-        !tx.type ||
-        (tx.type !== "transfer" && !tx.category_id),
-    );
+    const problems = new Map<string, string>();
+    unmatchedTx.forEach((tx) => {
+      const problem = reconcileProblem(tx);
+      if (problem) problems.set(tx.key, problem);
+    });
 
-    if (invalidTx) {
-      toast.error("Please fill in all required fields for all transactions");
+    if (problems.size > 0) {
+      Keyboard.dismiss();
+      setReconcileData((prev) =>
+        prev.map((row) =>
+          problems.has(row.key) ? { ...row, rowError: problems.get(row.key) } : row,
+        ),
+      );
+      toast.error(
+        problems.size === 1
+          ? "One card still needs details — it's marked in red."
+          : `${problems.size} cards still need details — they're marked in red.`,
+      );
       return;
     }
 
     setSavingAll(true);
     try {
-      const transactions = unmatchedTx.map((tx) => ({
-        merchant_name: tx.merchant_name,
-        description: tx.description || tx.merchant_name,
-        amount: getReconcileAmount(tx),
-        type: tx.type,
-        date: tx.date,
-        category_id: tx.category_id,
-        payment_method: accountId,
-        notes: tx.notes,
-      }));
+      const transactions = unmatchedTx.map(toBulkRow);
 
-      const result = await transactionService.bulkCreate(transactions);
+      const result = await transactionService.bulkCreate(transactions as any);
 
       if (result.success) {
         setReconcileData([]);
         setMatchedCount(0);
         setUnmatchedCount(0);
-        queryClient.invalidateQueries({
-          queryKey: ["transactions", "account", accountId],
-        });
-        toast.success(`${transactions.length} transactions saved`);
+        void invalidateMoneyQueries(queryClient);
+        toast.success(
+          `${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"} saved`,
+        );
       } else {
-        toast.error(result.error || "Failed to save transactions");
+        toast.error(formatApiError(result) || "Failed to save transactions");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to save transactions");
     } finally {
       setSavingAll(false);
@@ -1364,7 +1465,9 @@ export default function AccountDetailScreen() {
           ) : (
             <FlatList
               data={reconcileData}
-              keyExtractor={(_, index) => `reconcile-${index}`}
+              // Stable per-row keys: index keys remounted every card below a
+              // created / skipped one, so their field labels flashed (AE-117).
+              keyExtractor={(item) => item.key}
               contentContainerStyle={{
                 paddingHorizontal: 12,
                 paddingTop: 12,
@@ -1375,7 +1478,9 @@ export default function AccountDetailScreen() {
               automaticallyAdjustKeyboardInsets
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
-              ListHeaderComponent={() => (
+              // An element, not an inline component, so the header isn't
+              // remounted on every keystroke.
+              ListHeaderComponent={
                 <View style={{ marginBottom: 16 }}>
                   {/* Summary Cards */}
                   <View style={styles.reconcileSummary}>
@@ -1458,16 +1563,39 @@ export default function AccountDetailScreen() {
                     Add More CSV Data
                   </Button>
                 </View>
-              )}
-              renderItem={({ item, index }) => {
-                const txColor = getTransactionColor(item.type);
-                const isProcessing = savingIndex === index;
+              }
+              renderItem={({ item }) => {
+                const isProcessing = savingKey === item.key;
+                const typeCategories: any[] = categoriesByType[item.type] || [];
+                // The picked category first, so an AI / rule pick is visible
+                // without scrolling the chip row.
+                const selectedCategory = typeCategories.find(
+                  (cat) => Number(cat.id) === Number(item.category_id),
+                );
+                const orderedCategories = selectedCategory
+                  ? [
+                      selectedCategory,
+                      ...typeCategories.filter((cat) => cat !== selectedCategory),
+                    ]
+                  : typeCategories;
+                const selectedSubcategoryName = selectedCategory
+                  ? (Array.isArray(selectedCategory.subcategories)
+                      ? selectedCategory.subcategories
+                      : []
+                    ).find(
+                      (sub: any) => Number(sub.id) === Number(item.subcategory_id),
+                    )?.name
+                  : undefined;
 
                 return (
                   <Surface
                     style={[
                       styles.reconcileItem,
                       { backgroundColor: colors.surface },
+                      !!item.rowError && {
+                        borderWidth: 1,
+                        borderColor: colors.error,
+                      },
                     ]}
                     elevation={1}
                   >
@@ -1500,6 +1628,34 @@ export default function AccountDetailScreen() {
                       </Text>
                     </View>
 
+                    {/* What it matched, before anything can be done with it. */}
+                    {item.isMatched && item.matchedData && (
+                      <View
+                        style={[
+                          styles.matchedInfo,
+                          { backgroundColor: `${colors.tertiary}10`, marginTop: 0, marginBottom: 8 },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={14}
+                          color={colors.tertiary}
+                        />
+                        <Text
+                          variant="bodySmall"
+                          style={{
+                            color: colors.tertiary,
+                            marginLeft: 6,
+                            flex: 1,
+                          }}
+                        >
+                          Already in this account: {item.matchedData.merchant_name} -{" "}
+                          {formatAmount(Number(item.matchedData.amount))} on{" "}
+                          {formatDate(item.matchedData.date || "")}
+                        </Text>
+                      </View>
+                    )}
+
                     {/* Transaction Info */}
                     <View style={styles.reconcileItemHeader}>
                       <View style={{ flex: 1 }}>
@@ -1508,7 +1664,7 @@ export default function AccountDetailScreen() {
                           value={item.merchant_name}
                           onChangeText={(text) =>
                             handleUpdateReconcileItem(
-                              index,
+                              item.key,
                               "merchant_name",
                               text,
                             )
@@ -1526,7 +1682,7 @@ export default function AccountDetailScreen() {
                           value={item.amountText ?? String(item.amount)}
                           onChangeText={(text) =>
                             handleUpdateReconcileItem(
-                              index,
+                              item.key,
                               "amountText",
                               toDecimalInput(text),
                             )
@@ -1540,13 +1696,27 @@ export default function AccountDetailScreen() {
                       </View>
                     </View>
 
+                    {/* The statement's Description (QA AE-125): what the money
+                        was for, saved as the transaction's description. */}
+                    <TextInput
+                      label="Description"
+                      value={item.description || ""}
+                      onChangeText={(text) =>
+                        handleUpdateReconcileItem(item.key, "description", text)
+                      }
+                      mode="outlined"
+                      dense
+                      placeholder="What it was for"
+                      style={[styles.reconcileInput, { marginTop: 8 }]}
+                    />
+
                     <View style={styles.reconcileItemRow}>
                       <View style={{ flex: 1 }}>
                         <DateField
                           label="Date"
                           value={item.date?.split("T")[0] || ""}
                           onChange={(date) =>
-                            handleUpdateReconcileItem(index, "date", date)
+                            handleUpdateReconcileItem(item.key, "date", date)
                           }
                           dense
                           style={styles.reconcileInput}
@@ -1578,7 +1748,7 @@ export default function AccountDetailScreen() {
                                 },
                               ]}
                               onPress={() =>
-                                handleUpdateReconcileItem(index, "type", type)
+                                handleUpdateReconcileItem(item.key, "type", type)
                               }
                             >
                               <Text
@@ -1598,59 +1768,77 @@ export default function AccountDetailScreen() {
                       </View>
                     </View>
 
-                    {/* Category Selector */}
+                    {/* Category Selector — this card's own type list. */}
                     {item.type !== "transfer" && (
                       <View style={{ marginTop: 8 }}>
                         <Text
                           variant="labelSmall"
                           style={{
-                            color: colors.onSurfaceVariant,
+                            color:
+                              item.rowError && !item.category_id
+                                ? colors.error
+                                : colors.onSurfaceVariant,
                             marginBottom: 4,
                           }}
                         >
-                          Category
+                          Category *
                         </Text>
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          keyboardShouldPersistTaps="handled"
-                        >
-                          <View style={{ flexDirection: "row", gap: 6 }}>
-                            {categories.map((cat) => (
-                              <TouchableOpacity
-                                key={cat.id}
-                                style={[
-                                  styles.categoryChip,
-                                  {
-                                    backgroundColor:
-                                      item.category_id === cat.id
-                                        ? colors.primary
-                                        : colors.surfaceVariant,
-                                  },
-                                ]}
-                                onPress={() =>
-                                  handleUpdateReconcileItem(
-                                    index,
-                                    "category_id",
-                                    cat.id,
-                                  )
-                                }
-                              >
-                                <Text
-                                  style={{
-                                    color:
-                                      item.category_id === cat.id
-                                        ? "#fff"
-                                        : colors.onSurfaceVariant,
-                                    fontSize: 11,
-                                  }}
-                                >
-                                  {cat.name}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        </ScrollView>
+                        {typeCategories.length === 0 ? (
+                          <Text
+                            variant="bodySmall"
+                            style={{ color: colors.onSurfaceVariant }}
+                          >
+                            {categoriesByType[item.type]
+                              ? `No ${item.type} categories yet — add one under More → Categories.`
+                              : "Loading categories…"}
+                          </Text>
+                        ) : (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                          >
+                            <View style={{ flexDirection: "row", gap: 6 }}>
+                              {orderedCategories.map((cat) => {
+                                const selected =
+                                  Number(item.category_id) === Number(cat.id);
+                                return (
+                                  <TouchableOpacity
+                                    key={cat.id}
+                                    style={[
+                                      styles.categoryChip,
+                                      {
+                                        backgroundColor: selected
+                                          ? colors.primary
+                                          : colors.surfaceVariant,
+                                      },
+                                    ]}
+                                    onPress={() =>
+                                      handleUpdateReconcileItem(
+                                        item.key,
+                                        "category_id",
+                                        Number(cat.id),
+                                      )
+                                    }
+                                  >
+                                    <Text
+                                      style={{
+                                        color: selected
+                                          ? "#fff"
+                                          : colors.onSurfaceVariant,
+                                        fontSize: 11,
+                                      }}
+                                    >
+                                      {selected && selectedSubcategoryName
+                                        ? `${cat.name} › ${selectedSubcategoryName}`
+                                        : cat.name}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          </ScrollView>
+                        )}
                       </View>
                     )}
 
@@ -1659,60 +1847,83 @@ export default function AccountDetailScreen() {
                       label="Notes"
                       value={item.notes || ""}
                       onChangeText={(text) =>
-                        handleUpdateReconcileItem(index, "notes", text)
+                        handleUpdateReconcileItem(item.key, "notes", text)
                       }
                       mode="outlined"
                       dense
                       style={[styles.reconcileInput, { marginTop: 8 }]}
                     />
 
-                    {/* Action Buttons */}
-                    <View style={styles.reconcileItemActions}>
-                      <Button
-                        mode="contained"
-                        onPress={() => handleSaveSingle(index)}
-                        loading={isProcessing}
-                        disabled={isProcessing || savingAll}
-                        style={{ flex: 1 }}
-                        compact
-                      >
-                        Create
-                      </Button>
-                      <Button
-                        mode="outlined"
-                        onPress={() => handleSkipTransaction(index)}
-                        disabled={isProcessing || savingAll}
-                        style={{ marginLeft: 8 }}
-                        compact
-                      >
-                        {item.isMatched ? "Confirm Match" : "Skip"}
-                      </Button>
-                    </View>
-
-                    {/* Matched Transaction Info */}
-                    {item.isMatched && item.matchedData && (
-                      <View
-                        style={[
-                          styles.matchedInfo,
-                          { backgroundColor: `${colors.tertiary}10` },
-                        ]}
-                      >
+                    {/* Why Create was refused — on the card, where it can't be
+                        missed (QA AE-120). */}
+                    {!!item.rowError && (
+                      <View style={styles.reconcileRowError}>
                         <MaterialCommunityIcons
-                          name="check-circle"
-                          size={14}
-                          color={colors.tertiary}
+                          name="alert-circle-outline"
+                          size={16}
+                          color={colors.error}
                         />
                         <Text
                           variant="bodySmall"
-                          style={{
-                            color: colors.tertiary,
-                            marginLeft: 6,
-                            flex: 1,
-                          }}
+                          style={{ color: colors.error, marginLeft: 6, flex: 1 }}
                         >
-                          Matched: {item.matchedData.merchant_name} -{" "}
-                          {formatAmount(Number(item.matchedData.amount))}
+                          {item.rowError}
                         </Text>
+                      </View>
+                    )}
+
+                    {/* Action Buttons. A matched line is already in the
+                        ledger: Confirm Match only; creating it again asks
+                        first (QA AE-55). */}
+                    {item.isMatched ? (
+                      <>
+                        <View style={styles.reconcileItemActions}>
+                          <Button
+                            mode="contained"
+                            icon="check"
+                            onPress={() => handleSkipTransaction(item.key)}
+                            disabled={isProcessing || savingAll}
+                            style={{ flex: 1 }}
+                            compact
+                          >
+                            Confirm Match
+                          </Button>
+                        </View>
+                        <Button
+                          mode="text"
+                          onPress={() => {
+                            Keyboard.dismiss();
+                            setCreateAnywayKey(item.key);
+                          }}
+                          loading={isProcessing}
+                          disabled={isProcessing || savingAll}
+                          compact
+                          style={{ marginTop: 4, alignSelf: "center" }}
+                        >
+                          Not the same? Create a new transaction
+                        </Button>
+                      </>
+                    ) : (
+                      <View style={styles.reconcileItemActions}>
+                        <Button
+                          mode="contained"
+                          onPress={() => handleSaveSingle(item.key)}
+                          loading={isProcessing}
+                          disabled={isProcessing || savingAll}
+                          style={{ flex: 1 }}
+                          compact
+                        >
+                          Create
+                        </Button>
+                        <Button
+                          mode="outlined"
+                          onPress={() => handleSkipTransaction(item.key)}
+                          disabled={isProcessing || savingAll}
+                          style={{ marginLeft: 8 }}
+                          compact
+                        >
+                          Skip
+                        </Button>
                       </View>
                     )}
                   </Surface>
@@ -1817,7 +2028,7 @@ export default function AccountDetailScreen() {
                 loading={updateMutation.isPending}
                 style={{ flex: 1 }}
               >
-                Save Changes
+                Save changes
               </Button>
             </View>
           </Surface>
@@ -1862,6 +2073,24 @@ export default function AccountDetailScreen() {
         confirmLabel="Clear all"
         onCancel={() => setShowClearReconcile(false)}
         onConfirm={handleConfirmClearReconcile}
+      />
+
+      {/* A matched line is already in the ledger; creating it again would
+          count the money twice unless it really is a second transaction. */}
+      <ConfirmDialog
+        visible={!!createAnywayKey}
+        title="Create a second transaction?"
+        message={(() => {
+          const row = reconcileData.find((r) => r.key === createAnywayKey);
+          const match = row?.matchedData;
+          return match
+            ? `This line matches ${match.merchant_name || "a transaction"} (${formatAmount(Number(match.amount) || 0)}) already in this account. Creating it adds another transaction and changes the balance again. Only do this if it's a different payment.`
+            : "This line matches a transaction already in this account. Creating it adds another one and changes the balance again.";
+        })()}
+        icon={TriangleAlert}
+        confirmLabel="Create anyway"
+        onCancel={() => setCreateAnywayKey(null)}
+        onConfirm={handleConfirmCreateAnyway}
       />
     </SafeAreaView>
   );
@@ -2163,5 +2392,10 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     marginTop: 12,
+  },
+  reconcileRowError: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
   },
 });

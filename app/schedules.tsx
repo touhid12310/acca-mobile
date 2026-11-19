@@ -44,31 +44,56 @@ import { toDecimalInput } from "../src/utils/number";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import { Schedule } from "../src/types";
+import { Sensitive } from "../src/components/common/Sensitive";
+import { invalidateMoneyQueries } from "../src/services/moneyQueries";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
+import { apiErrorMessage } from "../src/utils/apiError";
 
-// Helper function to extract detailed validation errors from API response
-const formatApiError = (result: any): string => {
-  const errorData = result.data;
-  let errorMsg = errorData?.message || result.error || "Request failed";
-
-  // Check for Laravel validation errors
-  const validationErrors = errorData?.errors;
-  if (validationErrors && typeof validationErrors === "object") {
-    const errorDetails = Object.entries(validationErrors)
-      .map(
-        ([field, msgs]) =>
-          `${field}: ${Array.isArray(msgs) ? msgs.join(", ") : msgs}`,
-      )
-      .join("\n");
-    if (errorDetails) {
-      errorMsg = `${errorMsg}\n\n${errorDetails}`;
-    }
-  }
-
-  return errorMsg;
-};
+// Plain words only: the field messages, never "Validation failed / field: …"
+// (QA AE-108).
+const formatApiError = (result: any): string => apiErrorMessage(result);
 
 const frequencyOptions = ["Weekly", "Monthly", "Quarterly", "Yearly"];
+
+/** "monthly" → "Monthly": the API stores frequencies lower-case (QA AE-50). */
+const frequencyLabel = (frequency?: string | null) => {
+  const value = String(frequency || "monthly").trim().toLowerCase();
+  return value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+/** How many times a frequency comes round in an average month. */
+const PER_MONTH: Record<string, number> = {
+  weekly: 52 / 12,
+  monthly: 1,
+  quarterly: 1 / 3,
+  yearly: 1 / 12,
+};
+
+/** Status words people read, not the stored values (QA AE-50). */
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: "Scheduled",
+  open: "Open",
+  paused: "Paused",
+  paid: "Paid",
+  cancelled: "Cancelled",
+  draft: "Draft",
+};
+const statusLabel = (status?: string | null) => {
+  const value = String(status || "scheduled").toLowerCase();
+  return STATUS_LABELS[value] ?? value.charAt(0).toUpperCase() + value.slice(1);
+};
+
+const scheduleCount = (count: number) =>
+  `${count} ${count === 1 ? "schedule" : "schedules"}`;
+
+/** The schedule a create / update answered with, when the API sent one. */
+const scheduleFromResult = (result: any): Schedule | null => {
+  const body = result?.data;
+  const schedule = body?.data ?? body;
+  return schedule && typeof schedule === "object" && "id" in schedule
+    ? (schedule as Schedule)
+    : null;
+};
 
 // Helper to unwrap API response
 const unwrap = (response: any): any[] => {
@@ -213,17 +238,9 @@ export default function SchedulesScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+    onSuccess: (result, variables) => {
       closeModal();
-      const date = variables.next_due_date
-        ? parseCalendarDate(variables.next_due_date).toLocaleDateString(undefined, {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : null;
-      toast.success(date ? `Schedule saved — next on ${date}` : "Schedule saved");
+      announceSaved(result, variables.next_due_date, "Schedule saved");
     },
     onError: (error: Error) => toast.error(error.message || "Could not save schedule"),
   });
@@ -254,10 +271,9 @@ export default function SchedulesScreen() {
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+    onSuccess: (result, variables) => {
       closeModal();
-      toast.success("Schedule updated");
+      announceSaved(result, variables.data.next_due_date, "Schedule updated");
     },
     onError: (error: Error) =>
       toast.error(error.message || "Could not update schedule"),
@@ -270,11 +286,74 @@ export default function SchedulesScreen() {
       return result;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      void invalidateMoneyQueries(queryClient);
       toast.success("Schedule deleted");
     },
     onError: (error: Error) => toast.error(error.message || "Could not delete schedule"),
   });
+
+  // Pause / Resume (QA AE-84, contract C4): a paused schedule makes no drafts
+  // and sends no reminders until it is resumed.
+  const pauseMutation = useMutation({
+    mutationFn: async ({ id, pause }: { id: number; pause: boolean }) => {
+      const result = await scheduleService.update(id, {
+        status: pause ? "paused" : "scheduled",
+      } as any);
+      if (!result.success) throw new Error(formatApiError(result));
+      return result;
+    },
+    onSuccess: (result, { pause }) => {
+      const saved = scheduleFromResult(result);
+      if (saved) upsertScheduleInCache(saved);
+      // Resuming one that is already due makes today's draft straight away.
+      void invalidateMoneyQueries(queryClient);
+      if (pause) {
+        toast.success("Schedule paused. No drafts or reminders until you resume it.");
+      } else {
+        const next = saved?.next_due_date ? formatDisplayDate(saved.next_due_date) : null;
+        toast.success(next && next !== "—" ? `Schedule resumed — next on ${next}` : "Schedule resumed");
+      }
+    },
+    onError: (error: Error) =>
+      toast.error(error.message || "Could not change the schedule"),
+  });
+
+  /** Put the server's copy in the list now, so the card shows it at once. */
+  const upsertScheduleInCache = (saved: Schedule) => {
+    queryClient.setQueryData<any[]>(["schedules"], (prev) => {
+      if (!Array.isArray(prev)) return prev;
+      const index = prev.findIndex((row: any) => row?.id === saved.id);
+      if (index === -1) return [saved, ...prev];
+      const next = [...prev];
+      next[index] = { ...prev[index], ...saved };
+      return next;
+    });
+  };
+
+  /**
+   * After a save. A schedule due today (or earlier) is turned into its draft
+   * straight away by the API, which answers with the next due date (QA
+   * AE-98) — show that date, and where the draft went.
+   */
+  const announceSaved = (result: any, enteredDate: string, title: string) => {
+    const saved = scheduleFromResult(result);
+    if (saved) upsertScheduleInCache(saved);
+    // Drafts, Pending review and the schedules list all change.
+    void invalidateMoneyQueries(queryClient);
+
+    const nextDate = saved?.next_due_date
+      ? localDateInputValue(parseCalendarDate(saved.next_due_date))
+      : enteredDate;
+    const shown = nextDate ? formatDisplayDate(nextDate) : null;
+    const advanced = !!enteredDate && !!nextDate && nextDate > enteredDate;
+    if (advanced) {
+      toast.success(
+        `${title}. Today's draft is in Transactions → Pending review; next on ${shown}.`,
+      );
+    } else {
+      toast.success(shown && shown !== "—" ? `${title} — next on ${shown}` : title);
+    }
+  };
 
   // Inline-create a category from the picker search
   const createInlineCategoryMutation = useMutation({
@@ -425,6 +504,17 @@ export default function SchedulesScreen() {
     setTimeout(() => setShowDeleteConfirm(true), 200);
   };
 
+  const handlePauseToggle = () => {
+    const schedule = selectedSchedule;
+    setShowActionSheet(false);
+    setSelectedSchedule(null);
+    if (!schedule) return;
+    pauseMutation.mutate({
+      id: schedule.id,
+      pause: String(schedule.status || "").toLowerCase() !== "paused",
+    });
+  };
+
   const handleConfirmDelete = () => {
     if (selectedSchedule) {
       deleteMutation.mutate(selectedSchedule.id);
@@ -464,6 +554,8 @@ export default function SchedulesScreen() {
         return colors.primary;
       case "overdue":
         return colors.error;
+      case "paused":
+        return "#F59E0B";
       default:
         return colors.onSurfaceVariant;
     }
@@ -511,30 +603,32 @@ export default function SchedulesScreen() {
   };
 
   // Calculate stats
-  const viewSchedules = Array.isArray(schedules) ? schedules : [];
-
-  const totalRepeatingSchedules = viewSchedules.reduce(
-    (sum: number, s: Schedule) => sum + (parseFloat(String(s.amount)) || 0),
-    0,
+  const viewSchedules = useMemo(
+    () => (Array.isArray(schedules) ? schedules : []),
+    [schedules],
   );
 
-  const statsFrequencyLabel = useMemo(() => {
-    const normalizedFrequencies = new Set(
-      viewSchedules
-        .map((schedule: Schedule) =>
-          String(schedule.frequency || "")
-            .trim()
-            .toLowerCase(),
-        )
-        .filter(Boolean),
-    );
-
-    if (normalizedFrequencies.size === 1) {
-      const [onlyFrequency] = Array.from(normalizedFrequencies);
-      return `${onlyFrequency.charAt(0).toUpperCase()}${onlyFrequency.slice(1)} Repeats`;
-    }
-
-    return "All Frequency Repeats";
+  // Income and expenses apart, each as a monthly average so weekly and yearly
+  // schedules add up sensibly; paused ones don't count (QA AE-116).
+  const monthlyTotals = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    let paused = 0;
+    viewSchedules.forEach((schedule: Schedule) => {
+      if (String(schedule.status || "").toLowerCase() === "paused") {
+        paused += 1;
+        return;
+      }
+      const amount = parseFloat(String(schedule.amount)) || 0;
+      const perMonth =
+        amount * (PER_MONTH[String(schedule.frequency || "monthly").toLowerCase()] ?? 1);
+      if (String(schedule.type || "expense").toLowerCase() === "income") {
+        income += perMonth;
+      } else {
+        expense += perMonth;
+      }
+    });
+    return { income, expense, net: income - expense, paused };
   }, [viewSchedules]);
 
   if (isLoading) {
@@ -596,18 +690,48 @@ export default function SchedulesScreen() {
               />
             </View>
             <View style={styles.statsText}>
+              {/* One fixed title; income and expenses never added together. */}
               <Text variant="labelMedium" style={{ color: colors.primary }}>
-                {statsFrequencyLabel}
+                Per month, on average
               </Text>
-              <Text
-                variant="headlineSmall"
-                style={{ color: colors.primary, fontWeight: "bold" }}
-              >
-                {formatAmount(totalRepeatingSchedules)}
-              </Text>
-              <Text variant="bodySmall" style={{ color: colors.primary }}>
-                {viewSchedules.length} schedules
-              </Text>
+              <Sensitive style={styles.statsAmounts}>
+                <View style={styles.statsAmount}>
+                  <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                    Income
+                  </Text>
+                  <Text
+                    variant="titleMedium"
+                    style={{ color: colors.tertiary, fontWeight: "bold" }}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    +{formatAmount(monthlyTotals.income)}
+                  </Text>
+                </View>
+                <View style={styles.statsAmount}>
+                  <Text variant="labelSmall" style={{ color: colors.onSurfaceVariant }}>
+                    Expenses
+                  </Text>
+                  <Text
+                    variant="titleMedium"
+                    style={{ color: colors.error, fontWeight: "bold" }}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    −{formatAmount(monthlyTotals.expense)}
+                  </Text>
+                </View>
+              </Sensitive>
+              <Sensitive>
+                <Text variant="bodySmall" style={{ color: colors.primary }}>
+                  Net {monthlyTotals.net < 0 ? "−" : ""}
+                  {formatAmount(Math.abs(monthlyTotals.net))} ·{" "}
+                  {scheduleCount(viewSchedules.length)}
+                  {monthlyTotals.paused > 0
+                    ? ` (${monthlyTotals.paused} paused)`
+                    : ""}
+                </Text>
+              </Sensitive>
             </View>
           </View>
         </Surface>
@@ -617,13 +741,18 @@ export default function SchedulesScreen() {
           viewSchedules.map((schedule: Schedule) => {
             const dueDate = schedule.next_due_date;
             const daysUntil = getDaysUntilDue(dueDate);
-            const statusColor = getDueStatusColor(daysUntil);
+            // A paused schedule is never "due" — keep its icon neutral.
+            const statusColor =
+              String(schedule.status || "").toLowerCase() === "paused"
+                ? colors.onSurfaceVariant
+                : getDueStatusColor(daysUntil);
             const scheduleName = schedule.contact_name || schedule.vendor || "Unnamed Schedule";
             const categoryName = getCategoryName(
               schedule.category_id,
               schedule.subcategory_id,
             );
-            const status = schedule.status || "scheduled";
+            const status = String(schedule.status || "scheduled").toLowerCase();
+            const isPaused = status === "paused";
             const scheduleType = String(schedule.type || "expense").toLowerCase();
             const scheduleTypeColor =
               scheduleType === "income" ? colors.tertiary : colors.error;
@@ -632,7 +761,11 @@ export default function SchedulesScreen() {
             return (
               <Surface
                 key={schedule.id}
-                style={[styles.scheduleCard, { backgroundColor: colors.surface }]}
+                style={[
+                  styles.scheduleCard,
+                  { backgroundColor: colors.surface },
+                  isPaused && styles.pausedCard,
+                ]}
                 elevation={1}
               >
                 <TouchableOpacity onLongPress={() => showScheduleActions(schedule)}>
@@ -708,7 +841,7 @@ export default function SchedulesScreen() {
                               fontSize: 11,
                             }}
                           >
-                            {schedule.frequency || "Monthly"}
+                            {frequencyLabel(schedule.frequency)}
                           </Text>
                         </View>
                         {categoryName && (
@@ -735,9 +868,10 @@ export default function SchedulesScreen() {
                             style={{
                               color: getStatusColor(status),
                               fontSize: 11,
+                              fontWeight: isPaused ? "600" : "400",
                             }}
                           >
-                            {status}
+                            {statusLabel(status)}
                           </Text>
                         </View>
                       </View>
@@ -770,21 +904,34 @@ export default function SchedulesScreen() {
                     >
                       Next Due: {formatDisplayDate(dueDate)}
                     </Text>
-                    {daysUntil !== null && (
+                    {isPaused ? (
                       <Text
                         variant="labelSmall"
                         style={{
-                          color: statusColor,
+                          color: colors.onSurfaceVariant,
                           marginLeft: "auto",
                           fontWeight: "600",
                         }}
                       >
-                        {daysUntil < 0
-                          ? `${Math.abs(daysUntil)} days overdue`
-                          : daysUntil === 0
-                            ? "Due today"
-                            : `${daysUntil} days left`}
+                        Paused
                       </Text>
+                    ) : (
+                      daysUntil !== null && (
+                        <Text
+                          variant="labelSmall"
+                          style={{
+                            color: statusColor,
+                            marginLeft: "auto",
+                            fontWeight: "600",
+                          }}
+                        >
+                          {daysUntil < 0
+                            ? `Overdue by ${Math.abs(daysUntil)} ${Math.abs(daysUntil) === 1 ? "day" : "days"}`
+                            : daysUntil === 0
+                              ? "Due today"
+                              : `${daysUntil} ${daysUntil === 1 ? "day" : "days"} left`}
+                        </Text>
+                      )
                     )}
                   </View>
                 </TouchableOpacity>
@@ -1363,7 +1510,13 @@ export default function SchedulesScreen() {
                   </Text>
                   <Text
                     variant="titleLarge"
-                    style={{ color: colors.error, fontWeight: "bold" }}
+                    style={{
+                      color:
+                        String(selectedSchedule.type || "").toLowerCase() === "income"
+                          ? colors.tertiary
+                          : colors.error,
+                      fontWeight: "bold",
+                    }}
                   >
                     {formatAmount(parseFloat(String(selectedSchedule.amount)) || 0)}
                   </Text>
@@ -1371,12 +1524,51 @@ export default function SchedulesScreen() {
                     variant="bodySmall"
                     style={{ color: colors.onSurfaceVariant }}
                   >
-                    {selectedSchedule.frequency || "Monthly"}
+                    {frequencyLabel(selectedSchedule.frequency)} ·{" "}
+                    {statusLabel(selectedSchedule.status)}
                   </Text>
                 </View>
               </View>
 
               <Divider style={{ marginVertical: 16 }} />
+
+              {/* Pause / Resume (QA AE-84): only for schedules that run. */}
+              {["scheduled", "open", "paused"].includes(
+                String(selectedSchedule.status || "scheduled").toLowerCase(),
+              ) && (
+                <TouchableOpacity
+                  style={styles.actionSheetButton}
+                  onPress={handlePauseToggle}
+                  disabled={pauseMutation.isPending}
+                >
+                  <MaterialCommunityIcons
+                    name={
+                      String(selectedSchedule.status).toLowerCase() === "paused"
+                        ? "play-circle-outline"
+                        : "pause-circle-outline"
+                    }
+                    size={24}
+                    color={colors.primary}
+                  />
+                  <View style={styles.actionSheetButtonText}>
+                    <Text variant="bodyLarge" style={{ color: colors.onSurface }}>
+                      {String(selectedSchedule.status).toLowerCase() === "paused"
+                        ? "Resume"
+                        : "Pause"}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                      {String(selectedSchedule.status).toLowerCase() === "paused"
+                        ? "Drafts and reminders start again"
+                        : "No drafts or reminders until you resume"}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name="chevron-right"
+                    size={24}
+                    color={colors.onSurfaceVariant}
+                  />
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 style={styles.actionSheetButton}
@@ -1501,10 +1693,23 @@ const styles = StyleSheet.create({
   statsText: {
     flex: 1,
   },
+  statsAmounts: {
+    flexDirection: "row",
+    gap: 16,
+    marginVertical: 4,
+  },
+  statsAmount: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   scheduleCard: {
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+  },
+  // Dimmed while paused; the "Paused" badge says why.
+  pausedCard: {
+    opacity: 0.7,
   },
   scheduleHeader: {
     flexDirection: "row",

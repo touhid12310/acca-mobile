@@ -20,7 +20,15 @@ interface TransactionFilters {
   account_id?: number;
   start_date?: string;
   end_date?: string;
+  /**
+   * Server-side search: merchant, description, notes and category /
+   * subcategory names (header and item categories). Older API builds ignore it.
+   */
   search?: string;
+  /** Exact category name (the transaction's header category). */
+  category?: string;
+  status?: "approved" | "pending_review" | "archived" | "all";
+  source?: string;
   sort_by?: "date" | "amount" | "id";
   sort_order?: "asc" | "desc";
 }

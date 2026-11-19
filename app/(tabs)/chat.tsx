@@ -37,6 +37,11 @@ import { notifyToast } from "../../src/contexts/NotificationContext";
 import { BrandStrip, BrandText } from "../../src/components";
 import { ASSISTANT_NAME, AssistantHeader } from "../../src/components/chat/AssistantHeader";
 import { AssistantStart } from "../../src/components/chat/AssistantStart";
+import {
+  LoanEntryCards,
+  getLoanEntryCandidates,
+  useLoanEntryMemory,
+} from "../../src/components/chat/LoanEntryCard";
 import { CameraCaptureModal } from "../../src/components/common/CameraCaptureModal";
 import { useAssistantSuggestions, type AssistantSuggestion } from "../../src/hooks/useAssistantSuggestions";
 import {
@@ -521,9 +526,48 @@ const FILE_SEND_STATUSES = [
 /** How long each "Analyzing content..." style status stays on screen. */
 const SEND_STATUS_INTERVAL_MS = 3000;
 
+// Column kinds for the numbers in chat tables (headers come from
+// ChatToolbox / ChatController). Anything unknown stays a plain number:
+// only money gets the currency symbol (QA AE-27).
+const PERCENT_HEADER = /%|percent/i;
+const COUNT_HEADER =
+  /^(transactions?|count|qty|quantity|copies|items?|rows|records|entries|payments left.*|.*\bdays?\b.*|weekday|month|year)$/i;
+const MONEY_HEADER =
+  /amount|income|expense|net|total|balance|original|remaining|target|saved|budgeted|spent|price|payment|needed|per day|cost|fee|owed|paid|extra|value|limit/i;
+// Comparison tables (Metric | Current | Previous | Change) hold one metric
+// per row; the "Transactions" row is a count.
+const COMPARISON_HEADER = /^(current|previous|change)$/i;
+
+const formatPlainNumber = (value: number, maxDigits = 2) =>
+  value.toLocaleString(undefined, { maximumFractionDigits: maxDigits });
+
+const formatTableNumber = (
+  value: number,
+  header: string | undefined,
+  row: Record<string, unknown> | undefined,
+  formatAmount: (amount: number) => string,
+): string => {
+  const name = String(header ?? "").trim();
+  if (PERCENT_HEADER.test(name)) return `${formatPlainNumber(value, 1)}%`;
+  // "Per day left" (budgets) is money, though it names a day.
+  if (/per (day|week|month)/i.test(name)) return formatAmount(value);
+  if (COUNT_HEADER.test(name)) return formatPlainNumber(value, 0);
+  if (COMPARISON_HEADER.test(name)) {
+    const metric = String(row?.Metric ?? row?.metric ?? "").trim();
+    if (COUNT_HEADER.test(metric) || PERCENT_HEADER.test(metric)) {
+      return PERCENT_HEADER.test(metric)
+        ? `${formatPlainNumber(value, 1)}%`
+        : formatPlainNumber(value, 0);
+    }
+    return formatAmount(value);
+  }
+  if (MONEY_HEADER.test(name)) return formatAmount(value);
+  return formatPlainNumber(value);
+};
+
 export default function ChatScreen() {
   const { colors, isDark } = useTheme();
-  const { formatAmount, currencySymbol } = useCurrency();
+  const { formatAmount, currencySymbol, currency } = useCurrency();
   const { token, user } = useAuth();
   const profilePictureUri = (() => {
     if (!user) return null;
@@ -552,7 +596,9 @@ export default function ChatScreen() {
 
   // Empty = the assistant start screen (greeting + starter cards).
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const { suggestions, remember } = useAssistantSuggestions(user?.id, currencySymbol);
+  const { suggestions, remember } = useAssistantSuggestions(user?.id, currencySymbol, currency);
+  // Loan cards this phone already recorded or dismissed (C8).
+  const { memory: loanEntryMemory, remember: rememberLoanEntry } = useLoanEntryMemory(user?.id);
   // Kept out of `messages` on purpose: a history refetch replaces that array
   // wholesale, which would blow the notice away moments after it appears.
   const [upgradeNotice, setUpgradeNotice] = useState<ChatMessage | null>(null);
@@ -838,7 +884,10 @@ export default function ChatScreen() {
     const categoryId = resolvedCategory?.category_id ?? candidate.category_id;
     const subcategoryId =
       resolvedCategory?.subcategory_id ?? candidate.subcategory_id;
-    let accountId = candidate.payment_method_id;
+    // The card / wallet the API matched on a receipt (C7) comes first.
+    let accountId =
+      (candidate as { payment_method_account_id?: number | null }).payment_method_account_id ||
+      candidate.payment_method_id;
 
     // If payment_method_id not provided but payment_method name is, try to match from loaded accounts
     if (!accountId && candidate.payment_method && paymentMethodsData) {
@@ -1611,6 +1660,7 @@ export default function ChatScreen() {
   const renderMessage = ({ item: message }: { item: ChatMessage }) => {
     const isUser = message.is_user;
     const candidates = getExpenseCandidates(message);
+    const loanCandidates = !isUser ? getLoanEntryCandidates(message.metadata) : [];
     const tables = !isUser ? getStructuredTables(message) : [];
     const toolSummary = !isUser ? getToolSummary(message) : null;
     const attachment = getMessageAttachment(message);
@@ -1650,7 +1700,9 @@ export default function ChatScreen() {
           style={[
             styles.messageBubble,
             hasImageAttachment && styles.imageMessageBubble,
-            !isUser && (tables.length > 0 || candidates.length > 0) && styles.assistantWideBubble,
+            !isUser &&
+              (tables.length > 0 || candidates.length > 0 || loanCandidates.length > 0) &&
+              styles.assistantWideBubble,
             isUser
               ? [styles.userBubble, { backgroundColor: colors.primary }]
               : [
@@ -1660,7 +1712,8 @@ export default function ChatScreen() {
                     // / candidate cards stand out clearly against the bubble.
                     // Dark mode keeps its native surface variant.
                     backgroundColor:
-                      !isDark && (tables.length > 0 || candidates.length > 0)
+                      !isDark &&
+                      (tables.length > 0 || candidates.length > 0 || loanCandidates.length > 0)
                         ? "#eaeef3"
                         : colors.surfaceVariant,
                   },
@@ -1825,9 +1878,13 @@ export default function ChatScreen() {
                 // tables (≤3 columns) keep the compact grid layout.
                 const useStacked = headers.length > 3;
 
-                const formatCellValue = (value: any): string => {
+                // Only money columns get the currency symbol: counts stay
+                // plain, percentages get "%", days are plain numbers (QA AE-27).
+                const formatCellValue = (value: any, header?: string, row?: any): string => {
                   if (value === null || value === undefined || value === "") return "—";
-                  if (typeof value === "number") return formatAmount(value);
+                  if (typeof value === "number") {
+                    return formatTableNumber(value, header, row, formatAmount);
+                  }
                   return String(value);
                 };
 
@@ -1855,7 +1912,7 @@ export default function ChatScreen() {
                       <View style={{ gap: 10 }}>
                         {visibleRows.map((row: any, rIdx: number) => {
                           const primaryHeader = headers[0];
-                          const primaryValue = formatCellValue(row?.[primaryHeader]);
+                          const primaryValue = formatCellValue(row?.[primaryHeader], primaryHeader, row);
                           const restHeaders = headers.slice(1);
                           return (
                             <View
@@ -1898,7 +1955,7 @@ export default function ChatScreen() {
                                       ]}
                                       numberOfLines={2}
                                     >
-                                      {formatCellValue(row?.[h])}
+                                      {formatCellValue(row?.[h], h, row)}
                                     </Text>
                                   </View>
                                 ))}
@@ -1956,7 +2013,7 @@ export default function ChatScreen() {
                                 ]}
                                 numberOfLines={2}
                               >
-                                {formatCellValue(row?.[h])}
+                                {formatCellValue(row?.[h], h, row)}
                               </Text>
                             ))}
                           </View>
@@ -2002,6 +2059,20 @@ export default function ChatScreen() {
                 </Button>
               ) : null}
             </View>
+          )}
+
+          {/* "Record on loan" cards — money moving on an existing loan
+              ("Jake paid me back 500") goes on that loan, not in as income
+              (QA AE-09, contract C8). */}
+          {loanCandidates.length > 0 && (
+            <LoanEntryCards
+              messageId={message.id}
+              metadata={message.metadata}
+              candidates={loanCandidates}
+              accounts={(paymentMethodsData as Account[] | undefined) ?? []}
+              local={loanEntryMemory[String(message.id)]}
+              onRemember={rememberLoanEntry}
+            />
           )}
 
           {/* Preview & Save buttons — rendered at the END so they always sit

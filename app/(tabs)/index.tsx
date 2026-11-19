@@ -12,8 +12,12 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { router } from "expo-router";
+import {
+  useQuery,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
+import { router, useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { LineChart, PieChart } from "react-native-gifted-charts";
 import {
@@ -41,6 +45,7 @@ import {
 import { useAuth } from "../../src/contexts/AuthContext";
 import { useTheme } from "../../src/contexts/ThemeContext";
 import { useCurrency } from "../../src/contexts/CurrencyContext";
+import { useToast } from "../../src/contexts/NotificationContext";
 import {
   Card,
   SectionHeader,
@@ -55,13 +60,20 @@ import {
   AlertBar,
 } from "../../src/components/ui";
 import { BrandStrip } from "../../src/components";
+import TransactionDetailsSheet from "../../src/components/transactions/TransactionDetailsSheet";
 import dashboardService, {
   DashboardData,
 } from "../../src/services/dashboardService";
 import transactionService from "../../src/services/transactionService";
 import budgetService from "../../src/services/budgetService";
 import goalService from "../../src/services/goalService";
-import { formatRelativeTime, toDateInputValue } from "../../src/utils/date";
+import { invalidateMoneyQueries } from "../../src/services/moneyQueries";
+import {
+  formatTransactionAge,
+  parseCalendarDate,
+  toDateInputValue,
+} from "../../src/utils/date";
+import { Transaction } from "../../src/types";
 import {
   getAmountSign,
   splitTransactionByCategory,
@@ -72,11 +84,63 @@ import {
   BUDGET_WARN_PERCENT,
 } from "../../src/constants/budget";
 
+// Queries the Home sections read (refreshed when Home comes back into view).
+const HOME_QUERY_ROOTS = new Set<string>([
+  "dashboard",
+  "dashboard-period",
+  "dashboard-cashflow",
+  "dashboard-expense-breakdown",
+  "budgets",
+  "goals",
+]);
+
+// Room for the y-axis numbers ("40000") beside the cashflow chart, and the
+// gap that keeps the first / last month label fully inside the card.
+const CHART_Y_LABEL_WIDTH = 44;
+const CHART_EDGE_SPACING = 22;
+
 export default function DashboardScreen() {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const { formatAmount } = useCurrency();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [balanceHidden, setBalanceHidden] = React.useState(false);
+
+  // Recent activity: a tap opens the transaction's details sheet here.
+  const [detailTransaction, setDetailTransaction] =
+    React.useState<Transaction | null>(null);
+
+  const editTransaction = (t: Transaction) => {
+    router.push({ pathname: "/transaction-modal", params: { id: String(t.id) } });
+  };
+
+  // Archive straight away with an Undo, like the web toast. (Activity holds
+  // the request back for its Undo instead; Home has no list to hide it in.)
+  const archiveTransaction = async (t: Transaction) => {
+    const label = t.merchant_name || t.description || "Transaction";
+    const result = await transactionService.delete(t.id);
+    if (!result.success) {
+      toast.error(result.error || "Could not archive this transaction");
+      return;
+    }
+    void invalidateMoneyQueries(queryClient);
+    toast.info(`${label} moved to Archived`, {
+      duration: 6000,
+      action: {
+        label: "Undo",
+        onPress: async () => {
+          const restored = await transactionService.restore(t.id);
+          if (restored.success) {
+            void invalidateMoneyQueries(queryClient);
+            toast.success("Transaction restored");
+          } else {
+            toast.error(restored.error || "Could not restore this transaction");
+          }
+        },
+      },
+    });
+  };
 
   const {
     data: dashboardData,
@@ -97,15 +161,35 @@ export default function DashboardScreen() {
 
   // Spinner only for a pull: iOS treats refreshing=true as a pull and shifts
   // the content, so background refetches (invalidations) must not drive it.
+  // A pull reloads EVERY Home section — header, cashflow chart, expense
+  // donut, budgets, goals, recent activity — not only the header (QA AE-95,
+  // AE-96, AE-98).
   const [userRefreshing, setUserRefreshing] = React.useState(false);
   const onPullRefresh = React.useCallback(async () => {
     setUserRefreshing(true);
     try {
+      await invalidateMoneyQueries(queryClient);
+    } catch {
       await refetch();
     } finally {
       setUserRefreshing(false);
     }
-  }, [refetch]);
+  }, [queryClient, refetch]);
+
+  // Back on Home: refresh its sections if they're older than 30 s, so a
+  // change made on another screen shows without pulling. Writes elsewhere
+  // already invalidate (C9); this covers any screen that doesn't.
+  useFocusEffect(
+    React.useCallback(() => {
+      const cutoff = Date.now() - 30_000;
+      void queryClient.invalidateQueries({
+        predicate: (query) =>
+          HOME_QUERY_ROOTS.has(String(query.queryKey[0])) &&
+          query.state.dataUpdatedAt > 0 &&
+          query.state.dataUpdatedAt < cutoff,
+      });
+    }, [queryClient]),
+  );
 
   const stats = dashboardData || null;
 
@@ -162,49 +246,24 @@ export default function DashboardScreen() {
       ? stats?.monthlyExpenses || 0
       : periodTotals?.expenses || 0;
 
-  // Last month totals — for trend comparison
-  const lastMonthRange = React.useMemo(() => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
-    return { start, end };
-  }, []);
-
-  const { data: lastMonthTotals } = useQuery<{
-    income: number;
-    expenses: number;
-  }>({
-    queryKey: [
-      "dashboard-last-month",
-      toApiDate(lastMonthRange.start),
-      toApiDate(lastMonthRange.end),
-    ],
-    queryFn: async () => {
-      const result = await transactionService.getAll({
-        start_date: toApiDate(lastMonthRange.start),
-        end_date: toApiDate(lastMonthRange.end),
-        per_page: 1,
-      });
-      const payload: any = result.data;
-      const stats = payload?.stats ?? payload?.data?.stats;
-      return {
-        income: parseFloat(String(stats?.total_income ?? 0)) || 0,
-        expenses: parseFloat(String(stats?.total_expenses ?? 0)) || 0,
-      };
-    },
-  });
-
-  const trend = React.useMemo(() => {
-    const prevNet =
-      (lastMonthTotals?.income || 0) - (lastMonthTotals?.expenses || 0);
-    const currNet = displayedIncome - displayedExpenses;
-    if (prevNet === 0) return null;
-    const change = ((currNet - prevNet) / Math.abs(prevNet)) * 100;
+  // The line under the hero compares NET WORTH with the end of last month
+  // (net-worth timeline) — never this month's cash flow, which printed
+  // "↑ 1328.5% vs last month" under a net-worth figure (QA AE-104). With no
+  // net worth last month there is nothing to compare: the % shows "—".
+  const netWorthChange = React.useMemo(() => {
+    const previous = stats?.netWorthLastMonth;
+    if (previous === null || previous === undefined) return null;
+    const current = stats?.netWorth || 0;
+    const delta = current - previous;
     return {
-      pct: Math.abs(change).toFixed(1),
-      up: change >= 0,
+      delta,
+      up: delta >= 0,
+      pct:
+        previous === 0
+          ? null
+          : `${Math.abs((delta / Math.abs(previous)) * 100).toFixed(1)}%`,
     };
-  }, [displayedIncome, displayedExpenses, lastMonthTotals]);
+  }, [stats?.netWorth, stats?.netWorthLastMonth]);
 
   // Budgets + goals — for inline alert banners
   const { data: budgetsList } = useQuery({
@@ -410,7 +469,9 @@ export default function DashboardScreen() {
       }
 
       for (const t of rows) {
-        const d = new Date(t.date);
+        // The calendar day, not the API's UTC midnight (which falls in the
+        // previous month west of UTC).
+        const d = parseCalendarDate(t.date);
         const amount = parseFloat(String(t.amount)) || 0;
         const bucket = buckets.find((b) => d >= b.start && d <= b.end);
         if (!bucket) continue;
@@ -457,6 +518,17 @@ export default function DashboardScreen() {
     });
     return max === 0 ? 100 : Math.ceil((max * 1.2) / 100) * 100;
   }, [cashFlow, activeSeries]);
+
+  // The chart is sized from the card's measured inner width. It used to be
+  // the window width plus the y-axis column, wider than the card, so the
+  // current month / week / year (the last point) was cut off (QA AE-103).
+  const [chartAreaWidth, setChartAreaWidth] = React.useState(
+    Dimensions.get("window").width - spacing.lg * 4,
+  );
+  const chartPlotWidth = Math.max(chartAreaWidth - CHART_Y_LABEL_WIDTH - 4, 120);
+  const chartPointSpacing =
+    (chartPlotWidth - CHART_EDGE_SPACING * 2) /
+    Math.max((cashFlow?.length || 1) - 1, 1);
 
   const mtdNetCashflow = React.useMemo(() => {
     if (!cashFlow || cashFlow.length === 0) return 0;
@@ -639,7 +711,10 @@ export default function DashboardScreen() {
           {/* Top row */}
           <View style={styles.heroTop}>
             <View style={styles.heroLabelCluster}>
-              <Text style={styles.heroLabel}>Total balance</Text>
+              {/* The server's net worth (accounts + assets + money lent −
+                  loans owed) — not the account total the Accounts screen
+                  calls "Total balance" (QA AE-03). */}
+              <Text style={styles.heroLabel}>Net worth</Text>
               <Pressable
                 onPress={() => setBalanceHidden((v) => !v)}
                 hitSlop={6}
@@ -679,19 +754,35 @@ export default function DashboardScreen() {
           <Text style={styles.heroValue}>
             {maskAmount(stats?.netWorth || 0)}
           </Text>
+          <Text style={styles.heroHint} numberOfLines={1}>
+            Your accounts plus assets and loans
+          </Text>
 
-          {/* Trend */}
-          {trend && (
+          {/* Change in net worth since the end of last month */}
+          {netWorthChange && (
             <View style={styles.heroTrend}>
               <Text
                 style={[
                   styles.heroTrendPct,
-                  { color: trend.up ? "#34d399" : "#f87171" },
+                  {
+                    color:
+                      netWorthChange.pct === null
+                        ? "rgba(255,255,255,0.85)"
+                        : netWorthChange.up
+                          ? "#34d399"
+                          : "#f87171",
+                  },
                 ]}
               >
-                {trend.up ? "↑" : "↓"} {trend.pct}%
+                {netWorthChange.pct === null
+                  ? "—"
+                  : `${netWorthChange.up ? "↑" : "↓"} ${
+                      balanceHidden
+                        ? "••••"
+                        : formatAmount(Math.abs(netWorthChange.delta))
+                    } (${netWorthChange.pct})`}
               </Text>
-              <Text style={styles.heroTrendText}>vs last month</Text>
+              <Text style={styles.heroTrendText}>since last month</Text>
             </View>
           )}
 
@@ -950,7 +1041,13 @@ export default function DashboardScreen() {
               </View>
 
               {/* Line chart */}
-              <View style={styles.lineChartWrap}>
+              <View
+                style={styles.lineChartWrap}
+                onLayout={(e) => {
+                  const w = Math.round(e.nativeEvent.layout.width);
+                  if (w > 0 && Math.abs(w - chartAreaWidth) > 1) setChartAreaWidth(w);
+                }}
+              >
                 <LineChart
                   data={
                     activeSeries.has("income") ? makeLineData("income") : []
@@ -1010,13 +1107,11 @@ export default function DashboardScreen() {
                   rulesType="solid"
                   rulesColor={colors.outlineVariant}
                   height={160}
-                  width={Dimensions.get("window").width - spacing.lg * 4}
-                  initialSpacing={10}
-                  endSpacing={10}
-                  spacing={
-                    (Dimensions.get("window").width - spacing.lg * 4 - 20) /
-                    Math.max((cashFlow?.length || 1) - 1, 1)
-                  }
+                  yAxisLabelWidth={CHART_Y_LABEL_WIDTH}
+                  width={chartPlotWidth}
+                  initialSpacing={CHART_EDGE_SPACING}
+                  endSpacing={CHART_EDGE_SPACING}
+                  spacing={chartPointSpacing}
                   isAnimated
                   animationDuration={700}
                   disableScroll
@@ -1364,11 +1459,11 @@ export default function DashboardScreen() {
                 const isTransfer = t.type === "transfer";
                 const isCredit = sign === "+";
                 return (
+                  // Opens this transaction's details right here (QA AE-32).
                   <Pressable
                     key={t.id}
-                    onPress={() =>
-                      router.push(`/(tabs)/transactions?id=${t.id}`)
-                    }
+                    onPress={() => setDetailTransaction(t as unknown as Transaction)}
+                    accessibilityRole="button"
                   >
                     {({ pressed }) => (
                       <View
@@ -1414,7 +1509,7 @@ export default function DashboardScreen() {
                               { color: colors.onSurfaceVariant },
                             ]}
                           >
-                            {formatRelativeTime(t.date)}
+                            {formatTransactionAge(t.date, t.created_at)}
                           </Text>
                         </View>
                         <Text
@@ -1479,6 +1574,15 @@ export default function DashboardScreen() {
           </LinearGradient>
         </Pressable>
       </ScrollView>
+
+      <TransactionDetailsSheet
+        visible={!!detailTransaction}
+        transaction={detailTransaction}
+        onClose={() => setDetailTransaction(null)}
+        onEdit={editTransaction}
+        onDelete={(t) => void archiveTransaction(t)}
+        deleteLabel="Archive"
+      />
     </SafeAreaView>
   );
 }
@@ -1653,9 +1757,15 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
     marginTop: 2,
   },
+  heroHint: {
+    color: "rgba(255,255,255,0.65)",
+    fontSize: 11.5,
+    marginTop: 1,
+  },
   heroTrend: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: 6,
     marginTop: 4,
   },

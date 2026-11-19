@@ -51,6 +51,7 @@ import { Account } from "../src/types";
 import { radius, shadow, spacing } from "../src/constants/theme";
 import GradientFab from "../src/components/common/GradientFab";
 import { parseDecimalInput } from "../src/utils/number";
+import { invalidateMoneyQueries } from "../src/services/moneyQueries";
 
 const formatApiError = (result: any): string => {
   const errorData = result.data;
@@ -123,8 +124,8 @@ export default function AccountsScreen() {
       return result;
     },
     onSuccess: (_result, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      // An opening balance moves net worth, the reports and every account picker.
+      void invalidateMoneyQueries(queryClient);
       const name = variables.account_name?.trim();
       toast.success(name ? `${name} created` : "Account created");
       closeModal();
@@ -228,9 +229,17 @@ export default function AccountsScreen() {
             <View style={styles.heroIcon}>
               <Wallet size={22} color="#ffffff" strokeWidth={2.2} />
             </View>
+            {/* The sum of the accounts below. Home's "Net worth" also counts
+                assets and loans, so the label says which total this is (AE-03). */}
             <View style={styles.heroTopText}>
-              <Text style={styles.heroLabel}>Total balance</Text>
+              <Text style={styles.heroLabel}>Total balance · all accounts</Text>
               <Text style={styles.heroValue}>{formatAmount(totalBalance)}</Text>
+              <Text style={styles.heroCaption} numberOfLines={2}>
+                {accountsCount === 1
+                  ? "Money in your 1 account"
+                  : `Money in your ${accountsCount} accounts`}
+                {" · Net worth on Home also counts assets and loans"}
+              </Text>
             </View>
           </View>
           <View style={styles.heroMeta}>
@@ -501,6 +510,11 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: "800",
     letterSpacing: -0.5,
+  },
+  heroCaption: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    textAlign: "right",
   },
   heroMeta: {
     flexDirection: "row",
