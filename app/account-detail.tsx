@@ -46,6 +46,8 @@ import transactionService from "../src/services/transactionService";
 import categoryService from "../src/services/categoryService";
 import DateField from "../src/components/common/DateField";
 import TransactionDetailsSheet from "../src/components/transactions/TransactionDetailsSheet";
+import ReconcileMatchPicker from "../src/components/transactions/ReconcileMatchPicker";
+import { findMatchCandidates } from "../src/utils/reconcileMatch";
 import { getAmountSign } from "../src/utils/transactions";
 import { parseDecimalInput, toDecimalInput } from "../src/utils/number";
 import { parseCalendarDate } from "../src/utils/date";
@@ -74,6 +76,8 @@ interface ReconcileTransaction {
   notes?: string;
   isMatched?: boolean;
   matchedData?: Transaction;
+  /** Matched by the user in the Match picker, not automatically (QA AE-54). */
+  matchedByUser?: boolean;
   /** Why the last Create was refused, shown on the card itself (QA AE-120). */
   rowError?: string;
 }
@@ -163,6 +167,18 @@ export default function AccountDetailScreen() {
   >({});
   // A matched card the user wants to create anyway, waiting for confirmation (QA AE-55).
   const [createAnywayKey, setCreateAnywayKey] = useState<string | null>(null);
+  // The card the Match picker is open for (QA AE-54).
+  const [matchPickerKey, setMatchPickerKey] = useState<string | null>(null);
+  // Ledger rows no card may match any more: ones a confirmed card matched and
+  // ones a Create here added — a second, identical statement line must not
+  // match the row the first one just created.
+  const [claimedLedgerIds, setClaimedLedgerIds] = useState<number[]>([]);
+  const claimLedgerIds = (ids: unknown[]) => {
+    const valid = ids
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (valid.length) setClaimedLedgerIds((prev) => [...prev, ...valid]);
+  };
   // Confirmation dialogs (same ConfirmDialog as Budgets / Loans / Schedules)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Transaction | null>(null);
@@ -608,8 +624,12 @@ export default function AccountDetailScreen() {
           };
         });
 
-        // Match with existing account transactions
-        const existingTx = transactionsList || [];
+        // Match with existing account transactions — never a row an earlier
+        // card already confirmed or created.
+        const claimed = new Set(claimedLedgerIds.map(String));
+        const existingTx = (transactionsList || []).filter(
+          (tx: Transaction) => !claimed.has(String(tx.id)),
+        );
         let matched = 0;
         let unmatched = 0;
 
@@ -740,6 +760,11 @@ export default function AccountDetailScreen() {
       const result = await transactionService.bulkCreate([toBulkRow(tx) as any]);
 
       if (result.success) {
+        // The new row belongs to this card: no other card may match it.
+        const created = (result.data as any)?.data;
+        claimLedgerIds(
+          Array.isArray(created) ? created.map((row: any) => row?.id) : [],
+        );
         // Remove saved transaction from list
         removeReconcileRow(key);
         if (tx.isMatched) {
@@ -763,15 +788,96 @@ export default function AccountDetailScreen() {
     }
   };
 
+  // Confirm Match (matched card — its ledger row is used up) or Skip
+  // (unmatched card). Nothing is saved either way.
   const handleSkipTransaction = (key: string) => {
     const tx = reconcileData.find((row) => row.key === key);
     if (!tx) return;
     removeReconcileRow(key);
     if (tx.isMatched) {
+      claimLedgerIds([tx.matchedData?.id]);
       setMatchedCount((prev) => Math.max(0, prev - 1));
     } else {
       setUnmatchedCount((prev) => Math.max(0, prev - 1));
     }
+  };
+
+  /** Ledger rows the picker leaves out for a card: used up, or held by another card. */
+  const ledgerIdsTakenExcept = (key: string | null) => [
+    ...claimedLedgerIds,
+    ...reconcileData
+      .filter((row) => row.key !== key && row.isMatched && row.matchedData)
+      .map((row) => row.matchedData!.id),
+  ];
+
+  // How many rows the Match picker would suggest for each unmatched card,
+  // shown on its Match button (QA AE-54).
+  const matchSuggestionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const taken = [
+      ...claimedLedgerIds,
+      ...reconcileData
+        .filter((row) => row.isMatched && row.matchedData)
+        .map((row) => row.matchedData!.id),
+    ];
+    reconcileData.forEach((row) => {
+      if (row.isMatched) return;
+      counts.set(
+        row.key,
+        findMatchCandidates(
+          { ...row, amount: getReconcileAmount(row) },
+          transactionsList,
+          { excludeIds: taken },
+        ).length,
+      );
+    });
+    return counts;
+  }, [reconcileData, transactionsList, claimedLedgerIds]);
+
+  const openMatchPicker = (key: string) => {
+    Keyboard.dismiss();
+    setMatchPickerKey(key);
+  };
+
+  /**
+   * The Match picker's pick (QA AE-54): the card becomes a matched card
+   * pointing at that transaction — nothing is created. Confirm Match then
+   * clears it like any matched card; Save All never creates it.
+   */
+  const handlePickMatch = (picked: Transaction) => {
+    const key = matchPickerKey;
+    setMatchPickerKey(null);
+    if (!key) return;
+    const row = reconcileData.find((r) => r.key === key);
+    if (!row) return;
+    if (!row.isMatched) {
+      setMatchedCount((prev) => prev + 1);
+      setUnmatchedCount((prev) => Math.max(0, prev - 1));
+    }
+    updateReconcileRow(key, (current) => ({
+      ...current,
+      isMatched: true,
+      matchedData: picked,
+      matchedByUser: true,
+      rowError: undefined,
+    }));
+    toast.success(
+      `Matched to ${picked.merchant_name || "the transaction"} on ${formatDate(picked.date || "")}`,
+    );
+  };
+
+  /** Undo a match the user made: the card is unmatched again. */
+  const handleUnmatch = (key: string) => {
+    const row = reconcileData.find((r) => r.key === key);
+    if (!row?.isMatched) return;
+    updateReconcileRow(key, (current) => ({
+      ...current,
+      isMatched: false,
+      matchedData: undefined,
+      matchedByUser: false,
+    }));
+    setMatchedCount((prev) => Math.max(0, prev - 1));
+    setUnmatchedCount((prev) => prev + 1);
   };
 
   const handleConfirmCreateAnyway = () => {
@@ -815,6 +921,7 @@ export default function AccountDetailScreen() {
         setReconcileData([]);
         setMatchedCount(0);
         setUnmatchedCount(0);
+        setClaimedLedgerIds([]);
         void invalidateMoneyQueries(queryClient);
         toast.success(
           `${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"} saved`,
@@ -838,8 +945,13 @@ export default function AccountDetailScreen() {
     setReconcileData([]);
     setMatchedCount(0);
     setUnmatchedCount(0);
+    setClaimedLedgerIds([]);
     setShowClearReconcile(false);
   };
+
+  const matchPickerRow = matchPickerKey
+    ? reconcileData.find((row) => row.key === matchPickerKey) ?? null
+    : null;
 
   if (accountLoading) {
     return (
@@ -1649,10 +1761,39 @@ export default function AccountDetailScreen() {
                             flex: 1,
                           }}
                         >
-                          Already in this account: {item.matchedData.merchant_name} -{" "}
+                          {item.matchedByUser
+                            ? "You matched this to: "
+                            : "Already in this account: "}
+                          {item.matchedData.merchant_name} -{" "}
                           {formatAmount(Number(item.matchedData.amount))} on{" "}
                           {formatDate(item.matchedData.date || "")}
                         </Text>
+                      </View>
+                    )}
+                    {/* Pick a different transaction; a match the user made
+                        can be undone (QA AE-54). */}
+                    {item.isMatched && (
+                      <View style={styles.matchLinks}>
+                        <Button
+                          mode="text"
+                          compact
+                          icon="swap-horizontal"
+                          onPress={() => openMatchPicker(item.key)}
+                          disabled={isProcessing || savingAll}
+                        >
+                          Change
+                        </Button>
+                        {item.matchedByUser && (
+                          <Button
+                            mode="text"
+                            compact
+                            icon="link-variant-off"
+                            onPress={() => handleUnmatch(item.key)}
+                            disabled={isProcessing || savingAll}
+                          >
+                            Undo match
+                          </Button>
+                        )}
                       </View>
                     )}
 
@@ -1904,22 +2045,37 @@ export default function AccountDetailScreen() {
                         </Button>
                       </>
                     ) : (
+                      // Unmatched: Match it to a transaction already in
+                      // this account (QA AE-54), Create it, or Skip it.
                       <View style={styles.reconcileItemActions}>
+                        <Button
+                          mode="outlined"
+                          icon="link-variant"
+                          onPress={() => openMatchPicker(item.key)}
+                          disabled={isProcessing || savingAll}
+                          style={{ flex: 1 }}
+                          compact
+                          accessibilityHint="Pick the transaction already in this account that this line is"
+                        >
+                          {matchSuggestionCounts.get(item.key)
+                            ? `Match (${matchSuggestionCounts.get(item.key)})`
+                            : "Match"}
+                        </Button>
                         <Button
                           mode="contained"
                           onPress={() => handleSaveSingle(item.key)}
                           loading={isProcessing}
                           disabled={isProcessing || savingAll}
-                          style={{ flex: 1 }}
+                          style={{ flex: 1, marginLeft: 8 }}
                           compact
                         >
                           Create
                         </Button>
                         <Button
-                          mode="outlined"
+                          mode="text"
                           onPress={() => handleSkipTransaction(item.key)}
                           disabled={isProcessing || savingAll}
-                          style={{ marginLeft: 8 }}
+                          style={{ marginLeft: 4 }}
                           compact
                         >
                           Skip
@@ -2092,6 +2248,30 @@ export default function AccountDetailScreen() {
         onCancel={() => setCreateAnywayKey(null)}
         onConfirm={handleConfirmCreateAnyway}
       />
+
+      {matchPickerRow && (
+        <ReconcileMatchPicker
+          line={{
+            ...matchPickerRow,
+            amount: getReconcileAmount(matchPickerRow),
+          }}
+          ledgerRows={transactionsList}
+          excludeIds={ledgerIdsTakenExcept(matchPickerRow.key)}
+          currentMatchId={matchPickerRow.matchedData?.id ?? null}
+          accountName={account?.account_name || "this account"}
+          onPick={handlePickMatch}
+          onCreateInstead={
+            matchPickerRow.isMatched
+              ? undefined
+              : () => {
+                  const key = matchPickerRow.key;
+                  setMatchPickerKey(null);
+                  void handleSaveSingle(key);
+                }
+          }
+          onDismiss={() => setMatchPickerKey(null)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -2327,6 +2507,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   // Reconcile styles
+  matchLinks: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: -4,
+    marginBottom: 4,
+  },
   reconcileSummary: {
     flexDirection: "row",
     gap: 12,
