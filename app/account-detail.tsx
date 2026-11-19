@@ -80,7 +80,27 @@ interface ReconcileTransaction {
   matchedByUser?: boolean;
   /** Why the last Create was refused, shown on the card itself (QA AE-120). */
   rowError?: string;
+  /** The statement line as uploaded (see statementLineKey), whatever the user edits since. */
+  sourceKey?: string;
 }
+
+/**
+ * Identifies a statement line by what the file said, so a second upload that
+ * overlaps the first (Add More CSV Data) doesn't list the same line twice.
+ */
+const statementLineKey = (
+  tx: Pick<
+    ReconcileTransaction,
+    "date" | "amount" | "type" | "merchant_name" | "description"
+  >,
+) =>
+  [
+    String(tx.date || "").split("T")[0],
+    Math.abs(Number(tx.amount) || 0).toFixed(2),
+    tx.type,
+    (tx.merchant_name || "").trim().toLowerCase(),
+    (tx.description || "").trim().toLowerCase(),
+  ].join("|");
 
 let reconcileKeySeed = 0;
 const nextReconcileKey = () => `reconcile-${Date.now()}-${(reconcileKeySeed += 1)}`;
@@ -156,8 +176,13 @@ export default function AccountDetailScreen() {
   const [reconcileData, setReconcileData] = useState<ReconcileTransaction[]>(
     [],
   );
-  const [matchedCount, setMatchedCount] = useState(0);
-  const [unmatchedCount, setUnmatchedCount] = useState(0);
+  // Counted from the cards, so an appended upload, a pick or a Create can't
+  // leave the summary out of step with the list.
+  const matchedCount = useMemo(
+    () => reconcileData.filter((row) => row.isMatched).length,
+    [reconcileData],
+  );
+  const unmatchedCount = reconcileData.length - matchedCount;
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   // Category lists per transaction type, so an income card and an expense
@@ -179,6 +204,9 @@ export default function AccountDetailScreen() {
       .filter((value) => Number.isFinite(value) && value > 0);
     if (valid.length) setClaimedLedgerIds((prev) => [...prev, ...valid]);
   };
+  // Statement lines already dealt with in this reconcile (created, confirmed
+  // or skipped), so uploading an overlapping file doesn't bring them back.
+  const [handledLineKeys, setHandledLineKeys] = useState<string[]>([]);
   // Confirmation dialogs (same ConfirmDialog as Budgets / Loans / Schedules)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<Transaction | null>(null);
@@ -263,6 +291,23 @@ export default function AccountDetailScreen() {
     () => (Array.isArray(transactions) ? [...transactions].sort(byDateDesc) : []),
     [transactions],
   );
+
+  // The reconcile as it is now: a CSV upload takes a few seconds, and the
+  // user can confirm, match or create cards meanwhile.
+  const reconcileLatest = useRef({
+    rows: reconcileData,
+    claimed: claimedLedgerIds,
+    handled: handledLineKeys,
+    ledger: transactionsList,
+  });
+  useEffect(() => {
+    reconcileLatest.current = {
+      rows: reconcileData,
+      claimed: claimedLedgerIds,
+      handled: handledLineKeys,
+      ledger: transactionsList,
+    };
+  }, [reconcileData, claimedLedgerIds, handledLineKeys, transactionsList]);
 
   // Calculate totals
   const totalIncome = transactionsList
@@ -545,8 +590,12 @@ export default function AccountDetailScreen() {
       prev.map((row) => (row.key === key ? change(row) : row)),
     );
 
-  const removeReconcileRow = (key: string) =>
-    setReconcileData((prev) => prev.filter((row) => row.key !== key));
+  /** Takes a card off the list once it's created, confirmed or skipped. */
+  const removeReconcileRow = (tx: ReconcileTransaction) => {
+    setReconcileData((prev) => prev.filter((row) => row.key !== tx.key));
+    const { sourceKey } = tx;
+    if (sourceKey) setHandledLineKeys((prev) => [...prev, sourceKey]);
+  };
 
   const handlePickCsv = async () => {
     Keyboard.dismiss();
@@ -606,7 +655,7 @@ export default function AccountDetailScreen() {
           const merchant = String(
             tx.merchant_name || tx.payee || description || "",
           ).trim();
-          return {
+          const card: ReconcileTransaction = {
             key: nextReconcileKey(),
             date: tx.date || "",
             merchant_name: merchant,
@@ -622,19 +671,56 @@ export default function AccountDetailScreen() {
             notes: tx.notes || tx.reference || "",
             isMatched: false,
           };
+          return { ...card, sourceKey: statementLineKey(card) };
         });
 
-        // Match with existing account transactions — never a row an earlier
-        // card already confirmed or created.
-        const claimed = new Set(claimedLedgerIds.map(String));
-        const existingTx = (transactionsList || []).filter(
-          (tx: Transaction) => !claimed.has(String(tx.id)),
+        // Add More CSV Data adds to the cards already listed — their edits,
+        // picks and matches stay. A line this reconcile already has (a card
+        // on the list, or one created, confirmed or skipped) is left out;
+        // each earlier line covers one new line, so two identical lines in
+        // one file still both count.
+        const {
+          rows: existingRows,
+          claimed: claimedIds,
+          handled,
+          ledger,
+        } = reconcileLatest.current;
+        const isAppending = existingRows.length > 0;
+        const seen = new Map<string, number>();
+        [...existingRows.map((row) => row.sourceKey), ...handled].forEach(
+          (lineKey) => {
+            if (lineKey) seen.set(lineKey, (seen.get(lineKey) || 0) + 1);
+          },
+        );
+        let skipped = 0;
+        const newTransactions = bankTransactions.filter((bankTx) => {
+          const lineKey = bankTx.sourceKey || "";
+          const earlier = seen.get(lineKey) || 0;
+          if (earlier === 0) return true;
+          seen.set(lineKey, earlier - 1);
+          skipped++;
+          return false;
+        });
+
+        // Match the new lines with existing account transactions — never a
+        // row an earlier card already confirmed or created, nor one a card
+        // on the list holds.
+        const taken = new Set(
+          [
+            ...claimedIds,
+            ...existingRows
+              .filter((row) => row.isMatched && row.matchedData)
+              .map((row) => row.matchedData!.id),
+          ].map(String),
+        );
+        const existingTx = (ledger || []).filter(
+          (tx: Transaction) => !taken.has(String(tx.id)),
         );
         let matched = 0;
         let unmatched = 0;
 
         const remainingExisting = [...existingTx];
-        const matchedData = bankTransactions.map((bankTx) => {
+        const matchedData = newTransactions.map((bankTx) => {
           const matchIndex = remainingExisting.findIndex(
             (accTx: Transaction) => {
               const bankDate = bankTx.date?.split("T")[0];
@@ -677,17 +763,31 @@ export default function AccountDetailScreen() {
           }
         });
 
-        setReconcileData(matchedData);
-        setMatchedCount(matched);
-        setUnmatchedCount(unmatched);
+        setReconcileData((prev) => [...prev, ...matchedData]);
 
         // Any type the upload didn't cover is fetched now.
         if (!uploaded.some((c) => c?.type === "expense")) void ensureCategories("expense");
         if (!uploaded.some((c) => c?.type === "income")) void ensureCategories("income");
 
-        toast.success(
-          `${bankTransactions.length} processed — ${matched} matched, ${unmatched} unmatched`,
-        );
+        const skippedNote =
+          skipped === 0
+            ? ""
+            : `, ${skipped} already in this reconcile ${skipped === 1 ? "was" : "were"} left out`;
+        if (matchedData.length === 0 && skipped > 0) {
+          toast.info(
+            skipped === 1
+              ? "That line is already in this reconcile — nothing added"
+              : `All ${skipped} lines are already in this reconcile — nothing added`,
+          );
+        } else if (isAppending) {
+          toast.success(
+            `${matchedData.length} added — ${matched} matched, ${unmatched} unmatched${skippedNote}`,
+          );
+        } else {
+          toast.success(
+            `${bankTransactions.length} processed — ${matched} matched, ${unmatched} unmatched${skippedNote}`,
+          );
+        }
       } else {
         toast.error(response.error || "Failed to process CSV");
       }
@@ -766,12 +866,7 @@ export default function AccountDetailScreen() {
           Array.isArray(created) ? created.map((row: any) => row?.id) : [],
         );
         // Remove saved transaction from list
-        removeReconcileRow(key);
-        if (tx.isMatched) {
-          setMatchedCount((prev) => Math.max(0, prev - 1));
-        } else {
-          setUnmatchedCount((prev) => Math.max(0, prev - 1));
-        }
+        removeReconcileRow(tx);
         // The account's Current Balance, Home, Activity and Reports all
         // change with it (QA AE-98).
         void invalidateMoneyQueries(queryClient);
@@ -793,12 +888,9 @@ export default function AccountDetailScreen() {
   const handleSkipTransaction = (key: string) => {
     const tx = reconcileData.find((row) => row.key === key);
     if (!tx) return;
-    removeReconcileRow(key);
+    removeReconcileRow(tx);
     if (tx.isMatched) {
       claimLedgerIds([tx.matchedData?.id]);
-      setMatchedCount((prev) => Math.max(0, prev - 1));
-    } else {
-      setUnmatchedCount((prev) => Math.max(0, prev - 1));
     }
   };
 
@@ -850,10 +942,6 @@ export default function AccountDetailScreen() {
     if (!key) return;
     const row = reconcileData.find((r) => r.key === key);
     if (!row) return;
-    if (!row.isMatched) {
-      setMatchedCount((prev) => prev + 1);
-      setUnmatchedCount((prev) => Math.max(0, prev - 1));
-    }
     updateReconcileRow(key, (current) => ({
       ...current,
       isMatched: true,
@@ -876,8 +964,6 @@ export default function AccountDetailScreen() {
       matchedData: undefined,
       matchedByUser: false,
     }));
-    setMatchedCount((prev) => Math.max(0, prev - 1));
-    setUnmatchedCount((prev) => prev + 1);
   };
 
   const handleConfirmCreateAnyway = () => {
@@ -919,9 +1005,8 @@ export default function AccountDetailScreen() {
 
       if (result.success) {
         setReconcileData([]);
-        setMatchedCount(0);
-        setUnmatchedCount(0);
         setClaimedLedgerIds([]);
+        setHandledLineKeys([]);
         void invalidateMoneyQueries(queryClient);
         toast.success(
           `${transactions.length} ${transactions.length === 1 ? "transaction" : "transactions"} saved`,
@@ -943,9 +1028,8 @@ export default function AccountDetailScreen() {
 
   const handleConfirmClearReconcile = () => {
     setReconcileData([]);
-    setMatchedCount(0);
-    setUnmatchedCount(0);
     setClaimedLedgerIds([]);
+    setHandledLineKeys([]);
     setShowClearReconcile(false);
   };
 
