@@ -927,19 +927,23 @@ export default function DashboardScreen() {
               ).map((action) => {
                 const Icon = action.icon;
                 return (
-                  // The cell sets the quarter width with a plain style, so
-                  // the grid holds even if the Pressable's function style
-                  // isn't applied (see the note in app/support.tsx).
+                  // Plain styles only: on Android a function `style` on the
+                  // Pressable isn't applied, so it shrank to the icon and a
+                  // short label ("Goals", "Loans") sat left of its icon. The
+                  // pressed fade lives on the inner view instead.
                   <View key={action.key} style={styles.quickActionCell}>
                     <Pressable
                       onPress={action.onPress}
-                      style={({ pressed }) => [
-                        styles.quickAction,
-                        { opacity: pressed ? 0.7 : 1 },
-                      ]}
+                      style={styles.quickAction}
                       hitSlop={4}
                     >
-                      <View style={styles.quickActionInner}>
+                      {({ pressed }) => (
+                      <View
+                        style={[
+                          styles.quickActionInner,
+                          { opacity: pressed ? 0.7 : 1 },
+                        ]}
+                      >
                         <View
                           style={[
                             styles.quickActionIcon,
@@ -961,6 +965,7 @@ export default function DashboardScreen() {
                           </Text>
                         </View>
                       </View>
+                      )}
                     </Pressable>
                   </View>
                 );
