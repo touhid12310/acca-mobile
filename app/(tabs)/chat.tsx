@@ -119,6 +119,25 @@ type CategorySelection = {
   subcategory_id: number | null;
 };
 
+/** True when the AI did something with the message: a table, a draft, a loan
+ *  card, a report or a lookup in the user's data. Only those are worth
+ *  offering again as a starter card; a request it could not do ("download my
+ *  statement as a PDF") or a failed reply is not (QA AE-26). */
+const replyDidSomething = (assistant?: ChatMessage | null): boolean => {
+  const meta = (assistant?.metadata ?? {}) as Record<string, unknown>;
+  if (meta.ai_error) return false;
+  const filled = (value: unknown) =>
+    Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined && value !== false;
+  return [
+    "structured_data",
+    "expense_candidates",
+    "loan_entry_candidates",
+    "report",
+    "transaction_summary",
+    "tool_execution",
+  ].some((key) => filled(meta[key]));
+};
+
 /* Category name matching, ported from the web app
    (TransactionManager.normalizeCategoryLabel / resolveCategorySelection).
    The AI answers with category NAMES, not ids, so an exact string compare
@@ -1231,7 +1250,6 @@ export default function ChatScreen() {
       return;
     }
 
-    if (messageText && !file) remember(messageText);
     setSendingHasFile(Boolean(file));
     setSendStatusIndex(0);
     setIsSending(true);
@@ -1278,6 +1296,11 @@ export default function ChatScreen() {
             apiErrorMessage(result, "Failed to send message. Please try again."),
           );
         }
+      } else if (messageText && !file) {
+        // Starter cards echo back only what the AI could act on (AE-26).
+        const reply = (result.data as { data?: { assistant?: ChatMessage } } | undefined)?.data
+          ?.assistant;
+        if (replyDidSomething(reply)) remember(messageText);
       }
     } catch (error) {
       notifyToast.error("Failed to send message. Please try again.");

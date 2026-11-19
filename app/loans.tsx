@@ -2098,7 +2098,7 @@ export default function LoansScreen() {
                       variant="bodySmall"
                       style={{ color: colors.onSurfaceVariant, marginTop: 3 }}
                     >
-                      It shows live figures and the PDF, but never your notes.
+                      It shows live figures and the PDF, but never your notes on the loan or its entries.
                     </Text>
                     <Text
                       variant="bodySmall"
