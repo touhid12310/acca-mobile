@@ -23,6 +23,7 @@ import { CurrencyProvider } from '../src/contexts/CurrencyContext';
 import { NotificationProvider } from '../src/contexts/NotificationContext';
 import { AppLockProvider, useAppLock } from '../src/contexts/AppLockContext';
 import { AppDarkBackground, OfflineBanner } from '../src/components/ui';
+import { AiConsentDialog } from '../src/components/AiConsentDialog';
 import { AppLockOverlay } from '../src/components/AppLockOverlay';
 import { AppUpdatePrompt } from '../src/components/AppUpdatePrompt';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
@@ -361,6 +362,8 @@ function RootLayoutNav() {
         </Stack>
         </NavThemeProvider>
         <OfflineBanner />
+        {/* "Use AI features?" — opened by ensureAiConsent(). */}
+        <AiConsentDialog />
         {/* Biometric app lock + app-switcher privacy cover, above everything. */}
         <AppLockOverlay />
         {/* "New version available" / "Update required" (admin → Settings → App updates). */}
