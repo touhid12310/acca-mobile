@@ -694,7 +694,12 @@ export default function OnboardingScreen() {
               </>
             ) : (
               <>
-                <TouchableOpacity onPress={handleSkipAll} disabled={submitting}>
+                {/* Step 2's account is only sent on finish, so "Maybe later" must
+                    finish with it, not skip — skipping lost the account (same as web). */}
+                <TouchableOpacity
+                  onPress={() => (accountName.trim() ? handleFinish() : handleSkipAll())}
+                  disabled={submitting}
+                >
                   <Text style={[styles.ghost, { color: subtle, borderColor: cardBorder }]}>Maybe later</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleFinish()} disabled={submitting}>
