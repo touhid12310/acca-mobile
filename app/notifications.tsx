@@ -39,7 +39,10 @@ const TYPE_CONFIG: Record<
   budget_warning: { Icon: AlertTriangle, tone: "warn", route: "/budgets" },
   budget_overage: { Icon: AlertCircle, tone: "danger", route: "/budgets" },
   goal_completed: { Icon: Target, tone: "success", route: "/goals" },
+  goal_needs_attention: { Icon: Target, tone: "warn", route: "/goals" },
   schedule_due_soon: { Icon: Calendar, tone: "info", route: "/schedules" },
+  loan_payment_due: { Icon: Calendar, tone: "warn", route: "/loans" },
+  loan_payment_overdue: { Icon: AlertCircle, tone: "danger", route: "/loans" },
   daily_log_nudge: { Icon: Wallet, tone: "info", route: "/transaction-modal" },
 };
 

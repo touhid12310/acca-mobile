@@ -346,15 +346,15 @@ export default function NotificationSettingsScreen() {
               "payment_reminders",
               Calendar,
               "Payment Reminders",
-              "Reminders for repeating transactions due tomorrow.",
-              "1 day before due",
+              "Repeating transactions due tomorrow, and loan payments due soon or overdue.",
+              "Before due dates",
             )}
 
             {renderRow(
               "goal_reached",
               Trophy,
               "Goal Reached",
-              "Celebrates when you hit a savings goal target.",
+              "When you hit a savings goal, or one falls behind near its target date.",
               "Enabled",
             )}
 
