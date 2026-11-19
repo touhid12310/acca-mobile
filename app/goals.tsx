@@ -16,6 +16,8 @@ import {
   Portal,
   Button,
   ProgressBar,
+  Switch,
+  Chip,
 } from "react-native-paper";
 import DialogModal from "../src/components/common/DialogModal";
 import {
@@ -34,6 +36,8 @@ import { BrandedHeader, BrandStrip } from "../src/components";
 import { ConfirmDialog } from "../src/components/ui";
 import goalService, { GoalRecord } from "../src/services/goalService";
 import categoryService from "../src/services/categoryService";
+import accountService from "../src/services/accountService";
+import { invalidateMoneyQueries } from "../src/services/moneyQueries";
 import DateField from "../src/components/common/DateField";
 import { maybeAskForReview } from "../src/services/appReviewService";
 import { PaperTextInput as TextInput } from "../src/components/ui/SafeTextInput";
@@ -70,6 +74,11 @@ export default function GoalsScreen() {
   const [editingGoal, setEditingGoal] = useState<GoalRecord | null>(null);
   const [goalToDelete, setGoalToDelete] = useState<GoalRecord | null>(null);
   const [amountToAdd, setAmountToAdd] = useState("");
+  // "Also move this money between my accounts" (QA AE-108): off, the
+  // contribution only tracks progress; on, it is also a transfer.
+  const [moveMoney, setMoveMoney] = useState(false);
+  const [fromAccountId, setFromAccountId] = useState<number | null>(null);
+  const [toAccountId, setToAccountId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     target_amount: "",
@@ -252,15 +261,44 @@ export default function GoalsScreen() {
     onError: (error: Error) => toast.error(error.message || "Could not update goal"),
   });
 
+  const { data: accounts = [] } = useQuery<any[]>({
+    queryKey: ["accounts"],
+    queryFn: async () => {
+      const result = await accountService.getAll();
+      if (result.success && result.data) {
+        const responseData = result.data as any;
+        const list = responseData?.data || responseData || [];
+        return Array.isArray(list) ? list : [];
+      }
+      return [];
+    },
+  });
+
   const addAmountMutation = useMutation({
-    mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
-      const result = await goalService.addAmount(id, { amount });
+    mutationFn: async ({
+      id,
+      amount,
+      fromId,
+      toId,
+    }: {
+      id: number;
+      amount: number;
+      fromId?: number | null;
+      toId?: number | null;
+    }) => {
+      const result = await goalService.addAmount(id, {
+        amount,
+        ...(fromId && toId ? { from_account_id: fromId, to_account_id: toId } : {}),
+      });
       if (!result.success) throw new Error(formatApiError(result));
       return result;
     },
-    onSuccess: (_result, variables) => {
+    onSuccess: (result, variables) => {
       const goal = selectedGoal;
+      const moved = Boolean(variables.fromId && variables.toId);
       queryClient.invalidateQueries({ queryKey: ["goals"] });
+      // A moved contribution is a transfer: balances and Activity changed.
+      if (moved) void invalidateMoneyQueries(queryClient);
       closeAddAmountModal();
       if (goal) {
         const newTotal = (Number(goal.current_amount) || 0) + variables.amount;
@@ -271,6 +309,8 @@ export default function GoalsScreen() {
             duration: 5000,
           });
           void maybeAskForReview("goal_reached");
+        } else if (moved && result?.message) {
+          toast.success(result.message);
         } else {
           toast.success(`${formatAmount(variables.amount)} added to ${goal.name}`);
         }
@@ -336,6 +376,9 @@ export default function GoalsScreen() {
   const openAddAmountModal = (goal: GoalRecord) => {
     setSelectedGoal(goal);
     setAmountToAdd("");
+    setMoveMoney(false);
+    setFromAccountId(null);
+    setToAccountId(null);
     setAddAmountModalVisible(true);
   };
 
@@ -343,6 +386,17 @@ export default function GoalsScreen() {
     setAddAmountModalVisible(false);
     setSelectedGoal(null);
     setAmountToAdd("");
+    setMoveMoney(false);
+    setFromAccountId(null);
+    setToAccountId(null);
+  };
+
+  const toggleMoveMoney = (on: boolean) => {
+    setMoveMoney(on);
+    if (on && fromAccountId == null) {
+      const preferred = accounts.find((a) => a.is_default) ?? accounts[0];
+      setFromAccountId(preferred ? Number(preferred.id) : null);
+    }
   };
 
   const handleSave = () => {
@@ -368,7 +422,22 @@ export default function GoalsScreen() {
       toast.error("Please enter a valid amount");
       return;
     }
-    addAmountMutation.mutate({ id: selectedGoal.id, amount });
+    if (moveMoney) {
+      if (!fromAccountId || !toAccountId) {
+        toast.error("Pick the account the money comes from and the one it goes to.");
+        return;
+      }
+      if (fromAccountId === toAccountId) {
+        toast.error("Pick two different accounts.");
+        return;
+      }
+    }
+    addAmountMutation.mutate({
+      id: selectedGoal.id,
+      amount,
+      fromId: moveMoney ? fromAccountId : null,
+      toId: moveMoney ? toAccountId : null,
+    });
   };
 
   const handleDelete = (goal: GoalRecord) => {
@@ -1329,6 +1398,110 @@ export default function GoalsScreen() {
               style={styles.input}
             />
 
+            {/* Optional: really move the money (QA AE-108). */}
+            <View
+              style={[
+                styles.moveCard,
+                { backgroundColor: colors.surfaceVariant, borderColor: colors.outline },
+              ]}
+            >
+              <View style={styles.moveHeader}>
+                <Text
+                  variant="bodyMedium"
+                  style={[styles.moveTitle, { color: colors.onSurface }]}
+                  onPress={accounts.length >= 2 ? () => toggleMoveMoney(!moveMoney) : undefined}
+                >
+                  Also move this money between my accounts
+                </Text>
+                <Switch
+                  value={moveMoney}
+                  onValueChange={toggleMoveMoney}
+                  disabled={accounts.length < 2}
+                  color={colors.primary}
+                />
+              </View>
+              <Text variant="bodySmall" style={{ color: colors.onSurfaceVariant }}>
+                {accounts.length < 2
+                  ? "Add a second account (for example, Savings) to move money into it."
+                  : moveMoney
+                    ? "It's recorded as a transfer, so both balances update. Your net worth stays the same."
+                    : "Leave this off to only track your progress. No balance changes."}
+              </Text>
+
+              {moveMoney && accounts.length >= 2 && (
+                <>
+                  <Text
+                    variant="labelLarge"
+                    style={[styles.moveLabel, { color: colors.onSurfaceVariant }]}
+                  >
+                    From
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.moveChips}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {accounts.map((account) => {
+                      const id = Number(account.id);
+                      return (
+                        <Chip
+                          key={`from-${id}`}
+                          selected={fromAccountId === id}
+                          showSelectedCheck
+                          onPress={() => {
+                            setFromAccountId(id);
+                            if (toAccountId === id) setToAccountId(null);
+                          }}
+                          style={
+                            fromAccountId === id
+                              ? { backgroundColor: colors.primaryContainer }
+                              : undefined
+                          }
+                        >
+                          {account.account_name}
+                        </Chip>
+                      );
+                    })}
+                  </ScrollView>
+
+                  <Text
+                    variant="labelLarge"
+                    style={[styles.moveLabel, { color: colors.onSurfaceVariant }]}
+                  >
+                    To
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.moveChips}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    {accounts
+                      .filter((account) => Number(account.id) !== fromAccountId)
+                      .map((account) => {
+                        const id = Number(account.id);
+                        return (
+                          <Chip
+                            key={`to-${id}`}
+                            selected={toAccountId === id}
+                            showSelectedCheck
+                            onPress={() => setToAccountId(id)}
+                            style={
+                              toAccountId === id
+                                ? { backgroundColor: colors.primaryContainer }
+                                : undefined
+                            }
+                          >
+                            {account.account_name}
+                          </Chip>
+                        );
+                      })}
+                  </ScrollView>
+                </>
+              )}
+            </View>
+
             <View style={styles.modalButtons}>
               <Button mode="text" onPress={closeAddAmountModal}>
                 Cancel
@@ -1525,6 +1698,30 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 12,
+  },
+  moveCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
+  moveHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
+  },
+  moveTitle: {
+    flex: 1,
+    fontWeight: "600",
+  },
+  moveLabel: {
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  moveChips: {
+    gap: 8,
+    paddingRight: 4,
   },
   inputWithAction: {
     marginBottom: 2,

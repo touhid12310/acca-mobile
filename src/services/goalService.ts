@@ -70,7 +70,14 @@ export const goalService = {
 
   addAmount: async (
     id: number,
-    amountData: { amount: number; date?: string; notes?: string }
+    // from/to: also record the amount as a transfer between two accounts (QA AE-108).
+    amountData: {
+      amount: number;
+      date?: string;
+      notes?: string;
+      from_account_id?: number;
+      to_account_id?: number;
+    }
   ): Promise<ApiResponse<Goal>> => {
     const token = await getAuthToken();
     return apiRequest<Goal>(`${API_CONFIG.ENDPOINTS.GOALS}/${id}/add-amount`, {
