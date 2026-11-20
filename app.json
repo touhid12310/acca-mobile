@@ -109,6 +109,7 @@
       ],
       "expo-web-browser",
       "./plugins/withoutMediaPlaybackForegroundService",
+      "./plugins/withOptionalHardwareFeatures",
       "expo-iap",
       [
         "expo-build-properties",
