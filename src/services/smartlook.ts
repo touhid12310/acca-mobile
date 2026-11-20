@@ -9,7 +9,7 @@ import { isTestLab } from "../../modules/accounte-diagnostics";
  *
  * Every call is fire-and-forget and never throws. A no-op on web, in Expo Go,
  * on dev clients built before Smartlook was added, without a project key
- * (EXPO_PUBLIC_SMARTLOOK_KEY), on Android 7 and older and on Google's test
+ * (EXPO_PUBLIC_SMARTLOOK_KEY), on Android 8 and older and on Google's test
  * robots. Dev builds record nothing unless EXPO_PUBLIC_SMARTLOOK_DEV=1.
  *
  * Privacy (a finance app): text fields and web views are masked by the SDK
@@ -27,10 +27,11 @@ type SensitiveViewProps = {
 };
 
 const PROJECT_KEY = process.env.EXPO_PUBLIC_SMARTLOOK_KEY?.trim() ?? "";
-// The SDK encodes recordings to video on the phone (MediaCodec). The media
-// framework on Android 7 Xiaomi phones aborts the whole app while encoding
-// (SIGABRT in libstagefright on /login in 1.9.3), so record Android 8+ only.
-const ANDROID_MIN_API = 26;
+// The SDK encodes recordings to video on the phone (MediaCodec). The older
+// Qualcomm media framework aborts the whole app while encoding (SIGABRT in
+// libavenhancements / libstagefright): Android 7 Xiaomi phones in 1.9.3, an
+// Android 8.1 Oppo in 1.9.7. Record Android 9+ only.
+const ANDROID_MIN_API = 28;
 const ENABLED =
   Platform.OS !== "web" &&
   !(Platform.OS === "android" && Number(Platform.Version) < ANDROID_MIN_API) &&
